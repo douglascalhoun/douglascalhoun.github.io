@@ -1,6 +1,9 @@
 var width  = canvas.width,
 		height = canvas.height,
-		tick  = 0;
+		tick  = 0
+		config = {
+			angle_devisor: 120
+		};
 
 function rand(num){
    return Math.floor(Math.random() * num)

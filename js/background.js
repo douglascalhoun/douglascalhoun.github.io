@@ -14,9 +14,9 @@ var background = (function(){
 	}
 
 	function generateGrass(){
-		var r = 205,
-				b = 225,
-        g = 225;
+		var r = 0,
+				b = 0,
+        g = 0;
 
 		// return "rgb(" + r + "," + g + "," + b + ")";
 		return "rgb(" + r + "," + g + "," + b + ")";

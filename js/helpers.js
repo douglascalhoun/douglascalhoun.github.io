@@ -6,6 +6,10 @@ function rand(num){
    return Math.floor(Math.random() * num)
 }
 
+function distance(obj, other){
+	return Math.sqrt(Math.pow(Math.abs(obj.x - other.x), 2) + Math.pow(Math.abs(obj.y - other.y), 2))
+}
+
 var color = (function(){
 	var freq = .3;
 

@@ -1,15 +1,15 @@
-var numberOfNodes = 70,
-		rotation = 0.01;
+var numberOfNodes = 30,
+		rotation = 0.01,
+		id = 0;
 
-function Node(x, y, angle, i, j, d){
+function Node(x, y, angle){
 	this.angle = angle;
-	this.id = i;
-	this.jd = j;
-	this.d = d;
+	this.id = id++;
+	this.d = Math.sqrt(x*x + y*y);
 	this.ctx = foreground.ctx;
 	this.x = x; 
 	this.y = y;
-	this.color = color.next(x,y,i);
+	this.color = color.next(x,y,id);
 	this.targeted = 0;
 	this.target = {};
 	this.bonked = false;
@@ -18,14 +18,14 @@ function Node(x, y, angle, i, j, d){
 
 Node.placeNodes = function(){
 	return _.flatten(_(numberOfNodes).times(function(i){
-		var angle = 2 * Math.PI * (i/numberOfNodes);
+		var angle =  2 * Math.PI * (i/numberOfNodes);
 		return _(numberOfNodes).times(function(j){
-			var innerAngle = 2 * Math.PI * (j/numberOfNodes)
-			var x = Math.sin(angle + j * 5) * 60 * innerAngle + width/2;
-			var y = Math.cos(angle + j * 5) * 60 * innerAngle + height/2;
-			var d = Math.sqrt(x*x + y*y);
-			return new Node(x, y, angle, i, j, d);
-		});
+			j = j + 1
+			var amplitude = 2 * Math.PI * (j/numberOfNodes)
+			var x = Math.sin(angle + j/3) * 55 * amplitude + cx;
+			var y = Math.cos(angle + j/3) * 55 * amplitude + cy;
+			return new Node(x, y, angle);
+	  });
 	}));
 }
 
@@ -51,11 +51,11 @@ Node.prototype.destruct = function(){
 };
 
 Node.prototype.move = function(){
-	var dx = this.x - width/2;
-	var dy = this.y - height/2;
+	var dx = this.x - cx;
+	var dy = this.y - cy;
 
-	this.x = (dx * Math.cos(rotation) - dy * Math.sin(rotation)) + width/2;
-	this.y = (dx * Math.sin(rotation) + dy * Math.cos(rotation)) + height/2;
+	this.x = (dx * Math.cos(rotation) - dy * Math.sin(rotation)) + cx;
+	this.y = (dx * Math.sin(rotation) + dy * Math.cos(rotation)) + cy;
 	this.angle = 2 * Math.PI * (this.id/config.angle_devisor);
 }
 
@@ -64,4 +64,3 @@ Node.prototype.findClosest = function(){
 		return distance(this, n);
 	},this);
 };
-

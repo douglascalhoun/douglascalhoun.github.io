@@ -6,8 +6,8 @@ var foreground = (function(){
 	
 	return {
 		init: function(){
-			this.lasers = Laser.placeLasers();
 			this.nodes = Node.placeNodes();
+			this.lasers = Laser.placeLasers();
 		},
 		ctx: ctx,
 		clear: function(){
@@ -17,8 +17,6 @@ var foreground = (function(){
 		},
 		paint : function(){
 			foreground.clear();
-
-			
 
 			_(foreground.lasers).each(function(l){ 
 				l.end ? l.move() : l.retarget();

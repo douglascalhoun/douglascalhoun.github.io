@@ -1,8 +1,10 @@
 var width  = canvas.width,
 		height = canvas.height,
-		tick  = 0
+		tick  = 0,
+		cx = width/2,
+		cy = height/2,
 		config = {
-			angle_devisor: 120
+			angle_devisor: 90
 		};
 
 function rand(num){
@@ -19,7 +21,7 @@ var color = (function(){
 	return {
 		next: function (){
 			var r = Math.floor(Math.sin(freq * tick++) * 128 + 127);
-			var b = Math.floor(Math.sin(freq * tick++ + 2) * 128 + 127);
+			var b = Math.floor(Math.sin(freq * tick + 2) * 128 + 127);
 			var g = Math.floor(Math.sin(freq * tick++ + 4) * 128 + 127);
 
 			return "rgb(" + r + "," + b + "," + g + ")";

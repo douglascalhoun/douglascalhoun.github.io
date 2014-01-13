@@ -1,4 +1,4 @@
-var numberOfLasers = 500;
+var numberOfLasers = 50;
 
 function Laser(i) {
 	this.ctx = foreground.ctx;

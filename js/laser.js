@@ -1,10 +1,11 @@
-var numberOfLasers = 50;
+var numberOfLasers = numberOfNodes * 3;
 
 function Laser(i) {
 	this.ctx = foreground.ctx;
 	this.step = 0;
 	this.id = i;
-	var startingNode = Math.floor(i * (foreground.nodes.length / numberOfLasers));
+	this.direction = 1;
+	var startingNode = i;
 	this.start = foreground.nodes[startingNode];
 	this.end = foreground.nodes[startingNode + 1 ] || foreground.nodes[0];
 	this.retarget();
@@ -16,9 +17,10 @@ Laser.placeLasers = function(){
 			});
 };
 
-Laser.prototype.move = function(){	
-	if(this.step > this.speed)
-		this.retarget()
+Laser.prototype.move = function(){
+	if(this.step > this.speed){
+		this.retarget();
+	}
 	this.step++;
 	this.ctx.strokeStyle = this.color;
 	this.ctx.beginPath();
@@ -29,14 +31,14 @@ Laser.prototype.move = function(){
   this.ctx.lineTo(this.x, this.y);
   this.ctx.closePath();
   this.ctx.stroke();
-}
+};
 
 Laser.prototype.retarget = function(){
-	if(this.end)
-		this.end.bonked = this.color;
+	this.end.bonked = this.color;
 	this.start && this.start.targeted--;
 	this.start = this.end;
-	this.end   = foreground.nodes[(this.end.id + 1)] || foreground.nodes[0];
+	console.log("node: " + this.end.id);
+	this.end = foreground.nodes[(this.end.id + 1)] || _(foreground.nodes).sample();
 	this.end.targeted++;
 	this.color = this.start.color;
 	this.x = this.start.x;

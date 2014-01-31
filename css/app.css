@@ -1,5 +1,5 @@
 #container {
-	width:   1000px;
+	width:   1100px;
 	margin:  auto;
 	padding: 0;
 	position: relative;
@@ -7,4 +7,13 @@
 
 canvas {
 	position: absolute;
+}
+
+#controls {
+	width: 100px;
+	float: right;
+}
+
+input {
+	width: 24px;
 }

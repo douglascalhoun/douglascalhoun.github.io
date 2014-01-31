@@ -28,5 +28,3 @@ var foreground = (function(){
 		}
 	};
 })();
-
-foreground.init();

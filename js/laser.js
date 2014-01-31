@@ -37,7 +37,6 @@ Laser.prototype.retarget = function(){
 	this.end.bonked = this.color;
 	this.start && this.start.targeted--;
 	this.start = this.end;
-	console.log("node: " + this.end.id);
 	this.end = foreground.nodes[(this.end.id + 1)] || _(foreground.nodes).sample();
 	this.end.targeted++;
 	this.color = this.start.color;

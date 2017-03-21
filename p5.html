@@ -31,7 +31,9 @@ function draw() {
     fill.apply(null, color)
     rect(0, i*thickness, width, thickness)
   })
-  text("YOU ARE SPECIAL", window.width/2, window.height/2)
+  text("YOU", window.width/2, window.height/4)
+  text("ARE", window.width/2, window.height/2)
+  text("SPECIAL", window.width/2, window.height*(3/4))
   colors.unshift(colors.pop())
 }
 

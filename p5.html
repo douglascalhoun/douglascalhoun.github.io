@@ -1,0 +1,38 @@
+<html><head><style>
+body {
+  margin: 0;
+  padding: 0;
+}
+#container {
+  max-width: 640px;
+  margin: 0 auto;
+}
+</style></head><body>
+
+<div id="container"></div>
+<script src='js/p5.js'></script>
+<script src='js/utils.js'></script>
+<script>
+var thickness
+var colors = (36).times(function (i) {
+  return [rand(0,255),rand(0,255),rand(0,255)]
+})
+function setup() {
+  createCanvas(window.innerWidth, window.innerHeight)
+  thickness = window.innerHeight / 36
+  frameRate(20)
+  textSize(120)
+  textAlign(CENTER)
+  textStyle(BOLD)
+}
+
+function draw() {
+  colors.forEach(function (color, i) {
+    fill.apply(null, color)
+    rect(0, i*thickness, width, thickness)
+  })
+  text("YOU ARE SPECIAL", window.width/2, window.height/2)
+  colors.unshift(colors.pop())
+}
+
+</script></body></html>

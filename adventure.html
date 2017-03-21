@@ -1,0 +1,128 @@
+<html>
+<head>
+<link href="css/adventure.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="container" autofocus>
+	<div class="pad">
+		<br>
+		<span class="grey oneliner sm-off">// Introduction ------------------------------------------------------------------------------------</span>
+		<span class="sm-off"><br><br></span>
+		<span class="blue"><em>function</em></span> <span class="green">musicForProgramming</span>(<span class="orange"><em>task</em></span>)
+		<span class="sm-off">
+
+			<span class="string-indent">
+				task <span class="fuschia">=</span> (task <span class="fuschia">===</span> <span class="purple">undefined</span>) ? <span class="yellow">'programming'</span> : task;<br>
+			</span>
+
+		</span>
+		<span class="sm-only">
+			{<span class="fold">...</span>}<br>
+		</span>
+
+		&nbsp;<br>
+		<span class="grey oneliner">// Episodes ----------------------------------------------------------------------------------------</span><br>
+		<br>
+		<div id=map>
+		</div>
+	</div>
+	<div class="pad">
+		<br>
+		<span class="grey oneliner">// Meta --------------------------------------------------------------------------------------------</span><br>
+		<br><div style="float:right;">
+		<a href="#" class="purple-link">[About]</a>
+		<a href="#" class="purple-link">[Credits]</a>
+		<a href="#" class="purple-link">[folder.jpg]</a>
+		<a href="#" class="blue-link">[iTunes]</a>
+		<a href="#" class="blue-link">[Facebook]</a>
+		<a href="#" class="blue-link">[Twitter]</a>
+		<a href="#" class="orange-link">[Enterprise Mode]</a>
+		<a href="#" id="themeLink" class="orange-link">[Switch Theme]</a>
+		<br>&nbsp;</div>
+	</div>
+</div>
+
+<script type="text/javascript" src="js/utils.js"></script>
+<script>
+
+
+	var hero = {
+		color:'selected',
+		char: 'i',
+		x: 50,
+		y: 29,
+
+		fire: function () {
+			lasers.add(hero.x,hero.y)
+		},
+		update: function () {
+			board[hero.x][hero.y] = hero
+		},
+		move_left: function () {
+			hero.x = hero.x - 1
+		},
+		move_right: function () {
+			hero.x = hero.x + 1
+		}
+	}
+
+	var lasers = {
+		state: [],
+		add: function (x,y) {
+			lasers.state.push({x: x, y: y})
+		},
+		update: function (i) {
+			lasers.state.forEach(function (laser) {
+				board[laser.x][laser.y] = {color: 'red', char: '&#183;'}
+			})
+		}
+	}
+
+	setInterval(function () {
+		lasers.state = lasers.state.filter(function (laser) {
+			return laser.y >= 0
+		})
+
+		lasers.state.forEach(function (laser) {
+			laser.y = laser.y - 1
+		})
+	},300)
+
+	var board = (100).times(function(){ return [] })
+	var colors = [ 'white', 'grey', 'blue', 'green', 'orange', 'red', 'yellow', 'purple' ]
+
+
+
+	function span_for(square) {
+		// if (square) console.log(square)
+		square = square || { color: 'grey', char: '&nbsp;' }
+		return '<span class=' + square.color + '>' + square.char + '</span>'
+	}
+
+
+
+	press(' ').to(hero.fire)
+	press('f').to(hero.move_left)
+	press('j').to(hero.move_right)
+
+	requestAnimationFrame(function update(i) {
+		board = (100).times(function(){ return [] })
+		hero.update()
+		lasers.update()
+		$('#map').html(function(){
+			return (30).times(function(i){
+				return (100).times(function(j){
+					return span_for(board[j][i])
+				}).join('')
+			}).join('<br>')
+		})
+		requestAnimationFrame(update)
+	})
+</script>
+
+
+
+
+</body>
+</html>

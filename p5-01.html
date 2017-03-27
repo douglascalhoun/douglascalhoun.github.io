@@ -1,0 +1,71 @@
+<html><head><style>
+body {
+  margin: 0;
+  padding: 0;
+}
+#container {
+  max-width: 640px;
+  margin: 0 auto;
+}
+</style></head><body>
+<script src='js/p5.js'></script>
+<script src='js/utils.js'></script>
+<script>
+var horizontal = [],
+    vertical = []
+
+function refresh () {
+  for (var i = 0; i < height; i++) horizontal[i] = i
+  horizontal = shuffle(horizontal)
+
+  for (var i = 0; i < width; i++) vertical[i] = i
+  vertical = shuffle(vertical)
+
+  background(255)
+  fill(random(0,200),random(0,200),random(0,200),127)
+  rect(0,0,width,height)
+  refresh_interval = round(random(70,120))
+  noStroke()
+
+  fill(random(0,200),random(0,200),random(0,200))
+  textAlign(CENTER,CENTER)
+  textSize(70)
+  fill(random(55,255),random(55,255),random(40,255))
+  text("begin again", 0, 0, width, height)
+}
+
+
+function setup () {
+  createCanvas(window.innerWidth, window.innerHeight)
+  refresh()
+}
+
+function draw () {
+  if( !(frameCount % 240) ) refresh();
+
+  (3).times(function () {
+    stroke(random(0,40)*5+20,random(0,40)*5+20,random(0,255)*5+20)
+    var h = horizontal.pop()
+    var v = vertical.pop()
+    line(0, h, width, h)
+    line(v, 0, v, height)
+  })
+}
+
+var context = new window.webkitAudioContext();
+
+var osc = context.createOscillator();
+osc.frequency.value = 340;
+osc.connect(context.destination);
+osc.start(0);
+
+var gain = context.createGain();
+gain.gain.value = 100;
+gain.connect(osc.frequency);
+
+var osc2 = context.createOscillator();
+osc2.frequency.value = 10;
+osc2.connect(gain);
+osc2.start(0);
+
+</script></body></html>

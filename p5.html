@@ -9,32 +9,92 @@ body {
 }
 </style></head><body>
 
-<div id="container"></div>
 <script src='js/p5.js'></script>
 <script src='js/utils.js'></script>
 <script>
-var thickness
-var colors = (36).times(function (i) {
-  return [rand(0,255),rand(0,255),rand(0,255)]
-})
-function setup() {
-  createCanvas(window.innerWidth, window.innerHeight)
-  thickness = window.innerHeight / 36
-  frameRate(20)
-  textSize(120)
-  textAlign(CENTER)
-  textStyle(BOLD)
+var coswave = []
+
+function setup () {
+  createCanvas(innerWidth, innerHeight)
+
+  for (var i = 0; i < width; i++) {
+    coswave[i] = abs(cos(map(i,0,width,0, PI)))
+  }
+
+  noLoop()
 }
 
-function draw() {
-  colors.forEach(function (color, i) {
-    fill.apply(null, color)
-    rect(0, i*thickness, width, thickness)
-  })
-  text("YOU", window.width/2, window.height/4)
-  text("ARE", window.width/2, window.height/2)
-  text("SPECIAL", window.width/2, window.height*(3/4))
-  colors.unshift(colors.pop())
+function draw () {
+  for (var i = 0; i < width; i+= 3) {
+    stroke(coswave[i]*255)
+    line(i, 0, i, height/3)
+    stroke(coswave[i]*255/4)
+    line(i, height/3, i, height*2/3)
+    line(i, height*2/3, i, height)
+  }
 }
 
+
+
+function generate_message() {
+  textAlign(CENTER,CENTER)
+  textSize(70)
+  fill(random(40,255),random(40,255),random(40,255))
+  var t = random([
+    "you look great today",
+    "people appreciate you",
+    "you're strong",
+    "your perspective is refreshing",
+    "you're an awesome friend",
+    "you deserve a hug",
+    "you should be proud of yourself",
+    "you're more helpful than you realize",
+    "you have a great sense of humor",
+    "your kindness is a balm to all who encounter it",
+    "you are courageous",
+    "you stand on the courage of your convictions",
+    "you are making a difference",
+    "you're like sunshine on a rainy day",
+    "you bring out the best in other people",
+    "you're a great listener",
+    "everything would be better if more people were like you!",
+    "you were cool before hipsters were cool",
+    "being around you makes everything better",
+    "you're not afraid to be yourself",
+    "that which you don't like about yourself is what makes you so interesting",
+    "you're wonderful",
+    "you're inspiring",
+    "you should be thanked more often. So thank you!",
+    "the community is better because you're in it",
+    "you have great ideas",
+    "you always know how to find the silver lining",
+    "everyone gets knocked down sometimes, but you always get back up",
+    "to someone, you are a candle in the darkness",
+    "you're a great example to others",
+    "you're always learning new things",
+    "you could totally survive a Zombie apocalypse",
+    "you're fun like bubble wrap",
+    "your mama deserves a medal for a job well done",
+    "you're great at figuring stuff out",
+    "the people you love are lucky to have you in their lives",
+    "you're a breath of fresh air",
+    "you're so thoughtful",
+    "your creative potential is limitless",
+    "your life is an incredible story",
+    "when you're around, time flies!",
+    "nothing stands in your way",
+    "you really know who you are",
+    "anyone would be lucky to have you on their team",
+    "small animals love and trust you",
+    "if you were a scented candle, you'd smell like summer",
+    "you're someone's reason to smile",
+    "you're even better than a unicorn, because you're real",
+    "you make people laugh",
+    "you have a good head on your shoulders",
+    "the way you treasure your loved ones is heart-warming",
+    "you're truly something special",
+    "you're a gift to those around you"
+  ])
+  text(t, 0, 0, width, height)
+}
 </script></body></html>

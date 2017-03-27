@@ -2,7 +2,6 @@ function rand (min, max) {
   return Array.isArray(min) ? min[ random(0, min.length - 1) ] :  Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-
 Number.prototype.times = function (fn){
   var result = []
   for (var i = 0; i < this.valueOf(); i++) {

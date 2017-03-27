@@ -12,6 +12,7 @@ body {
 <script src='js/p5.js'></script>
 <script src='js/utils.js'></script>
 <script>
+
 var coswave = []
 
 function setup () {
@@ -21,7 +22,13 @@ function setup () {
     coswave[i] = abs(cos(map(i,0,width,0, PI)))
   }
 
-  noLoop()
+
+  ;(['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']).forEach(function (note,i) {
+    setTimeout(function () {
+      play(note+3, 300, "square")
+    }, i * 300 )
+  })
+
 }
 
 function draw () {
@@ -32,9 +39,47 @@ function draw () {
     line(i, height/3, i, height*2/3)
     line(i, height*2/3, i, height)
   }
+  coswave.unshift(coswave.pop())
+  console.log(coswave[0])
 }
 
+var context = new AudioContext(),
+    gain = context.createGain()
 
+gain.gain.value = 0.3
+gain.connect(context.destination)
+
+function play(note, duration, type) {
+    var oscillator = context.createOscillator()
+    oscillator.frequency.value = note_frequency(note)
+
+    if (type) oscillator.type = type
+    oscillator.connect(gain)
+    oscillator.start(0)
+
+    setInterval(function () {
+      oscillator.stop(0)
+      oscillator.disconnect()
+    }, duration)
+}
+
+var note_frequency = function(note) {
+    var notes = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#']
+        , key_number
+        , octave
+    if (note.length === 3) {
+        octave = note.charAt(2)
+    } else {
+        octave = note.charAt(1)
+    }
+    key_number = notes.indexOf(note.slice(0, -1))
+    if (key_number < 3) {
+        key_number = key_number + 12 + ((octave - 1) * 12) + 1;
+    } else {
+        key_number = key_number + ((octave - 1) * 12) + 1;
+    }
+    return 440 * Math.pow(2, (key_number - 49) / 12);
+}
 
 function generate_message() {
   textAlign(CENTER,CENTER)

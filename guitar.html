@@ -1,0 +1,1509 @@
+<html>
+<head>
+<style>
+
+* { margin: 0; padding: 0; color: #738CA6; }
+
+footer, aside {
+  display: none;
+}
+body {
+	background-color: #133253;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  height: 100vh;
+  line-height: 1.4em;
+}
+
+header {
+  display: flex;
+  justify-content: flex-end;
+	background-color: #133253;
+}
+
+header div {
+  padding: 0.5em 2em;
+}
+
+main {
+	display: flex;
+  height: 100vh;
+  background-color: #041D37;
+}
+
+nav {
+  order: -1;
+	background-color: #133253;
+  padding: 1em;
+  display: flex;
+  flex-direction: column;
+  overflow-y: scroll;
+  width: 20em;
+}
+
+nav a {
+  color: #738CA6;
+}
+
+content {
+  padding: 1em;
+  overflow: scroll;
+  width: 100vw;
+}
+
+aside {
+	flex: 1;
+  padding: 1em;
+}
+
+.active {
+  color: palegoldenrod;
+}
+
+@media (max-width: 600px){
+	main{
+    flex-direction: column;
+	}
+}
+
+</style>
+</head>
+<body>
+
+  <header>
+    <div><a id=scroll href="#">auto scroll</a> <span id=countdown></span></div>
+  </header>
+  <main>
+    <content>
+    </content>
+    <nav>
+    </nav>
+    <aside></aside>
+  </main>
+  <footer>
+  </footer>
+<script src="js/utils.js"></script>
+<script>
+var interval_1, interval_2, scrolling
+$(function () {
+
+  // display songs
+  var titles = []
+  var songs = $('template').html().split("---\n").map(function(song){
+    song = song.split("\n")
+    titles.push($('<a href="#">').text(song.shift()))
+    return $('<pre>').text(song.join("\n"))
+  })
+
+  $('nav').append(titles)
+
+  console.log($('nav a').eq(localStorage.getItem('last_song')))
+  // click handlers
+  $('nav a').click(function (e) {
+    e.preventDefault()
+
+    localStorage.setItem('last_song', $(this).index())
+    $('nav a').removeClass('active')
+    $(this).addClass('active')
+    $('content').html(songs[$(this).index()])
+  })
+
+  // autoload last viewed song
+  $('nav a').eq(localStorage.getItem('last_song')).click()
+
+  // hotkeys
+  press('&').to(function () {
+    if( !$('.active').length ) {
+      $('nav a').first().click()
+    } else if ( $('.active').is($('nav a').first()) ) {
+      $('nav a').last().click()
+    } else {
+      $('.active').prev().click()
+    }
+  })
+
+  press('(').to(function () {
+    if( !$('.active').length ) {
+      $('nav a').first().click()
+    } else if ( $('.active').is($('nav a').last()) ) {
+      $('nav a').first().click()
+    } else {
+      $('.active').next().click()
+    }
+  })
+
+  // auto scroll
+  $('#scroll').click(function (e) {
+    e.preventDefault()
+    if(scrolling = !scrolling) {
+      var countdown = 10
+      $('#countdown').text(countdown)
+      interval_1 = setInterval(function() {
+        if (countdown-- > 0) {
+          $('#countdown').text(countdown)
+        } else {
+          $('#countdown').text('')
+          clearInterval(interval_1)
+          interval_2 = setInterval(function () {
+            $('content').scrollTop($('content').scrollTop() + 1)
+          }, 200)
+        }
+
+      }, 1000 )
+    } else {
+      clearInterval(interval_1)
+      clearInterval(interval_2)
+    }
+
+  })
+
+})
+</script>
+
+<template>Miss Ohio
+F        C      G            Am
+Oh me oh my oh, look at Miss Ohio
+F                           C           G
+She's a-running around with her rag-top down
+           F                  C         G
+She says I wanna do right but not right now
+
+
+You drive down to Atlanta and live out this fantasy
+Running around with your rag-top down
+Saying, "I wanna do right but not right now"
+
+He puts his arm around your shoulder, like a regimental soldier
+An' your mamma starts pushing that wedding gown
+Yeah you wanna do right but not right now
+
+I know all about it, so you don't have to shout it
+I'm gonna straighten it out somehow
+Yeah I wanna do right but not right now
+
+---
+Street People
+E                                  A           E
+Hanging out with the street people they got it now
+E                                  A                     E
+Hanging out with my street people drifting from town to town
+
+Once had a job at a nursery, but they just didn't like what I grow
+They called the man, he ran me off and said don't come back no more
+
+So i, clicked with some street people, the showed me how behave
+roaming back and forth, wherever we want, just trying to keep in the shade
+
+A                                                         E
+How great it is, to know who I am, and be happy where I'm at
+A                              F#                  B
+Some people would rather work, we need people like that
+
+I'm glad i'm a street people, have it no other way
+I'm gonna stay a street people till my dying day
+
+Who's gonna work and let make economy grow if we all hang out in the street
+Well I don't know and I don't care just as long as it aint me
+
+Just hanging out, got nothing else to do, got any spare change buddy.
+
+---
+Our Town
+A D A E
+
+And you know the sun's setting fast
+And just like they say, nothing good ever lasts
+Well go on now, and kiss it goodbye
+But hold on to your lover, 'cause your heart's bound to die
+Go on now, and say goodbye to our town, to our town
+Can't you see the sun setting down on our town, on our town, goodnight
+
+Up the street beside the red neon light
+That's where I met my baby on one hot summer night
+He was the tender and I ordered a beer
+It's been forty years and I'm still sitting here
+
+It's here I had my babies and I had my first kiss
+I've walked down Main Street on the cold morning mist
+Over there is where I bought my first car
+It turned over once, but then it never went far
+
+I buried my Mama and I buried my Pa
+They sleep up the street beside the pretty brick wall
+I bring 'em flowers about every day
+But I just gotta cry when I think what they'd say
+
+Now I set on the porch and watch the lightning bugs fly
+But I can't see too good, I got tears in my eyes
+I'm leaving tomorrow, but I don't wanna go
+I love you, my town, you'll always live in my soul
+
+---
+Hard Times, Lord
+    G
+Oh, I've been havin' some hard travelin', I thought you knowed.
+                                      A            D
+I've been facing some mighty trials, aways down the road.
+G                                     C
+face is grimy, backs a hurtin', can't find no place to rest my burdens,
+    D                                     G
+An' I've been havin' some hard times now, Lawd.
+
+Ooh, I've been workin' in a hard rock tunnel, I thought you knowed.
+I've been pourin' red hot slag way down the road.
+I've been a-blastin' an' I've been firin' an' I've been pourin' the red hot iron
+An' I've been havin' some hard times now, Lawd.
+
+Oh, I've been ridin' in them box cars, I thought you knowed.
+I've been train hopping, searching out work, way down the road.
+coal hoppers, flat wheelers, dead enders, kicking up cinders
+An' I've been havin' some hard times now, Lawd.
+
+Oh, I've been breakin' my back harvestin', I thought you knowed.
+Bakersfield, up to Chico, on down the road.
+Bunchin' that wheat an' stacking that hay, only make a couple dollars a day
+An' I've been havin' some hard times now, Lawd.
+
+Oh, I've been locked in a hard time jail, I thought you knowed.
+I've been layin' out a quarter year, way down the road.
+The mean old judge he says to me, "That's a-ninety days for vagrancy."
+An' I've been hittin' some hard times now, Lawd.
+
+Oh, I've been walkin' that Lincoln Highway, I thought you knowed.
+I've been hitchin' on the '66, way down the road.
+i've a heavy load, i'm a worried man, I'm a-lookin' for a break anywhere that i can,
+I've been havin' some hard times now, Lawd.
+
+Oh, I've been lookin' for a good woman, I thought you knowed
+gotta start a family, get right with God, somewhere down the road
+It ain't easy, wasn't meant to be, but why'd this life have to happen to me
+I've been havin' some hard times now, Lawd.
+
+---
+Blues Run The Game
+G               C              G        C
+Catch a boat to England, baby, maybe to Spain,
+G        C            G             C
+Wherever I have gone, wherever I've been and gone,
+G        C
+Wherever I have gone
+    D      C              G
+The blues     are all the same.
+
+Send out for whisky, baby, send out for gin,
+Me and room service, honey, me and room service, babe,
+Me and room service
+Well, we're living a life of sin
+
+When I'm not drinking, baby, you are on my mind,
+When I'm not sleeping, honey, when I ain't sleeping, mama,
+When I'm not sleeping
+Well you know you'll find me crying.
+
+Try another city, baby, another town,
+Wherever I have gone, wherever I've been and gone,
+Wherever I have gone
+The blues come following down.
+
+Living is a gamble, baby, loving's much the same,
+Wherever I have played, wherever I throw them dice,
+Wherever I have played
+The blues have run the game.
+
+Maybe tomorrow, honey, someplace down the line,
+I'll wake up older, so much older, mama,
+Wake up older
+And I'll just stop all my trying.
+
+Catch a boat to England, baby, maybe to Spain,
+Wherever I have gone, wherever I've been and gone,
+Wherever I have gone
+The blues are all the same.
+
+---
+Fly Away Home
+G                   G7                     C        G
+Some glad morning when this life is o'er, I'll fly away
+G                                        D7   G
+To a home on God's celestial shore, I'll fly away
+
+I'll fly away, O glory, I'll fly away
+When I die, hallelujah, by and by I'll fly away
+
+When the shadows of this life have grown, I'll fly away
+Like a bird from prison bars has flown, I'll fly away
+
+Just a few more weary days, and then, I'll fly away
+To a land where joys shall never end, I'll fly away
+
+
+---
+You and I
+ C
+don't you worry, there my honey
+ F
+we might not have any money
+ Am                               F
+but we've got our love to pay the bills
+
+maybe I think you're cute and funny,
+maybe I wanna do what bunnies
+do with you, if you know what I mean
+
+[Chorus]
+
+     C                 E               F                     C
+Oh, let's get rich and buy our parents homes in the South of France
+                             E
+let's get rich and give everybody nice sweaters
+    F                 G
+and teach them how to dance
+          C                  E
+let's get rich and build our house on a mountain
+       F                   D
+making everybody look like ants
+            C              F  G       C
+from way up there, you and I, you and I
+
+well you might be a bit confused
+and you might be a little bit bruised
+but baby how we spoon like no one else
+so I will help you read those books
+if you will soothe my worried looks
+and we will put the lonesome on the shelf
+---
+In Spite of Ourselves
+C
+i gotta gal, she's kinda funny,
+she don't like to go out, when it's to sunny,
+    F
+She looks down her nose at money
+    C
+gets it on like the Easter Bunny
+G
+but she's my baby, and i'm her honey
+                        C
+i'm never gonna let her go
+
+He ain't got laid in a month of Sundays
+I caught him once and he was sniffin' my undies
+He ain't too sharp but he gets things done
+Drinks his beer like it's oxygen
+He's my baby, And I'm his honey
+Never gonna let him go
+
+            F
+In spite of ourselves
+                     C
+here we are sittin' on a rainbow
+            G
+Against all odds
+                    C
+we won the big door prize
+                  F
+we ain't got much
+                 C
+in the way of money
+                           G
+don't need nothin' but the light
+                C      G   C
+dancing in your eyes
+
+She thinks all my jokes are corny
+Convict movies make her horny
+She likes ketchup on her scrambled eggs
+Swears like a sailor when she shaves her legs
+She takes a lickin' but she keeps on tickin'
+I'm never gonna let her go.
+
+He's got more balls than a big brass monkey
+He's a whacked out weirdo and a lovebug junkie
+He's sly as a fox and crazy as a loon
+When payday comes, he's howlin' at the moon
+But he's my baby.  I don't mean maybe
+Never gonna let him go
+
+---
+Only a Fool
+A              E             F#m
+Why do I keep fooling myself
+                C#m
+When I know you love someone else
+D       E                   A    C#m  D  E7
+Only a fool breaks his own heart
+
+A         E                F#m
+I pretend that I don't see
+                   C#m                D
+When you walk with him down the street
+       E                   A    D  A  A7
+Only a fool breaks his own heart
+
+D            E
+I have to admit it
+     C#m                F#m
+Even though you hurt me so girl
+D           E
+I can't forget it
+   C        E
+If I'm a man I'd let you go
+
+It's no use trying to hang on
+To a love already gone
+Only a fool breaks his own heart
+
+---
+Chicken Fried
+G D C G D
+I like a little my chicken fried,
+cold beer on a Friday night
+windows down through the countryside
+with the radio up
+well I've seen the sunrise, see the love in my woman's eyes
+feel the touch of a precious child, and know a mother's love
+
+G D C D
+Well I was raised up beneath the shade of a Georgia pine
+And that's home you know
+Sweet tea pecan pie and homemade wine
+Where the peaches grow
+And my house it's not much to talk about
+but it`s filled with love that's grown in southern ground
+
+Well its funny how it`s the simple things in life that mean the most
+Not where you live or the car you drive or the price tag on your clothes
+There`s no dollar sign on a piece of mind this I`ve come to know
+so if you agree, have a drink with me, raise you glasses for a toast
+to a little bit of chicken fried
+
+I thank god for my life
+And for the stars and stripes
+May freedom forever fly, let it ring.
+Salute the ones who died
+The ones that give their lives so we don`t have to sacrifice
+All the things we love
+Like our chicken fried
+
+---
+A Little Help From My Friends
+G              D          Am
+What would you think if I sang out of tune,
+          D                        G
+Would you stand up and walk out in me.
+Lend me your ears and I'll sing you a song,
+And I'll try not to sing out of key.
+
+       F               C             G
+I get by with a little help from my friends,
+I get high with a little help from my friends.
+Gonna try with a little help from my friends.
+
+What do I do when my love is away.
+(Does it worry you to be alone)
+How do I feel by the end of the day
+(Are you sad because you're on your own),
+
+No... [chorus]
+
+Em         A
+Do you need anybody
+G         F      C
+I need somebody to love.
+Could it be anybody
+I want somebody to love.
+
+Would you believe in a love at first sight,
+Yes I'm certain that it happens all the time.
+What do you see when you turn out the light,
+I can't tell you but I know its mine.
+
+---
+Kodachrome
+             D               D7                G
+When I think back on all the crap I learned in high school
+Em             A7             D    Em A7
+It's a wonder, I can think at all
+And though my lack of education hasn't hurt me none
+                                  D7
+I can read the writing on the wall
+
+    G B7 E
+Kodachrome
+    E7            Am          D
+You give us those nice bright colors
+                G         C
+You give us the greens of summers
+          A             D               G    B7 E
+Makes you think all the world's a sunny day, oh yeah!
+E7      Am    D
+I got a Nikon camera
+                 G    C
+I love to take a photograph
+               A       D           G   G Bm Em A A7
+So Mama, don't take my Kodachrome away
+
+If you took all the girls I knew when I was single
+And brought them all together for one night
+I know they'd never match my sweet imagination
+And everything looks worse in black and white
+
+            G       Bm          Em
+Mama, don't take my Kodachrome away [x3]
+
+G
+Mama, don't take my Kodachrome
+Bm
+Mama, don't take my Kodachrome
+Em
+Mama, don't take my Kodachrome (away)
+
+---
+Somewhere Over the Rainbow
+C     Em       Am    F        C    Em
+
+Am   Am7       F
+
+C      Em             F          C
+Oo-oo! Oo-oo, oo- oo! Oo-hoo-oo, oo
+F      E7        Am             F
+Oo-oo, oo-oo-oo! Oo, hoo - hoo! Oo, hoo - hoo!
+
+C         Em                F      C
+somewhere over the rainbow, way up high,
+F       C
+and the dreams that you dream of
+G         Am           F
+once in a lullaby-y-y, y-y-y
+
+oh, somewhere over the rainbow, bluebirds fly,
+and the dreams that you dream of
+dreams really do come true-oo-oo, oo-oo-oo!
+
+     C
+some day I'll wish upon a star,
+G                                  Am      F
+wake up where the clouds are far behind... me
+
+where trouble melts like lemon drops,
+high above the chimney top, that's where you'll find me
+
+oh, somewhere over the rainbow, bluebirds fly,
+And ...the ...dreams that you dare to...
+oh, why, oh, why, can't I - I - I? I - I - I!
+
+            C        Em            F         C
+Well, I see trees of green, and... red roses too,
+F               C       E7        Am
+I'll watch them bloom, for me and you,
+       F                G                Am     F
+And I  think to myself, what a wonderful world!
+
+              C       Em              F            C
+Well, I see skies of blue, and I see ...clouds of white,
+            F          C    E7              Am
+And the brightness of day,      I like the dark,
+      F                G                C    F    C
+And I think to myself, what a wonderful world!
+
+      G                          C
+The colors of the rainbow, so pretty in the sky,
+      G                    C
+Are also on the faces of people passing by,
+        F               C            F              C
+I see friends shaking hands, saying,    "How do you do?"
+F                   C     Dm7            G
+   They're really saying, "I  ...I love you!"
+
+         C    Em          F              C
+I hear babies cry, and I  ...watch them grow,
+  F                 C     E7              Am
+They'll learn much more    ...than we'll know,
+       F                  G                  Am
+And I ...think to myself ...what a wonderful wor - r- rld,
+F
+   Wor - r- rld!
+
+      C
+Some day I'll wish upon a star,
+ G                                     Am      F
+Wake up where the clouds are far be - hind  ...me-----,
+         C
+Where trouble melts like lemon drops,
+ G                                  Am              F
+High above the chimney top, that's where ...you'll find--- me!
+
+     C             Em                F          C
+Oh, some----where over the rainbow,     way up high,
+ F              C
+And ...the ...dreams that you dare to...
+ G                 Am          F
+Why, oh, why can't I - I - I?     I - I - I!
+
+C          Em                  F              C
+Oo----hoo! Oo---  oo, oo - oo! Oo--- hoo -oo, oo----!
+F         E7              Am
+Oo----oo, oo... oo - oo!       Oo, ah - ah, ay - er!
+F                                C
+   Eh -eh, eh -eh, eh, eh, eh! | /  /  /  / | /  /  /  / |  / ||
+
+---
+Stand By Me
+C                       Am
+when the night has come and the land is dark
+        F           G                C
+And the moon is the only light we'll see
+
+No I won't be afraid, no I won't be afraid
+Just as long as you stand, stand by me
+
+And darlin', darlin', stand by me, oh now now stand by me
+Stand by me, stand by me
+
+If the sky that we look upon, should tumble and fall
+And the mountains should crumble to the sea
+I won't cry, I won't cry, no I won't shed a tear
+Just as long as you stand, stand by me
+
+And darlin', darlin', stand by me, oh now now stand by me
+Stand by me, stand by me
+
+---
+Tonight You Belong to Me
+  E                   E7
+I know (I know) you beloooooong
+   A            Am
+To sooooomebody neeeeeew
+      E            B7       E
+But tonight, you belong to me
+
+Although (although) we're apaaaaaart
+You're a paaaaart of my heaaaaart
+And tonight, you belong to me
+
+
+     Am
+Way down by the stream
+     Am
+How sweet it will seem
+     E            F#
+Once more just to dream
+       B7
+in the moonlight, My honey
+
+I know (I know) With the daaaaaawn
+That you will be goooooone
+But tonight, you belong to me
+
+---
+The Gambler
+     G                          C               G
+on a warm summer's evening on a train bound for nowhere,
+  C                    G                C                 D
+I crossed paths with a gambler, we were both too tired to sleep
+   G                             C             G
+So we took turns staring out the window at the darkness
+     C           G        D               G
+'til boredom overtook us, and we began to speak.
+
+he said, "son, I've made a life out of reading people's faces
+knowing what their cards was, by the way they held their eyes
+so if you don't mind me saying, I can see you're out of aces
+for a taste of your whiskey, I'll give you some advice"
+
+so I handed him my bottle, and he drank down my last swallow
+then he bummed a cigarette, and asked me for a light
+and the night got deathly quiet, and his faced lost all expression
+he said, "if you're gonna play the game, boy, better learn to play it right"
+
+(chorus)
+you've got to know when to hold 'em, know when to fold 'em
+know when to walk away, know when to run
+you never count your money, when you're sitting at the table
+there'll be time enough for counting, when the dealing's done
+
+(key change)
+A                             D         A
+every gambler knows, that the secret to surviving
+   D               A               D               E
+is knowing what to throw away, and knowing what to keep
+        A                          D              A
+because every hand's a winner, and every hand's a loser
+        D                 A              E           A
+and the best that you can hope for is to die in your sleep
+
+And when he finished speaking, he turned back toward the window
+crushed out his cigarette, and faded off to sleep
+and somewhere in the darkness, the gambler he broke even
+but in his final words, I found an ace that I could keep
+
+(⟲ chorus)
+
+---
+Sovay
+C                             G                       F
+We were getting ready to be a threat, we were getting set for my accidental suicide
+    C                 G                              F
+the kind where nobody cries, and no one looks too surprised we must realize
+
+that we're riding on a high of success, but we're under stress like a complicated metaphor
+and a feeling like we've been here before, like we've been here before, because we've been here be-
+
+-fore, yes you've been here before
+a word washed ashore
+then a word washed ashore
+
+Am       E        F#m Gm
+so vain, so vain, so  vain
+Am E       F
+so vain in ordinary ways
+
+now that i'm ready to consider my next plan of attack
+I think I'm gonna sack
+the whole board of trustees
+all those Don Quixotes with their B-17s
+and I swear this time
+yeah this time
+they'll blow us back to the 70's
+and this time
+they're playin Ride of the Valkyries
+with no semblance of grace or ease
+and they're acting on vagaries
+with their violent proclivities
+and they're playing ride
+Ride of the Valkyries
+sovay, sovay, sovay
+all along the day
+
+---
+Lightning Crashes
+C         G                     D
+lightning crashes, a new mother sighs
+C            G                    D
+all her apprehensions fall to the floor
+C          G               D
+the little angel opens her eyes
+                  C
+pale blue-colored eyes
+            G                         D
+this is the moment she's been waiting for
+
+lightning crashes, an old woman dies
+all her intentions fall to the floor
+the wizened angel closes her eyes
+the confusion that was hers
+now belongs to the baby down the hall
+
+C      G       D             C
+oh now feel it coming back again
+like the rolling thunder chasing the wind
+forces pulling from the edges of the Earth again
+I can feel it
+
+lightning crashes, a new baby cries
+so many questions, before thoughts even form
+she scans the room with her blue-colored eyes
+the confusion sets in
+before the doctor even reaches the door
+
+---
+Jolene
+  Am      C       G       Am
+Jolene, Jolene, Jolene, Jolene
+    G              Em                   Am
+I'm begging of you please don't take my man
+
+Jolene, Jolene, Jolene, Jolene
+please don't take him just because you can
+
+Your beauty is beyond compare, with flaming locks of auburn hair
+with ivory skin and eyes of emerald green
+
+your smile is like a breath of spring, your voice as soft as summer rain
+and i cannot compete with you, Jolene
+
+he talks about you in his sleep, and there's nothing i can do to keep
+from crying when he calls your name, Jolene
+
+now i can easily understand, how you could easily take my man
+but you don't know what he means to me, Jolene
+
+you could have your choice of men, but i could never love again
+he's the only one for me, Jolene
+
+I had to have this talk with you, for my happiness depends on you
+and whatever you decide to do, Jolene
+
+---
+All of Us Lonely
+G         Em         C       G
+all of us lonely, it ain't a sin
+   G              Em          C            G
+to want something better then places we've been
+G   Em                   C      G
+the rain breaks with the coming day
+D                        G            C            G
+sunlight dancing in your eyes seem to say, come on in
+
+we're all made from stardust, cast a million miles
+born in an instant, spend life slowly dying
+borrowed from nothing, no wonder i feel half alive
+but it was worth it all just to be standing here, as you walked by
+
+              D                          G    C
+now it's a bittersweet victory
+D                                                             G         C
+to know the love that's passes between you to me
+                  G
+will never die
+
+it's a broken-hearted world babe, you know it's true
+but somehow feels better, to suffer along with you
+and i know this will pass just like everything else
+but it's worth it just to share this city view, bathed in sunset hue
+
+---
+House of the Rising Sun
+      Am   C        D     F
+there is a house in New Orleans
+     Am       C      E
+they call the Rising Sun
+         Am       C       D           F
+and it's been the ruin of many a poor boy
+    Am        E        Am
+and lord, you know I'm one
+
+my mother, she was a tailor
+she sewed my new blue jeans
+my father, he was a gambling man
+down in New Orleans
+
+now, the only thing a gambler needs
+is a suitcase and a trunk
+and the only time that he's satisfied
+is when he's good and drunk
+
+oh, mothers, won't you tell your children
+not to do what I have done
+spend their lives in sin and misery
+In the house of the rising sun
+
+well, there is a house in New Orleans
+they call the Rising Sun
+and it's been the ruin of many a poor boy
+and lord, I know I'm one
+
+---
+You've Been a Friend to Me
+( D A7 D )
+
+       D                     G
+my bark of life was drifting down
+       D                     A7
+the troubled sea of time
+          D                      G
+since first I saw your smiling face and
+  D            A7       D     D7
+youth was in its prime
+
+
+(chorus)
+      G                    D
+I'll ne’er forget where’er I roam
+       D                  A7
+wherever you may be
+       D            G
+if ever I have had a friend
+             D             A7       D
+you've been that friend to me
+
+
+misfortune used me as her child and
+loved me fondly too
+I would died of a broken heart
+had it not been for you
+
+I now look back upon the past
+across life's troubled sea
+and smile to think through all I've seen
+you've been a friend to me
+
+---
+Slow Days of Summer
+A                    D           A
+slow days of summer, in this old town
+E7         A             B7          E
+sun goes across the sky, sometimes a car goes by
+A       D          A
+there's one right now
+
+looks like a Chevy, your Chevy's blue
+this Chevy's white and brown, it isn't slowing down
+guess it's not you
+
+you said you'd be here, Sunday or so
+maybe by Saturday, if you could get away
+you didn't know
+
+visions of you appear, lovely and true
+all of my life I see, passing by beautifully
+if only you were here
+
+Around the corner, the old dog appears
+sits in the summer sun, he too wants for you to come
+we wish you were here (wish you were here)
+
+---
+Highwayman
+Am             G              F                 Am
+I was a highwayman, along the coach roads I did ride,
+G         F            G
+Sword and pistol by my side,
+Dm     Am                    G            F
+Many a young maid lost her baubles to my trade,
+Dm     Am               G               F
+Many a soldier shed his lifeblood on my blade,
+Am           G              F         G C
+The bastards hung me in the spring of 25,
+Am       F        G
+But I am still alive
+
+I was a sailor, I was born upon the tide,
+Now ever, with the sea I do abide,
+I sailed a schooner round the horn of Mexico,
+I went aloft to furl the main sail in a blow,
+And when the yards broke off they say that I got killed,
+But I am living still
+
+I was a dam builder, across a canyon deep and wide,
+Where steel and water did collide,
+A place called Boulder on the wild Colorado,
+I slipped and fell into the wet concrete below,
+They buried me in that gray tomb that knows no sounds,
+But I am still around,
+
+                C           C/B        Am          G           F    C/E Dm
+I'll always be around, and around, and around, and around, and around...
+
+I'll fly a starship across the universe divide,
+And when I reach the other side,
+I'll find a place to rest my spirit if I can,
+Perhaps I may become a highwayman again,
+Or I may simply be a single drop of rain,
+But I will remain,
+
+And I'll be back again, and again, and again, and again, and again...
+
+---
+Far From Any Road
+I: Am E Dm Am (2x)
+under the heavy setting sun
+her looming shadow grows
+Her presence rests upon me
+reaches beneath my clothes
+
+And when she kissed my thirsty lips
+My mouth it ran with blood
+dripping on the cross
+at the grave of my true love
+
+II: C G Dm F Am
+With pale hands she reaches for me,
+as the clouds above us dance
+The thorny brush embraced me
+and stilled my trembling breath
+
+I
+When the last light warms the rocks
+And the rattlesnakes unfold
+Mountain cats come forth
+to drag away my bones
+
+I
+In the hushing dusk
+Under a silver moon
+together we’ll walk hand and hand
+watching desert cactus bloom
+
+II
+I’ll walk with her forever
+Across the silent sand
+And the stars will be our eyes
+And the wind…
+
+---
+Drunken Man
+C Em
+F Em Dm
+G F C
+
+well the drunken clown’s, still hanging ‘round
+but it’s plain the laughters all died down
+and the tears he tried, so hard to hide, are flowing
+
+so the sullen man, paycheck in hand
+has convinced himself that he understands
+I wish y’all well, but I truly must be going
+
+Am Em (3x)
+F Em G
+
+why don’t you come see me when
+you realize at last that you need friend
+i’ll sit and drink beside you
+as you laugh and curse my name
+
+---
+She Came by Bus
+C F C
+F C
+F  C Em Am
+G F C
+
+she come by bus, across county lines
+cause for her pa had sent her
+because the weren’t no work, no future there
+and wished her something better
+
+she found a job, an old dive downtown
+she still looked for something better
+but spring turned to fall, no leads at all
+so she settled in for winter
+
+---
+Lying on the Moon
+Dm G C (3x)
+Dm G
+F Fm C
+
+I’m lying, on the, moon
+my dear please, find me, soon
+it’s a dark, and lonesome, place
+I’m being swallowed, up
+by space and i’m a, million miles, away
+
+there’s things I, wish you, knew
+though there’s nothing, that I keep from, you
+it’s a quiet, starry place
+but with you, my dear
+I’m safe and we’re a million miles away
+
+we're lying on the moon
+It's a perfect afternoon
+your spirit follows me all day
+Making sure I'm okay and
+We're a million miles away
+
+---
+Murder in the City
+C, C/B, C/A, C/G,
+F, G, C
+
+darlin i’m leavin’ you tomorrow
+nothing you can do, nothing you can say
+cause i’ve got some business down in the city
+and if it goes badly, I may be gone to stay
+
+Am, G, C (4x)
+
+and when I leave your arms
+the things that pass through my mind are strange
+no need to get over-alarmed
+I’ll come home, if I can
+
+and if I get kilt down in that city
+tell my brothers, don’t go revengin’ in my name
+one of us gone on from such is plenty
+no need for them to go get locked away
+
+Am, G, C
+Am, G, C
+Am, G, F, C,
+C, G, C
+
+tell my sister, that I loved her
+make sure my mother knows the same
+and as long as you remember, the love that we shared dear
+then I can die, a happy man
+
+---
+Mother Don't Worry
+Em  C G D
+
+Mother don’t worry, I’ve got some money still from the job I was workin’
+mother don’t worry, I’ve got some friends and a floor I can crash on
+mother don’t worry, I know a place they give hot meals for nothin’
+mother don’t worry, I am alive still, though pierced through and rotten
+
+So may the sunrise take my troubles, i cannot surmount them
+Lord let my soul rise up with the birds flying over the mountains
+
+mother remember when we quarreled about my foul doings
+mother remember when you told me I was no good for nothin’
+mother remember when I screamed through the screen door, I’m leaving
+mother remember how you turned and you didn’t say nothin’
+
+So may the sunrise, settle grievances, too long we have held them
+Lord let my soul rise up with the birds flying over the mountains
+
+mother forgive me, for I meant not a word I was sayin’
+mother forgive me, I wish it had not how it happened
+mother forgive me, for our memories wasted and rotten
+mother forgive me, It’s time now my spirit’s departing
+
+So with the sunrise, mark my ending I’m finally released then
+think of me always as a bird flying over the mountains
+
+
+---
+Mr Mudd and Mr Gold
+Am C Dm E
+(Em G Am B7)
+
+That wicked joker Luck awoke,
+and to his flat-face ranks he turned,
+his lips were curling as he spoke
+and his eyes like daggers burned
+
+we’re summoned boys, by two gambling men
+desperate both, for a winning play
+each thinks they’ll bend us to their plan,
+but we’ll make one wretched fool to pay,
+
+preparations soon were agreed on
+a simple game of five card stud
+set the shifting scales of fate to motion
+between a man named Gold, and a man named Mudd
+
+now Gold the first, a wealthy bachelor,
+and Mudd his counter, poorer in stature
+Gold was by his own greed captured
+and Mudd sought coin for to drink his life away
+
+Well that dancing trickster stacked his choice collection
+shuffled in equal curse and blessing
+All obeyed but the outlaw jack of diamonds
+and the aces in the sky
+
+Now lucky sevens fell, to Mudd’s confinement
+plus ten of heart, and six of spade
+but Gold received greater allotment
+a cabal of queens a hefty taking made
+
+flushes fell on Gold like water
+seemed each card paired and paired again
+but the aces only flew through heaven
+and the diamond jack called no man friend
+
+Gold’s eyes did fill with greedy vapors
+as Mudd watched his hard earned money burn
+and Gold’s mind did start to count his paper
+as the Joker sang for a heavenly turn
+
+Now, three kings stepped forth to be counted
+but the angels from the sky did ride
+three kings marched on streets of Gold
+three fireballs landed on the muddy side
+
+Now Mudd and Gold, ran close by number
+the crowd dwindled, as the hour grew late
+coins seesawing across the table tumbled
+as the joker gave a last spin, to the wheel of fate
+
+the diamond family gathered, to Mudd’s mission
+against Gold’s double sets of low-born twins
+all matching in suit, only one was missing
+as the diamond queen prayed to see her son again
+
+now Mudd went in, and Gold did call,
+and Mudd he raised, and Gold bet all
+Gold plated face, drained to white
+when the outlaw jack rode, Mudd’s shining night.
+
+now here’s the reason, the story’s told
+if you feel like Mudd, you’ll end up Gold
+those feel lost, may end up found
+so amigo lay them razors down
+
+---
+House Song
+Am Dm / Am  Em
+Am Dm / Am  Em Am
+
+You know I just don’t know, where this dirty road is taking me
+and as for the walking I never figured the reason why
+so I guess I’ll keep on wandering, a whoring and a squandering,
+seems a fair bit better, than just waiting ‘round to die
+
+Once I had a Ma, short time even had a Pa
+He’d drink and swear and hit and momma’d cry
+she told her sister take care of me, and lit back t’ Tennessee
+I guess she just got tired of waiting ‘round to die
+
+So I grew up quick, and met a girl, at a dirty honky-tonk dive,
+She cleaned me out, and double-timed me besides
+lots of drugs to kill the pain, packed some booze and hopped a train,
+seemed a better plan, than just waiting ‘round to die
+
+Then I hit on a fellow said he knowed, where some easy money was
+yes we robbed a man, but didn’t mean for him to die
+police caught up with me, drug me back, I plead guilty
+now it’s 25 to life, waiting round to die
+
+but I got out than prison, found me a friend at last
+she don’t hit or cheat, she’ll never leave me in the night
+yeah her name is codeine, and she takes my burdens, soothes my pain
+and the two of us happy just wait ‘round here to die
+
+---
+Lonesome Ornery and Mean
+D G D (x3)
+D C G D
+
+On a greyhound bus,
+Lord I'm traveling this morning
+I'm going to Shreveport and on down to New Orleans
+Been driving these highways,
+Been doing things my way
+It's been making me lonesome on'ry and mean
+
+Now her hair was jet black,
+And her name was Codene
+Thought she was the cream of the Basin Street queens
+She got tired of that smokey whine dream
+Began to feel lonesome on'ry and mean
+
+We got together, and we cashed in our sweeps.
+Gave 'em to a beggar
+Who was mumbling through the streets
+There's no escaping
+From his snowy white dreams
+Born lookin' lonesome on'ry and mean
+
+Now I'm down in this valley,
+Where the wheels turn so low
+At dawn I pray, to the Lord of my soul
+I say do Lord, do right by me
+You know I'm tired of being lonesome on'ry and mean
+
+---
+For a While
+C C F C
+C G7
+C C F C
+G7 F
+G7 F Am G7
+
+there’s no more lonesome road to travel, than the one out to the county line
+and no sadder sight than lookin’ back on a love you’ve left behind
+but you'll stay with me, in my memory, a love that’s burning in my mind
+so close your eyes,  I’m leaving in the morning
+hold me tight, I may be out for a while
+
+There’ll be lots along the path of life, that’ll surely be a sight to see
+and i like to lean into the wind, tell myself I’m free
+but your softest whispser's louder than that wind howling at me
+close your eyes, I won’t leave you till the morning
+hold me tight,  I’ll be gone for a while, for a while
+
+Aw lay your head back easy love and close your cryin’ eyes
+though I’ll not be here beside you, when the sun comes on the rise
+you’ll hear me in every cookoo’s wail, and in the lonesome blue jay cries
+close your eyes, I’ll wake you when i’m goin’
+hold me tight, as this may be goodbye
+
+but through the mountains, rivers, valleys, I’ll feel you in the air
+blue butterflies, your dancing eyes, in fields of golden hair
+though i’ve gone on, tell everyone, to cast aside despair
+just remember me fondly in the morning
+hold me tightly in your mind
+
+---
+May the Circle Be Unbroken
+G  G7 / C G / G Em / G D7 G
+
+when you was just a youngin
+you sang songs to his glory
+knelt in worship, lord be praised
+now you are a grown man
+does your heart still sing with glory
+or have worldly things taken his place
+
+will the circle be unbroken
+by and by, by and by
+is their a better home, waiting up above us
+or are fire and brimstone, waiting at your grave
+
+Do you remember
+our elders round the cookfire
+telling stories of his glorious deeds
+now one-by-one they've passed on
+and the family is parted,
+will we be brought back together one day
+
+---
+Samuel
+D / A / G / D A / G / D G / Bm G A / G Bm
+Samuel was a momma's boy, but never did too good in school
+got to be a certain age, started skipping class, breaking rules
+streets said to prove himself, so that's what he did
+they’d only meant to rob the man, how the hell'd he end up dead
+
+George was the biggest boy, de-facto leader of their crew
+he told them all to run and hide, don't breath a word, whatever you do
+but when the police, came around,
+George's the one that they found
+his momma cried,
+when he said goodbye,
+he died to the world that day.
+
+G / D G /  Bm G A / G Bm
+
+And later the prosecutor 'd say
+they could’ve sentenced death that day
+they only let him rot his life away
+out of kindness, i suppose
+
+Samuel, well he copped a plea, 4 years juvenile reformatory
+got a job, a GED, but never found his life, no family
+and though he gave his mind to drink,
+once in a while he’d still think,
+about his friend still locked away
+living death there all alone
+
+and the public defender ’d say
+it’s good he’d told the truth that day
+better him than you anyway,
+said out of  kindness, I suppose
+
+So that’s the tale of George and Sam,
+coulda been any of us, happened to be them,
+we get mixed up, bumble around,
+just another lost life from a forgotten town, 
+So Georgie needs your prayers it’s true,
+but save a few, for Samuel too.
+He only did what he had to do,
+and it'll haunt him to his grave.
+
+
+---
+Cold Beer
+Am - C - G - F
+
+When it feel that emotion - the one that feels like choking - I grab my best friend - and we sit by the ocean
+spend my last buck on a  - bottle of whiskey - drunk, tired broken down - another orphan of history
+
+I pick you up - take you home - sit on my couch - turn off my phone
+'cause I love your taste - I love your smell - who would ever'a thought - we’d come to know each other so well
+hell, I guess that means - we're meant for each other - bodies intertwined - like two jealous lovers
+I really can’t find words - to express how it feels - when I feel your teeth - biting at my heals
+
+but I do know one thing - seems to be true - wherever I go - I find myself face-to-face with you
+I just can’t seem to get - my mind off of you - went to rehab once - thought that we were through
+but now we're back together - with a fiery vengeance - I must have a drop - of Irish decendance
+
+cold - cold beer - whiskey, wine, malt liquor - pass it right here
+I’ll never go without you - oo - don't care what I amount t - oo.
+give me cold - cold beer - double up with tequila - there's no need to fear
+I could never live without you - oo - …  - …
+
+now when I'm sitting on my stoop - feeling pretty lonely - Me and my lady's fightin’ -  so I called up the homies 
+they come right 'round - from the corner grocery - They're the only fellas - who really seem to know me 
+little brown bag - bottle or can -  sit and listens to my problems - 'til I can barely stand
+they're part of the fam - they're part of the team - took me under their wing - when I was just a teen
+and every time they come around - it always takes me back - parents shouting through the walls - sounds of fighting out back
+
+man, it feels pretty good  - to get this off my chest - even though I hear people saying - that boy’s obsessed
+Well, maybe I am!  -  Maybe they’re right! - One thing I can tell you - it was love at first sight
+We just can't let each - other go now - we're too far along - to ever slow down
+You’re the only one who - keeps my chin up - when you touch my lips - it feel wat wat, watwat
+
+One for the road, fresh pop - 2, 4, why stop? -  twist , pry , screw top - TALL BOY, DOUBLESHOT
+
+cold - cold beer - whiskey, wine, malt liquor - pass it right here
+I’ll never go without you - oo - no matter what I amount t - oo.
+give me cold - cold beer - line up the shots  - and I'm no longer here
+I could never live without you - oo - I wouldn't even want to - oo
+
+---
+First Song
+Em - C - G - D
+We drink down the bottle
+another bourbon on the rocks
+in a million dollar house
+in the heights of San Francisco
+
+and our floor-to-ceiling windows
+look down on the crazy homeless
+sitting, howling, wet
+in the park
+
+then we descend to the valley
+and the darkness of the jazz club
+where the music ain't great
+but it's loud
+
+But well we end up shouting
+over wailing saxophones
+trying to drive good sense
+out...
+
+D - Am - G C
+Just to get an
+escape, our own thoughts and
+voices drowned by the  -  crowd
+
+C - G/B - C - G/B
+
+Em - C - G - D
+
+and it seems tonight
+that the world is alive
+and attuned to the sound
+of our jesting, shouting, raving madness...
+
+Every night is a feast,
+all bounty, rich and sweet,
+damn we'd get out if we only knew
+how...
+
+D - Am - G C
+Up the freeway - ramp,
+put the pedal to the floor
+
+C - B7 - G C  G
+Why - are you so eager - to leave - they'd like - to know
+
+B7 - Am (x4)
+The party's  -  lovely
+but this  -  timeless need
+and then - you need to flee
+end and start another journey
+
+Em C G/B Em C G/B
+
+---
+Dust in the Wind
+  C     G  Am
+I close my eyes
+ G         Dm           Am
+only for a moment and a moment's gone
+
+all my dreams
+pass before my eyes a curiosity
+
+D   G        Am
+dust in the wind
+all we are is dust in the wind
+
+same old song
+just a drop of water in an endless sea
+all we do
+crumbles to the ground, though we refuse to see
+
+now, don't hang on,
+nothing lasts forever but the earth and sky
+It slips away
+and all your money won't another minute buy</template>
+</body>
+</html>

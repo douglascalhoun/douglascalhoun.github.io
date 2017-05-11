@@ -1,91 +1,121 @@
-<html><head><style>
-html, body {
-    margin: 0;
-    padding: 0;
-}
+<html>
+<head>
+<style>
 
-main, row, column {
-    display: block;
-}
+* { margin: 0; padding: 0; }
 
 body {
-    color: #555;
-    background: #EEE;
-    margin-bottom: 70px;
+	background-color: #6D899F;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+header, footer{
+	background-color: #FFFFFF;
+	padding: 1em;
 }
 
 main {
-    max-width: 960px;
-    margin: 0 auto;
+	display: flex;
+	width: 100%;
 }
 
-column {
-    flex-basis: 100%;
-    padding: 15px;
-    border: 1px solid #666;
-    margin: 5px 0;
-    background: rgba(86, 19, 210, .25);
+nav {
+	flex: 1;
+  order: -1;
+	background-color: #BCD39B;
+  padding: 1em;
 }
 
-h1, h2 {
-    text-align: center;
+content {
+	flex: 3;
+	background-color: #CE9B64;
+  padding: 1em;
 }
 
-li {
-    list-style-type: none;
+aside {
+	flex: 1;
+	background-color: #62626D;
+  padding: 1em;
+	display: none;
 }
 
-.task {
-  background: #FCD757;
+@media (max-width: 600px){
+	main{
+    flex-direction: column;
+	}
 }
 
-.completed_task {
-  background: #DF9A57;
-}
-.check {
-    margin-right: 5px;
-}
+</style>
+</head>
+<body>
 
-.delete_task {
-  padding: 0 5px;
-  margin-left: 5px;
-  background: #FF9D9B;
-}
-
-.edit_task {
-  margin-left: 5px;
-  padding: 0 5px;
-  background: #82C9FF;
-}
-
-.title {
-  font-size: 1.5em;
-}
-
-@media screen and (min-width: 800px) {
-  row {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-  }
-
-  column {
-      flex: 1;
-      background-color: yellow;
-  }
-}
-
-</style></head><body>
-
-<main>
-    <h1>Best TODO App Ever</h1>
-    <input id=new_task placeholder='new task'/>
-    <div id=tasks>
-    </div>
-    <button type="button" name="delete_all_tasks">clear tasks</button>
+  <header>
+  </header>
+  <main>
+    <content>
+      <h1>Best TODO App Ever</h1>
+      <input id=new_task placeholder='new task' type="text">
+      <div id=tasks>
+	    </div>
+  </content>
+  <nav>
+  </nav>
+  <aside></aside>
 </main>
-
+<footer>
+</footer>
 <script src="js/utils.js"></script>
-<script src="js/byos.js"></script>
+<script>
 
+// Populate Tasks
+var tasks = JSON.parse(localStorage.getItem('tasks')) || generate_default_tasks()
+tasks.forEach(add_task)
+
+// Events
+$('#new_task').on('blur keypress', new_task)
+$('.delete_task').click(delete_task)
+$('[name=completed]').change()
+
+function new_task (e) {
+  if (e.target.value != '' && (e.type == 'blur' || e.which == 13 || e.which == 0)) {
+    var task = { title: e.target.value.trim(), id: tasks.length }
+    tasks.push(task)
+    add_task(task)
+    localStorage.tasks = JSON.stringify(tasks)
+    e.target.value = ''
+  }
+}
+
+function add_task (task){
+  $('#tasks').append("<div class=task id=" + task.id + "><input type=checkbox name=completed /><span class=title>"+ task.title + "</span><span class='delete_task'>x</span><span class='edit_task'>Aa</span></div>")
+}
+
+function delete_task (e) {
+  var task_id = $(e.target).closest('.task').remove().attr('id')
+  tasks = tasks.filter(function (task) {
+    return task.id != task_id
+  })
+  localStorage.setItem('tasks', JSON.stringify(tasks))
+  console.log(tasks)
+}
+
+// function clear_tasks () {
+//   localStorage.removeItem('tasks')
+//   $('#tasks').empty()
+// }
+
+// function generate_default_tasks () {
+//   var verbs = [ 'encourage', 'entice', 'castigate', 'fluster' ]
+//   var nouns = [ 'a llama', 'a pod of dolphins', 'the king of spain', 'john wayne', 'kanye west']
+//
+//   return (3).times(function (i) {
+//     return { title: verbs.shuffle().pop() + ' ' + nouns.shuffle().pop(), id: i }
+//   })
+// }
+
+</script>
 </body></html>

@@ -1,5 +1,16 @@
-function rand (min, max) {
+function random (min, max) {
   return Array.isArray(min) ? min[ random(0, min.length - 1) ] :  Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+Array.prototype.shuffle = function(){
+  var j, x, i;
+  for (i = this.length; i; i--) {
+    j = Math.floor(Math.random() * i);
+    x = this[i - 1];
+    this[i - 1] = this[j];
+    this[j] = x;
+  }
+  return this
 }
 
 Number.prototype.times = function (fn){
@@ -19,6 +30,7 @@ var press = (function () {
 
   document.body.addEventListener('keydown', function (event) {
     var pressed = String.fromCharCode(event.keyCode).toLowerCase()
+    console.log(pressed)
     if (keypress_handlers.any) keypress_handlers.any.on.forEach(function(fn){ fn(pressed) })
     if (keypress_handlers[pressed]) keypress_handlers[pressed].on.forEach(function(fn){ fn(pressed) })
   })

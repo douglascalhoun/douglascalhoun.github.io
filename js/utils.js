@@ -30,7 +30,6 @@ var press = (function () {
 
   document.body.addEventListener('keydown', function (event) {
     var pressed = String.fromCharCode(event.keyCode).toLowerCase()
-    console.log(pressed)
     if (keypress_handlers.any) keypress_handlers.any.on.forEach(function(fn){ fn(pressed) })
     if (keypress_handlers[pressed]) keypress_handlers[pressed].on.forEach(function(fn){ fn(pressed) })
   })

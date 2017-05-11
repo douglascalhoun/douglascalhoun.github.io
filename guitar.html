@@ -109,11 +109,17 @@ $(function () {
   // click handlers
   $('nav a').click(function (e) {
     e.preventDefault()
-
     localStorage.setItem('last_song', $(this).index())
     $('nav a').removeClass('active')
     $(this).addClass('active')
     $('content').html(songs[$(this).index()])
+
+    var not_in_view = $('.active').length && ($('.active').position().top > window.innerHeight - 40 || $('.active').position().top < $('nav').scrollTop() + 40)
+
+    if (not_in_view) {
+      $('nav').scrollTop( $('.active').position().top /2 )
+    }
+
   })
 
   // autoload last viewed song

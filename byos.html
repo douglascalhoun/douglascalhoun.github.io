@@ -40,7 +40,6 @@ aside {
 	flex: 1;
 	background-color: #62626D;
   padding: 1em;
-	display: none;
 }
 
 @media (max-width: 600px){
@@ -49,6 +48,13 @@ aside {
 	}
 }
 
+#new_item {
+	width: 100%;
+}
+
+nav, aside {
+	display: none;
+}
 </style>
 </head>
 <body>
@@ -57,9 +63,9 @@ aside {
   </header>
   <main>
     <content>
-      <h1>Best TODO App Ever</h1>
-      <input id=new_task placeholder='new task' type="text">
-      <div id=tasks>
+      <h1>Curriculum</h1>
+      <input id=new_item placeholder='' type="text">
+      <div id=items>
 	    </div>
   </content>
   <nav>
@@ -71,44 +77,44 @@ aside {
 <script src="js/utils.js"></script>
 <script>
 
-// Populate Tasks
-var tasks = JSON.parse(localStorage.getItem('tasks')) || generate_default_tasks()
-tasks.forEach(add_task)
+// Populate Items
+var items = JSON.parse(localStorage.getItem('items')) || []
+items.forEach(add_item)
 
 // Events
-$('#new_task').on('blur keypress', new_task)
-$('.delete_task').click(delete_task)
-$('[name=completed]').change()
+$('body').on('click', '.delete_item', delete_item)
+				 .on('blur keypress', '#new_item', new_item)
+				 .on('change', '[name=completed]', console.log)
 
-function new_task (e) {
+function new_item (e) {
   if (e.target.value != '' && (e.type == 'blur' || e.which == 13 || e.which == 0)) {
-    var task = { title: e.target.value.trim(), id: tasks.length }
-    tasks.push(task)
-    add_task(task)
-    localStorage.tasks = JSON.stringify(tasks)
+    var item = { title: e.target.value.trim(), id: items.length }
+    items.push(item)
+    add_item(item)
+    localStorage.items = JSON.stringify(items)
     e.target.value = ''
   }
 }
 
-function add_task (task){
-  $('#tasks').append("<div class=task id=" + task.id + "><input type=checkbox name=completed /><span class=title>"+ task.title + "</span><span class='delete_task'>x</span><span class='edit_task'>Aa</span></div>")
+function add_item (item){
+  $('#items').append("<div class=item id=" + item.id + "> <input type=checkbox name=completed /> <span class=title> "+ item.title + " </span> <span class='delete_item'> x </span> <span class='edit_item'> Aa </span> </div>")
 }
 
-function delete_task (e) {
-  var task_id = $(e.target).closest('.task').remove().attr('id')
-  tasks = tasks.filter(function (task) {
-    return task.id != task_id
+function delete_item (e) {
+  var item_id = $(e.target).closest('.item').remove().attr('id')
+  items = items.filter(function (item) {
+    return item.id != item_id
   })
-  localStorage.setItem('tasks', JSON.stringify(tasks))
-  console.log(tasks)
+  localStorage.setItem('items', JSON.stringify(items))
+  console.log(items)
 }
 
-// function clear_tasks () {
-//   localStorage.removeItem('tasks')
-//   $('#tasks').empty()
+// function clear_items () {
+//   localStorage.removeItem('items')
+//   $('#items').empty()
 // }
 
-// function generate_default_tasks () {
+// function generate_default_items () {
 //   var verbs = [ 'encourage', 'entice', 'castigate', 'fluster' ]
 //   var nouns = [ 'a llama', 'a pod of dolphins', 'the king of spain', 'john wayne', 'kanye west']
 //

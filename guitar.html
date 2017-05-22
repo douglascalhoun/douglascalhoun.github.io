@@ -1,5 +1,7 @@
+<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <title>House Jams</title>
 <meta property="og:title" content="House Jams"/>
 <meta property="og:type" content="website" />
@@ -9,7 +11,7 @@
 
 <style>
 
-* { margin: 0; padding: 0; color: #738CA6; }
+* { margin: 0; padding: 0; color: #a2c7ed; }
 
 footer, aside {
   display: none;
@@ -65,7 +67,11 @@ aside {
   padding: 1em;
 }
 
-.active {
+.active, .highlight {
+  color: palegoldenrod;
+}
+
+.note {
   color: palegoldenrod;
 }
 
@@ -80,8 +86,8 @@ aside {
 <body>
 
   <header>
-    <div>[ ↑ / ↓ ] browse songs</div>
-    <div><a id=scroll href="#">auto scroll</a> <span id=countdown></span></div>
+    <div>[ ↑ / ↓ ] browse songs - [ c ] show/hide chords - [ s ] <span id=autoscroll>autoscroll <span id=countdown></span></span></div>
+    <div>+ Add A Song</div>
   </header>
   <main>
     <content>
@@ -96,13 +102,16 @@ aside {
 <script>
 var interval_1, interval_2, scrolling
 $(function () {
+  var show_chords = localStorage.getItem('show_chords') || true
 
   // display songs
   var titles = []
   var songs = $('template').html().split("---\n").map(function(song){
+    song = song.replace(/\[/g, "\<span class=note\>\[")
+    song = song.replace(/\]\s?/g, "\]\ \<\/span\>")
     song = song.split("\n")
     titles.push($('<a href="#">').text(song.shift()))
-    return $('<pre>').text(song.join("\n"))
+    return $('<pre>').html(song.join("\n"))
   })
 
   $('nav').append(titles)
@@ -114,7 +123,7 @@ $(function () {
     $('nav a').removeClass('active')
     $(this).addClass('active')
     $('content').html(songs[$(this).index()])
-
+    show_chords ? $('.note').show() : $('.note').hide()
     var not_in_view = $('.active').length && ($('.active').position().top > window.innerHeight - 40 || $('.active').position().top < $('nav').scrollTop() + 40)
 
     if (not_in_view) {
@@ -147,15 +156,19 @@ $(function () {
     }
   })
 
-  // auto scroll
-  $('#scroll').click(function (e) {
-    e.preventDefault()
+  press('c').to(function(){
+    (show_chords = !show_chords) ? $('.note').show() : $('.note').hide()
+    localStorage.setItem('show_chords', show_chords)
+  })
+
+  press('s').to(function () {
+    $('#autoscroll').toggleClass('highlight')
     if(scrolling = !scrolling) {
       var countdown = 10
-      $('#countdown').text(countdown)
+      $('#countdown').text("in " + countdown)
       interval_1 = setInterval(function() {
         if (countdown-- > 0) {
-          $('#countdown').text(countdown)
+          $('#countdown').text("in " + countdown)
         } else {
           $('#countdown').text('')
           clearInterval(interval_1)
@@ -168,6 +181,7 @@ $(function () {
     } else {
       clearInterval(interval_1)
       clearInterval(interval_2)
+      $('#countdown').text('')
     }
 
   })
@@ -175,14 +189,113 @@ $(function () {
 })
 </script>
 
-<template>Miss Ohio
-F        C      G            Am
-Oh me oh my oh, look at Miss Ohio
-F                           C           G
-She's a-running around with her rag-top down
-           F                  C         G
-She says I wanna do right but not right now
+<template>Please Don't Bury Me
+[C] Woke up this morning, [F] put on my slippers
+[C] Walked in the kitchen and [G] died
+And [C] oh, what a feelin' when my [F] soul went through the ceiling
+And [G] on up into heaven I did [C] rise
 
+When I [F] got there they did say, it [C] happened this a-way
+You slipped upon the floor and hit your [G] head
+And [C] all the angels say just [F] before you passed [C] away
+These [G] were the very last words that you [C] said
+
+[F] Please don't bury me down [C] in the cold, cold ground
+No, I druther have them cut me up and pass me all [G] around
+[C] Throw my brain in a hurricane, the [F] blind can have my [C] eyes
+the [F] deaf can take [C] both my ears if [G] they don't mind the [C] size
+
+Give my stomache to Milwaukee if they run out of beer
+Put my socks in a cedar box, just get them out of here
+Venus de Milo can have my arms, look out, I've got your nose
+Sell my heart to the junk man and give my love to rose
+
+Give my feet to the footloose, careless, fancy free
+Give my knees to the needy, don't pull that stuff on me
+Hand me down my walkin' cane it's a sin to tell a lie
+Send my mouth way down south, and kiss my ass goodbye
+---
+Please Don't Talk About Me
+[G] Please don't talk [B7] about me when I'm [E] gone.
+[A] though our friendship [D] ceases, from now [G] on.
+And listen, [D] if you can't say [G] anything real [B7] nice. [E]
+[A] best not to talk, at [D] all, is my ad-[G] vice.
+
+CHORUS:
+[B7] you go your way, I'll go mine.
+[E] best that we do.
+[A] Here's a kiss, I [A7] hope that this, brings [D] lots of luck to [D7] you.
+Oh, [G] makes no difference [B7] how you carry [E] on.
+just, [A] please don't talk [D] about me when I'm [G] gone.
+
+---
+Anyone Who Knows What Love is
+you can [A] blame me, try to [G] shame me
+and still I'll [A] care for [G] you
+
+you can run around, even put me down
+still I'll be there for you
+
+the [D] world, may think I'm [Dm] foolish
+They can't [C#m] see you
+Like I [F#7] can, oh but [B7] anyone
+Who knows what [E] love is
+Will [G#7] un- [A] derstand... [G]
+
+[A] Anyone... [G] Anyone... [A] Anyone... [G] Anyone
+
+I just feel so [A] sorry, for the [G] ones
+Who [A] pity me... [G]
+
+'Cause they just don't know
+oh they don't what happiness love can be
+
+I know, I won't ever let you go
+it's more, than I could ever stand
+oh but anyone who knows what love is
+will understand
+---
+Silver and Gold
+I [A] went down to the [D] Devil
+[A] Devil gonna sell my [D] soul
+[A] Gonna Come back home, [D] to my
+Little love with my [E] pockets full of
+Silver and [A] gold
+
+Well you’re out of luck said the devil
+I got no silver and gold
+The police man he come taken all my land and
+He left me in a hole
+
+And I’m [D] on [E] my [A] own
+No [E] place to call my [D] home
+[A] Ain’t no pretty gal gonna
+[E] waste her time on [A] me
+
+Well, I’ll give you 20 women
+Pretty gals for your soul
+They’ll love you sweet all the good days of the week
+Till your buried and your dead and your cold
+
+Well, I already got me a woman
+That’s why I look so old
+If I go home she’s gonna leave me on my own
+‘Cause I got no silver and gold
+
+Well I give you a brand new motor car
+A motor car for your soul
+You can drive all around with a good gal on the town
+You can take her right down the road
+
+Well, I don’t want your motor car
+No motor car worth my soul
+I have to bust my ass just to buy a tank of gas
+I can drive right down the road
+---
+Miss Ohio
+[F] Oh me oh [C] my oh, [G] look at Miss [Am] Ohio
+[F] She's a-running [C] around with her [G] rag-top down
+She says I [F] wanna do right but [C] not right [G] now
 
 You drive down to Atlanta and live out this fantasy
 Running around with your rag-top down
@@ -198,10 +311,8 @@ Yeah I wanna do right but not right now
 
 ---
 Street People
-E                                  A           E
-Hanging out with the street people they got it now
-E                                  A                     E
-Hanging out with my street people drifting from town to town
+[E] Hanging out with the [A] street people they got it [E] now
+[E] Hanging out with my [A] street people drifting from town to [E] town
 
 Once had a job at a nursery, but they just didn't like what I grow
 They called the man, he ran me off and said don't come back no more
@@ -209,10 +320,8 @@ They called the man, he ran me off and said don't come back no more
 So i, clicked with some street people, the showed me how behave
 roaming back and forth, wherever we want, just trying to keep in the shade
 
-A                                                         E
-How great it is, to know who I am, and be happy where I'm at
-A                              F#                  B
-Some people would rather work, we need people like that
+[A] How great it is, to know who I am, [E] and be happy where I'm at
+[A] Some people would rather work, [F#] we need people like [B] that
 
 I'm glad i'm a street people, have it no other way
 I'm gonna stay a street people till my dying day
@@ -224,10 +333,8 @@ Just hanging out, got nothing else to do, got any spare change buddy.
 
 ---
 Our Town
-A D A E
-
-And you know the sun's setting fast
-And just like they say, nothing good ever lasts
+[A] And you know the [D] sun's setting fast
+And [A] just like they say, nothing [E] good ever lasts
 Well go on now, and kiss it goodbye
 But hold on to your lover, 'cause your heart's bound to die
 Go on now, and say goodbye to our town, to our town
@@ -255,14 +362,10 @@ I love you, my town, you'll always live in my soul
 
 ---
 Hard Times, Lord
-    G
-Oh, I've been havin' some hard travelin', I thought you knowed.
-                                      A            D
-I've been facing some mighty trials, aways down the road.
-G                                     C
-face is grimy, backs a hurtin', can't find no place to rest my burdens,
-    D                                     G
-An' I've been havin' some hard times now, Lawd.
+Oh, [G] I've been havin' some hard travelin', I thought you knowed.
+I've been facing some mighty trials, [A] aways down the [D] road.
+[G] face is grimy, backs a hurtin', [C] can't find no place to rest my burdens,
+An' [D] I've been havin' some hard times now, [G] Lawd.
 
 Ooh, I've been workin' in a hard rock tunnel, I thought you knowed.
 I've been pourin' red hot slag way down the road.
@@ -296,14 +399,10 @@ I've been havin' some hard times now, Lawd.
 
 ---
 Blues Run The Game
-G               C              G        C
-Catch a boat to England, baby, maybe to Spain,
-G        C            G             C
-Wherever I have gone, wherever I've been and gone,
-G        C
-Wherever I have gone
-    D      C              G
-The blues     are all the same.
+[G] Catch a boat to [C] England, baby, [G] maybe to [C] Spain,
+[G] Wherever [C] I have gone, [G] wherever I've [C] been and gone,
+[G] Wherever [C] I have gone
+The [D] blues [C] are all the [G] same.
 
 Send out for whisky, baby, send out for gin,
 Me and room service, honey, me and room service, babe,
@@ -337,10 +436,8 @@ The blues are all the same.
 
 ---
 Fly Away Home
-G                   G7                     C        G
-Some glad morning when this life is o'er, I'll fly away
-G                                        D7   G
-To a home on God's celestial shore, I'll fly away
+[G] Some glad morning [G7] when this life is o'er, [C] I'll fly [G] away
+[G] To a home on God's celestial shore, [D7] I'll fly [G] away
 
 I'll fly away, O glory, I'll fly away
 When I die, hallelujah, by and by I'll fly away
@@ -354,31 +451,20 @@ To a land where joys shall never end, I'll fly away
 
 ---
 You and I
- C
-don't you worry, there my honey
- F
-we might not have any money
- Am                               F
-but we've got our love to pay the bills
+[C] don't you worry, there my honey
+[F] we might not have any money
+[Am] but we've got our love to pay the [F] bills
 
 maybe I think you're cute and funny,
 maybe I wanna do what bunnies
 do with you, if you know what I mean
 
-[Chorus]
-
-     C                 E               F                     C
-Oh, let's get rich and buy our parents homes in the South of France
-                             E
-let's get rich and give everybody nice sweaters
-    F                 G
-and teach them how to dance
-          C                  E
-let's get rich and build our house on a mountain
-       F                   D
-making everybody look like ants
-            C              F  G       C
-from way up there, you and I, you and I
+Oh, [C] let's get rich and [E] buy our parents [F] homes in the South of [C] France
+let's get rich and give every- [E] body nice sweaters
+and [F] teach them how to [G] dance
+let's get [C] rich and build our [E] house on a mountain
+making [F] everybody look like [D] ants
+from way up [C] there, you and [F] I, [G] you and [C] I
 
 well you might be a bit confused
 and you might be a little bit bruised
@@ -388,17 +474,12 @@ if you will soothe my worried looks
 and we will put the lonesome on the shelf
 ---
 In Spite of Ourselves
-C
-i gotta gal, she's kinda funny,
+[C] i gotta gal, she's kinda funny,
 she don't like to go out, when it's to sunny,
-    F
-She looks down her nose at money
-    C
-gets it on like the Easter Bunny
-G
-but she's my baby, and i'm her honey
-                        C
-i'm never gonna let her go
+She [F] looks down her nose at money
+gets [C] it on like the Easter Bunny
+but [G] she's my baby, and i'm her honey
+i'm never gonna let her [C] go
 
 He ain't got laid in a month of Sundays
 I caught him once and he was sniffin' my undies
@@ -407,22 +488,14 @@ Drinks his beer like it's oxygen
 He's my baby, And I'm his honey
 Never gonna let him go
 
-            F
-In spite of ourselves
-                     C
-here we are sittin' on a rainbow
-            G
-Against all odds
-                    C
-we won the big door prize
-                  F
-we ain't got much
-                 C
-in the way of money
-                           G
-don't need nothin' but the light
-                C      G   C
-dancing in your eyes
+In spite of our- [F] selves
+here we are sittin' on a [C] rainbow
+Against all [G] odds
+we [C] won the big door prize
+we ain't got [F] much
+in the way of [C] money
+don't need nothin' but the [G] light
+dancing in your [C] eyes
 
 She thinks all my jokes are corny
 Convict movies make her horny
@@ -440,28 +513,18 @@ Never gonna let him go
 
 ---
 Only a Fool
-A              E             F#m
-Why do I keep fooling myself
-                C#m
-When I know you love someone else
-D       E                   A    C#m  D  E7
-Only a fool breaks his own heart
+[A] Why do I keep [E] fooling myself
+[F#m] When I know you [C#m] love someone else
+[D] Only a [E] fool breaks his own [A] heart [C#m] [D] [E7]
 
-A         E                F#m
 I pretend that I don't see
-                   C#m                D
 When you walk with him down the street
-       E                   A    D  A  A7
-Only a fool breaks his own heart
+Only a fool breaks his own heart [D] [A] [A7]
 
-D            E
-I have to admit it
-     C#m                F#m
-Even though you hurt me so girl
-D           E
-I can't forget it
-   C        E
-If I'm a man I'd let you go
+[D] I have to [E] admit it
+Even [C#m] though you hurt me [F#m] so girl
+[D] I can't [E] forget it
+[C] If I'm a man [E] I'd let you go
 
 It's no use trying to hang on
 To a love already gone
@@ -469,27 +532,25 @@ Only a fool breaks his own heart
 
 ---
 Chicken Fried
-G D C G D
-I like a little my chicken fried,
-cold beer on a Friday night
-windows down through the countryside
-with the radio up
+I like a little [G] chicken fried,
+cold beer on a [D] Friday night
+windows down through the [C] countryside
+with the radio [G] up [D]
 well I've seen the sunrise, see the love in my woman's eyes
 feel the touch of a precious child, and know a mother's love
 
-G D C D
-Well I was raised up beneath the shade of a Georgia pine
-And that's home you know
+Well [G] I was raised up beneath the [D] shade of a Georgia [C] pine
+And that's [D] home you know
 Sweet tea pecan pie and homemade wine
 Where the peaches grow
 And my house it's not much to talk about
-but it`s filled with love that's grown in southern ground
+but it's filled with love that's grown in southern ground
 
 Well its funny how it`s the simple things in life that mean the most
 Not where you live or the car you drive or the price tag on your clothes
 There`s no dollar sign on a piece of mind this I`ve come to know
 so if you agree, have a drink with me, raise you glasses for a toast
-to a little bit of chicken fried
+to a little bit of chicken fried...
 
 I thank god for my life
 And for the stars and stripes
@@ -497,19 +558,16 @@ May freedom forever fly, let it ring.
 Salute the ones who died
 The ones that give their lives so we don`t have to sacrifice
 All the things we love
-Like our chicken fried
+Like our chicken fried...
 
 ---
 A Little Help From My Friends
-G              D          Am
-What would you think if I sang out of tune,
-          D                        G
-Would you stand up and walk out in me.
+[G] What would you [D] think if I [Am] sang out of tune,
+Would you [D] stand up and walk out on [G] me.
 Lend me your ears and I'll sing you a song,
 And I'll try not to sing out of key.
 
-       F               C             G
-I get by with a little help from my friends,
+I get [F] by with a little [C] help from my [G] friends,
 I get high with a little help from my friends.
 Gonna try with a little help from my friends.
 
@@ -518,12 +576,10 @@ What do I do when my love is away.
 How do I feel by the end of the day
 (Are you sad because you're on your own),
 
-No... [chorus]
+No, i get by...
 
-Em         A
-Do you need anybody
-G         F      C
-I need somebody to love.
+Do you [Em] need any-[A] body
+I [G] need some-[F] body to [C] love.
 Could it be anybody
 I want somebody to love.
 
@@ -534,70 +590,49 @@ I can't tell you but I know its mine.
 
 ---
 Kodachrome
-             D               D7                G
-When I think back on all the crap I learned in high school
-Em             A7             D    Em A7
-It's a wonder, I can think at all
+When I think [D] back on all the [D7] crap I learned in [G] high school
+[Em] It's a wonder, [A7] I can think at [D] all [Em] [A7]
 And though my lack of education hasn't hurt me none
-                                  D7
-I can read the writing on the wall
+I can read the writing on the wall [D7]
 
-    G B7 E
-Kodachrome
-    E7            Am          D
-You give us those nice bright colors
-                G         C
-You give us the greens of summers
-          A             D               G    B7 E
-Makes you think all the world's a sunny day, oh yeah!
-E7      Am    D
-I got a Nikon camera
-                 G    C
-I love to take a photograph
-               A       D           G   G Bm Em A A7
-So Mama, don't take my Kodachrome away
+Koda-[G] chro-[B7] o-[E] me
+[E7] You give us those [Am] nice bright [D] colors
+You give us the [G] greens of [C] summers
+Makes you think [A] all the [D] world's a sunny [G] day, [B7] oh [E] yeah!
+[E7] I got a [Am] Nikon [D] camera
+I love to take a [G] photo-[C] graph
+So Mama, don't [A] take my [D] Kodachrome [G] away [Bm] [Em] [A] [A7]
 
 If you took all the girls I knew when I was single
 And brought them all together for one night
 I know they'd never match my sweet imagination
 And everything looks worse in black and white
 
-            G       Bm          Em
-Mama, don't take my Kodachrome away [x3]
+Mama, don't [G] take my [Bm] Kodachrome [Em] away [x3]
 
-G
-Mama, don't take my Kodachrome
-Bm
-Mama, don't take my Kodachrome
-Em
-Mama, don't take my Kodachrome (away)
+
+[G] Mama, don't take my Kodachrome
+[Bm] Mama, don't take my Kodachrome
+[Em] Mama, don't take my Kodachrome (away)
 
 ---
 Somewhere Over the Rainbow
-C     Em       Am    F        C    Em
+[C] [Em] [Am] [F] [C] [Em]
+[Am] [Am7] [F]
 
-Am   Am7       F
+[C] Oo-oo! [Em] Oo-oo, [F] oo- oo! [C] Oo-hoo-oo, oo
+[F] Oo-oo, [E7] oo-oo-oo! [Am] Oo, hoo - hoo! [F] Oo, hoo - hoo!
 
-C      Em             F          C
-Oo-oo! Oo-oo, oo- oo! Oo-hoo-oo, oo
-F      E7        Am             F
-Oo-oo, oo-oo-oo! Oo, hoo - hoo! Oo, hoo - hoo!
-
-C         Em                F      C
-somewhere over the rainbow, way up high,
-F       C
-and the dreams that you dream of
-G         Am           F
-once in a lullaby-y-y, y-y-y
+[C] somewhere [Em] over the rainbow, [F] way up [C] high,
+[F] and the [C] dreams that you dream of
+[G] once in a lul-[Am] aby-y-y, [F] y-y-y
 
 oh, somewhere over the rainbow, bluebirds fly,
 and the dreams that you dream of
 dreams really do come true-oo-oo, oo-oo-oo!
 
-     C
-some day I'll wish upon a star,
-G                                  Am      F
-wake up where the clouds are far behind... me
+[C] some day I'll wish upon a star,
+[G] wake up where the clouds are far [Am] behind... [F] me
 
 where trouble melts like lemon drops,
 high above the chimney top, that's where you'll find me
@@ -606,67 +641,41 @@ oh, somewhere over the rainbow, bluebirds fly,
 And ...the ...dreams that you dare to...
 oh, why, oh, why, can't I - I - I? I - I - I!
 
-            C        Em            F         C
-Well, I see trees of green, and... red roses too,
-F               C       E7        Am
-I'll watch them bloom, for me and you,
-       F                G                Am     F
-And I  think to myself, what a wonderful world!
+Well, I see [C] trees of [Em] green, and... [F] red roses [C] too,
+[F] I'll watch them [C] bloom, for [E7] me and [Am] you,
+And I [F] think to my-[G] self, what a [Am] wonderful [F] world!
 
-              C       Em              F            C
-Well, I see skies of blue, and I see ...clouds of white,
-            F          C    E7              Am
-And the brightness of day,      I like the dark,
-      F                G                C    F    C
-And I think to myself, what a wonderful world!
+Well, I see [C] skies of [Em] blue, and I see[F] ... clouds of [C] white,
+And the [F] brightness of [C] day, [E7] I like the [Am] dark,
+And I [F] think to [G] myself, what a [C] wonderful [F] world! [C]
 
-      G                          C
-The colors of the rainbow, so pretty in the sky,
-      G                    C
-Are also on the faces of people passing by,
-        F               C            F              C
-I see friends shaking hands, saying,    "How do you do?"
-F                   C     Dm7            G
-   They're really saying, "I  ...I love you!"
+The [G] colors of the rainbow, so [C] pretty in the sky,
+Are [G] also on the faces of [C] people passing by,
+I see [F] friends shaking [C] hands, saying, [F] "How do you [C] do?"
+[F] They're really [C] saying, [Dm7] "I  ...I love [G] you!"
 
-         C    Em          F              C
-I hear babies cry, and I  ...watch them grow,
-  F                 C     E7              Am
-They'll learn much more    ...than we'll know,
-       F                  G                  Am
-And I ...think to myself ...what a wonderful wor - r- rld,
-F
-   Wor - r- rld!
+I hear [C] babies [Em] cry, and [F] I watch them [C] grow,
+[F] They'll learn much [C] more, than [E7] we'll ever [Am] know,
+And I [F] think to my-[G] self... what a wonderful [Am] wor - r- rld,
 
-      C
-Some day I'll wish upon a star,
- G                                     Am      F
-Wake up where the clouds are far be - hind  ...me-----,
-         C
-Where trouble melts like lemon drops,
- G                                  Am              F
-High above the chimney top, that's where ...you'll find--- me!
+[F] Wor - r- rld!
 
-     C             Em                F          C
-Oh, some----where over the rainbow,     way up high,
- F              C
-And ...the ...dreams that you dare to...
- G                 Am          F
-Why, oh, why can't I - I - I?     I - I - I!
+Some-[C] day I'll wish upon a star,
+[G] Wake up where the clouds are far be-[Am] hind...[F] me,
+Where [C] trouble melts like lemon drops,
+[G] High above the chimney top, that's [Am] where... you'll [F] find--- me!
 
-C          Em                  F              C
-Oo----hoo! Oo---  oo, oo - oo! Oo--- hoo -oo, oo----!
-F         E7              Am
-Oo----oo, oo... oo - oo!       Oo, ah - ah, ay - er!
-F                                C
-   Eh -eh, eh -eh, eh, eh, eh! | /  /  /  / | /  /  /  / |  / ||
+Oh, [C] some-where [Em] over the rainbow, [F] way up [C] high,
+[F] And... the...[C] dreams that you dare to...
+[G] Why, oh, why can't [Am] I - I - I? [F] I - I - I!
+
+[C] Oo----hoo! [Em] Oo---  oo, oo- oo! [F] Oo--- hoo- oo, [C] oo----!
+[F] Oo----oo, [E7] oo... [Am] oo- oo! Oo, ah - ah, ay - er! [F] [C]
 
 ---
 Stand By Me
-C                       Am
-when the night has come and the land is dark
-        F           G                C
-And the moon is the only light we'll see
+when the [C] night has come [Am] and the land is dark
+And the [F] moon is the [G] only light we'll [C] see
 
 No I won't be afraid, no I won't be afraid
 Just as long as you stand, stand by me
@@ -684,26 +693,19 @@ Stand by me, stand by me
 
 ---
 Tonight You Belong to Me
-  E                   E7
-I know (I know) you beloooooong
-   A            Am
-To sooooomebody neeeeeew
-      E            B7       E
-But tonight, you belong to me
+I [E] know (I know) you [E7] beloooooong
+To [A] sooooomebody [Am] neeeeeew
+But [E] tonight, you be-[B7] long to [E] me
 
 Although (although) we're apaaaaaart
 You're a paaaaart of my heaaaaart
 And tonight, you belong to me
 
 
-     Am
-Way down by the stream
-     Am
+Way [Am] down by the stream
 How sweet it will seem
-     E            F#
-Once more just to dream
-       B7
-in the moonlight, My honey
+Once [E] more just to [F#] dream
+in the [B7] moonlight, My honey
 
 I know (I know) With the daaaaaawn
 That you will be goooooone
@@ -711,14 +713,10 @@ But tonight, you belong to me
 
 ---
 The Gambler
-     G                          C               G
-on a warm summer's evening on a train bound for nowhere,
-  C                    G                C                 D
-I crossed paths with a gambler, we were both too tired to sleep
-   G                             C             G
-So we took turns staring out the window at the darkness
-     C           G        D               G
-'til boredom overtook us, and we began to speak.
+on a [G] warm summer's evening on a [C] train bound for [G] nowhere,
+I [C] crossed paths with a [G] gambler, we were [C] both too tired to [D] sleep
+So we [G] took turns staring out the [C] window at the [G] darkness
+'til [C] boredom over-[G] took us, and [D] we began to [G] speak.
 
 he said, "son, I've made a life out of reading people's faces
 knowing what their cards was, by the way they held their eyes
@@ -730,35 +728,26 @@ then he bummed a cigarette, and asked me for a light
 and the night got deathly quiet, and his faced lost all expression
 he said, "if you're gonna play the game, boy, better learn to play it right"
 
-(chorus)
 you've got to know when to hold 'em, know when to fold 'em
 know when to walk away, know when to run
 you never count your money, when you're sitting at the table
 there'll be time enough for counting, when the dealing's done
 
 (key change)
-A                             D         A
-every gambler knows, that the secret to surviving
-   D               A               D               E
-is knowing what to throw away, and knowing what to keep
-        A                          D              A
-because every hand's a winner, and every hand's a loser
-        D                 A              E           A
-and the best that you can hope for is to die in your sleep
+[A] every gambler knows, that the [D] secret to [A] surviving
+is [D] knowing what to [A] throw away, and [D] knowing what to [E] keep
+because [A] every hand's a winner, and [D] every hand's a [A] loser
+and the [D] best that you can [A] hope for is to [E] die in your [A] sleep
 
 And when he finished speaking, he turned back toward the window
 crushed out his cigarette, and faded off to sleep
 and somewhere in the darkness, the gambler he broke even
 but in his final words, I found an ace that I could keep
 
-(⟲ chorus)
-
 ---
 Sovay
-C                             G                       F
-We were getting ready to be a threat, we were getting set for my accidental suicide
-    C                 G                              F
-the kind where nobody cries, and no one looks too surprised we must realize
+[C] We were getting ready to be a [G] threat, we were getting [F] set for my accidental suicide
+the [C] kind where nobody [G] cries, and no one looks too sur-[F] prised we must realize
 
 that we're riding on a high of success, but we're under stress like a complicated metaphor
 and a feeling like we've been here before, like we've been here before, because we've been here be-
@@ -767,10 +756,8 @@ and a feeling like we've been here before, like we've been here before, because 
 a word washed ashore
 then a word washed ashore
 
-Am       E        F#m Gm
-so vain, so vain, so  vain
-Am E       F
-so vain in ordinary ways
+[Am] so [E] vain, [F#m] so [Gm] vain
+[Am] so [E] vain in [F] complicated ways
 
 now that i'm ready to consider my next plan of attack
 I think I'm gonna sack
@@ -791,16 +778,12 @@ all along the day
 
 ---
 Lightning Crashes
-C         G                     D
-lightning crashes, a new mother sighs
-C            G                    D
-all her apprehensions fall to the floor
-C          G               D
-the little angel opens her eyes
-                  C
-pale blue-colored eyes
-            G                         D
-this is the moment she's been waiting for
+[C] lightning [G] crashes, a [D] new mother sighs
+[C] all her appre-[G] hensions [D] fall to the floor
+
+[C] the little [G] angel [D] opens her eyes
+pale blue-colored [C] eyes
+this is the [G] moment she's been waiting [D] for
 
 lightning crashes, an old woman dies
 all her intentions fall to the floor
@@ -808,8 +791,7 @@ the wizened angel closes her eyes
 the confusion that was hers
 now belongs to the baby down the hall
 
-C      G       D             C
-oh now feel it coming back again
+[C] oh now [G] feel it [D] coming back [C] again
 like the rolling thunder chasing the wind
 forces pulling from the edges of the Earth again
 I can feel it
@@ -822,10 +804,8 @@ before the doctor even reaches the door
 
 ---
 Jolene
-  Am      C       G       Am
-Jolene, Jolene, Jolene, Jolene
-    G              Em                   Am
-I'm begging of you please don't take my man
+Jo-[Am] lene, Jo-[C] lene, Jo-[G] lene, Jo-[Am] lene
+I'm [G] begging of you [Em] please don't take my [Am] man
 
 Jolene, Jolene, Jolene, Jolene
 please don't take him just because you can
@@ -850,26 +830,19 @@ and whatever you decide to do, Jolene
 
 ---
 All of Us Lonely
-G         Em         C       G
-all of us lonely, it ain't a sin
-   G              Em          C            G
-to want something better then places we've been
-G   Em                   C      G
-the rain breaks with the coming day
-D                        G            C            G
-sunlight dancing in your eyes seem to say, come on in
+[G] all of us [Em] lonely, it [C] ain't a [G] sin
+[G] to want something [Em] better, then [C] places we've [G] been
+[G] the [Em] rain breaks with the [C] coming [G] day
+[D] sunlight dancing in your [G] eyes seem to [C] say, come on [G] in
 
 we're all made from stardust, cast a million miles
 born in an instant, spend life slowly dying
 borrowed from nothing, no wonder i feel half alive
 but it was worth it all just to be standing here, as you walked by
 
-              D                          G    C
-now it's a bittersweet victory
-D                                                             G         C
-to know the love that's passes between you to me
-                  G
-will never die
+now [D] it's a bittersweet [G] victo-[C] ry
+to know the [D] love that's passes between [G] you and [C] me
+will never [G] die
 
 it's a broken-hearted world babe, you know it's true
 but somehow feels better, to suffer along with you
@@ -878,14 +851,10 @@ but it's worth it just to share this city view, bathed in sunset hue
 
 ---
 House of the Rising Sun
-      Am   C        D     F
-there is a house in New Orleans
-     Am       C      E
-they call the Rising Sun
-         Am       C       D           F
-and it's been the ruin of many a poor boy
-    Am        E        Am
-and lord, you know I'm one
+there [Am] is a [C] house in [D] New [F] Orleans
+they [Am] call the [C] Rising [E] Sun
+and it's [Am] been the [C] ruin of [D] many a poor [F] boy
+and [Am] lord, you [E] know I'm [Am] one
 
 my mother, she was a tailor
 she sewed my new blue jeans
@@ -1288,7 +1257,7 @@ Began to feel lonesome on'ry and mean
 We got together, and we cashed in our sweeps.
 Gave 'em to a beggar. Who was mumbling through the streets
 There's no escaping, From his snowy white dreams
-Born lookin' lonesome on'ry and mean
+forever lonesome on'ry and mean
 
 Now I'm down in this valley, where the wheels turn so low
 At dawn I pray, to the Lord of my soul

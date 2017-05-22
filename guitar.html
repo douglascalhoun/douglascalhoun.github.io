@@ -108,7 +108,7 @@ $(function () {
   var titles = []
   var songs = $('template').html().split("---\n").map(function(song){
     song = song.replace(/\[/g, "\<span class=note\>\[")
-    song = song.replace(/\]\s?/g, "\]\ \<\/span\>")
+    song = song.replace(/\]\ ?/g, "\]\ \<\/span\>")
     song = song.split("\n")
     titles.push($('<a href="#">').text(song.shift()))
     return $('<pre>').html(song.join("\n"))
@@ -228,7 +228,6 @@ brings [A] lots of [E7] luck to [A] you. [A7]
 
 [D] Makes no difference [F#7] how I carry [B] on, [B7]
 [E] Please don't [E7] talk [A] about [A+] me when I'm [D] gone.
-
 ---
 Anyone Who Knows What Love is
 you can [A] blame me, try to [G] shame me

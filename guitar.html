@@ -11,7 +11,7 @@
 
 <style>
 
-* { margin: 0; padding: 0; color: #a2c7ed; }
+* { margin: 0; padding: 0; color: #a2c7ed; box-sizing: border-box; }
 
 footer, aside {
   display: none;
@@ -75,6 +75,21 @@ aside {
   color: palegoldenrod;
 }
 
+#add_song_modal {
+	position: fixed;
+	top: 2em;
+	right: 0;
+  padding: 1em;
+  background-color: #133253;
+  border: 1px solid black;
+}
+
+#add_song_title, #add_song_body {
+  width: 400px;
+  margin: .5em;
+  padding: .5em;
+}
+
 @media (max-width: 600px){
 	main{
     flex-direction: column;
@@ -84,10 +99,14 @@ aside {
 </style>
 </head>
 <body>
-
+  <div id='add_song_modal'>
+    <input id='add_song_title' placeholder='title'><br>
+    <textarea rows='10' id='add_song_body' placeholder='[C] add your [G] lovely [Am] song [F] thusly...' /></textarea><br>
+    <span>close</span>
+  </div>
   <header>
     <div>[ ↑ / ↓ ] browse songs - [ c ] show/hide chords - [ s ] <span id=autoscroll>autoscroll <span id=countdown></span></span></div>
-    <div>+ Add A Song</div>
+    <div id='#add_song'>+ Add A Song</div>
   </header>
   <main>
     <content>
@@ -101,6 +120,7 @@ aside {
 <script src="js/utils.js"></script>
 <script>
 var interval_1, interval_2, scrolling
+
 $(function () {
   var show_chords = localStorage.getItem('show_chords') || true
 
@@ -129,8 +149,11 @@ $(function () {
     if (not_in_view) {
       $('nav').scrollTop( $('.active').position().top /2 )
     }
-
   })
+
+  $('nav a').click($('#add_song_modal').toggle)
+
+
 
   // autoload last viewed song
   $('nav a').eq(localStorage.getItem('last_song')).click()
@@ -197,8 +220,8 @@ And [G] on up into heaven I did [C] rise
 
 When I [F] got there they did say, it [C] happened this a-way
 You slipped upon the floor and hit your [G] head
-And [C] all the angels say just [F] before you passed [C] away
-These [G] were the very last words that you [C] said
+And [C] all the angels say just [F] before you passed away
+[C] These were the very [G] last words that you [C] said
 
 Please don't bury me down in the cold, cold ground
 No, I druther have them cut me up and pass me all around
@@ -217,7 +240,7 @@ Send my mouth way down south, and kiss my ass goodbye
 ---
 Please Don't Talk About Me
 [D] Please don't talk [F#7] about me when I'm [B] gone, [B7]
-[E] Though our [E7] friendship [A] ceases from now [D] on. [Gdim] [A7]
+[E] Though our [E7] friendship [A] ceases from now [D] on. [A7]
 [D] If you can't say [F#7] anything that's [B] nice, [B7]
 then [E] best not to [E7] talk at [A] all..that's my [D] advice.
 
@@ -226,7 +249,7 @@ It's [B] best that we can [B7] do.
 [E] Here's a kiss.. I [E7] hope that this..
 brings [A] lots of [E7] luck to [A] you. [A7]
 
-[D] Makes no difference [F#7] how I carry [B] on, [B7]
+[D] Makes no difference [F#7] how I carry [B] on,
 [E] Please don't [E7] talk [A] about [A+] me when I'm [D] gone.
 ---
 Anyone Who Knows What Love is
@@ -1437,12 +1460,11 @@ I wouldn't even want to-oo...
 
 ---
 Dust in the Wind
-G          Dm    Am         C              G        Am
-I close my eyes, only for a moment and the moment's gone
+
+I [C] close [G] my [C] eyes, [G] only for a [Dm] moment and the [Am] moment's gone
 all my dreams, pass before my eyes a curiosity
 
-D   G        Am
-dust in the wind, all we are is dust in the wind
+[D] dust [G] in the [Am] wind, all we are is dust in the wind
 
 same old song, just a drop of water in an endless sea
 all we do, crumbles to the ground, though we refuse to see
@@ -1499,7 +1521,30 @@ and then - you need to flee
 end and start another journey
 
 Em C G/B Em C G/B
+---
+Sign of the Judgement
 
+I see the sign (x3)
+(Hail, Lord, time draws nigh)
+sign of the judgement...
+loose horse in the valley...
+tell me who is gonna ride him?...
+ain't jesus gonna ride ha?...
+said I come out the corner...
+tell me what you gonna do?...
+well you run and see, now...
+then I run to the rock...
+for a hiding place...
+rock cried out...
+no hiding place...
+it's judgement day...
+two tall angels...
+on the chariot wheel...
+they're comin' for the judgement...
+look over yonder...
+dark clouds rising...
+the sun won't shine...
+that's the sign of the judgement...
 </template>
 </body>
 </html>

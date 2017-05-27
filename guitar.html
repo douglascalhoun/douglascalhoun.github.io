@@ -106,7 +106,7 @@ aside {
   </div>
   <header>
     <div>[ ↑ / ↓ ] browse songs - [ c ] show/hide chords - [ s ] <span id=autoscroll>autoscroll <span id=countdown></span></span></div>
-    <div id='#add_song'>+ Add A Song</div>
+    <div id='add_song'>+ Add A Song</div>
   </header>
   <main>
     <content>
@@ -151,7 +151,9 @@ $(function () {
     }
   })
 
-  $('nav a').click($('#add_song_modal').toggle)
+  $('#add_song').click(function (){
+    $('#add_song_modal').toggle()
+  })
 
 
 

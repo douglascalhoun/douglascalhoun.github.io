@@ -75,6 +75,11 @@ aside {
   color: palegoldenrod;
 }
 
+.high_contrast_mode {
+  color: black !important;
+  background-color: white !important
+}
+
 #add_song_modal {
 	position: fixed;
 	top: 2em;
@@ -105,7 +110,7 @@ aside {
     <span>close</span>
   </div>
   <header>
-    <div>[ ↑ / ↓ ] browse songs - [ c ] show/hide chords - [ s ] <span id=autoscroll>autoscroll <span id=countdown></span></span></div>
+    <div>[ ↑ / ↓ ] browse songs - [ c ] show/hide chords - [ l ] high contrast mode - [ s ] <span id=autoscroll>autoscroll <span id=countdown></span></span></div>
     <div id='add_song'>+ Add A Song</div>
   </header>
   <main>
@@ -186,6 +191,10 @@ $(function () {
     localStorage.setItem('show_chords', show_chords)
   })
 
+  press('l').to(function(){
+    $('*').toggleClass('high_contrast_mode')
+  })
+
   press('s').to(function () {
     $('#autoscroll').toggleClass('highlight')
     if(scrolling = !scrolling) {
@@ -230,8 +239,8 @@ Spilling [D] drinks on my settee
 If this [G] feeling flows both ways?
 [D] (Sad to see you go) Was sort of hoping that you'd stay
 (Baby [Am] we both know)
-That the [G] nights were mainly made for saying things
-that you can't say tomorrow day
+That the [G] nights were mainly made for saying [D] things
+that you can't say by light of day
 
 Crawling back to [Cmaj7] you
 Ever thought of [D] calling when you've [G] had a few?
@@ -862,7 +871,7 @@ and a feeling like we've been here before, like we've been here before, because 
 a word washed ashore
 then a word washed ashore
 
-[Am] so [E] vain, [F#m] so [Gm] vain
+[Am] so [E] vain, [F#m] so [G#m] vain
 [Am] so [E] vain in [F] complicated ways
 
 now that i'm ready to consider my next plan of attack
@@ -984,27 +993,16 @@ and lord, I know I'm one
 
 ---
 You've Been a Friend to Me
-( D A7 D )
+[D] [A7] [D]
+my [D] bark of life was [G] drifting down
+the [D] troubled sea of [A7] time
+since [D] first I saw your [G] smiling face and
+[D] youth was [A7] in its [D] prime [D7]
 
-       D                     G
-my bark of life was drifting down
-       D                     A7
-the troubled sea of time
-          D                      G
-since first I saw your smiling face and
-  D            A7       D     D7
-youth was in its prime
-
-
-(chorus)
-      G                    D
-I'll ne’er forget where’er I roam
-       D                  A7
-wherever you may be
-       D            G
-if ever I have had a friend
-             D             A7       D
-you've been that friend to me
+I'll [G] ne’er forget where [D] ’er I roam
+where [D] ever you may [A7] be
+if [D] ever I have [G] had a friend
+you've [D] been that [A7] friend to [D] me
 
 
 misfortune used me as her child and
@@ -1019,12 +1017,9 @@ you've been a friend to me
 
 ---
 Slow Days of Summer
-A                    D           A
-slow days of summer, in this old town
-E7         A             B7          E
-sun goes across the sky, sometimes a car goes by
-A       D          A
-there's one right now
+[A] slow days of [D] summer, in [A] this old town
+[E7] sun goes [A] across the sky, [B7] sometimes a [E] car goes by
+[A] there's [D] one right [A] now
 
 looks like a Chevy, your Chevy's blue
 this Chevy's white and brown, it isn't slowing down
@@ -1044,18 +1039,12 @@ we wish you were here (wish you were here)
 
 ---
 Highwayman
-Am             G              F                 Am
-I was a highwayman, along the coach roads I did ride,
-G         F            G
-Sword and pistol by my side,
-Dm     Am                    G            F
-Many a young maid lost her baubles to my trade,
-Dm     Am               G               F
-Many a soldier shed his lifeblood on my blade,
-Am           G              F         G C
-The bastards hung me in the spring of 25,
-Am       F        G
-But I am still alive
+[Am] I was a [G] highwayman, along the [F] coach roads I did [Am] ride,
+[G] Sword and [F] pistol by my [G] side,
+[Dm] Many a [Am] young maid lost her [G] baubles to my [F] trade,
+[Dm] Many a [Am] soldier shed his [G] lifeblood on my [F] blade,
+[Am] The bastards [G] hung me in the [F] spring of [G] 25, [C]
+[Am] But I am [F] still [G] alive
 
 I was a sailor, I was born upon the tide,
 Now ever, with the sea I do abide,
@@ -1071,8 +1060,7 @@ I slipped and fell into the wet concrete below,
 They buried me in that gray tomb that knows no sounds,
 But I am still around,
 
-                C           C/B        Am          G           F    C/E Dm
-I'll always be around, and around, and around, and around, and around...
+I'll always be [C] around, and [C/B] around, and [Am] around, and [G] around, and [C/E] around... [Dm]
 
 I'll fly a starship across the universe divide,
 And when I reach the other side,
@@ -1085,9 +1073,8 @@ And I'll be back again, and again, and again, and again, and again...
 
 ---
 Far From Any Road
-I: Am E Dm Am (2x)
-under the heavy setting sun
-her looming shadow grows
+[Am] under the heavy [E] setting sun
+her [Dm] looming shadow [Am] grows
 Her presence rests upon me
 reaches beneath my clothes
 
@@ -1096,25 +1083,21 @@ My mouth it ran with blood
 dripping on the cross
 at the grave of my true love
 
-II: C G Dm F Am
-With pale hands she reaches for me,
-as the clouds above us dance
-The thorny brush embraced me
-and stilled my trembling breath
+[C] With pale hands she reaches for me,
+[G] as the clouds above us dance
+[Dm] The thorny brush embraced me
+and [F] stilled my trembling [Am] breath
 
-I
 When the last light warms the rocks
 And the rattlesnakes unfold
 Mountain cats come forth
 to drag away my bones
 
-I
 In the hushing dusk
 Under a silver moon
 together we’ll walk hand and hand
 watching desert cactus bloom
 
-II
 I’ll walk with her forever
 Across the silent sand
 And the stars will be our eyes
@@ -1126,9 +1109,9 @@ C Em
 F Em Dm
 G F C
 
-well the drunken clown’s, still hanging ‘round
-but it’s plain the laughters all died down
-and the tears he tried, so hard to hide, are flowing
+[C] well the drunken clown’s, still [Em] hanging ‘round
+but it’s [F] plain the [Em] laughter's [Dm] all died down
+and the [G] tears he tried, so [F] hard to hide, are [C] flowing
 
 so the sullen man, paycheck in hand
 has convinced himself that he understands
@@ -1137,10 +1120,10 @@ I wish y’all well, but I truly must be going
 Am Em (3x)
 F Em G
 
-why don’t you come see me when
+[Am] why don’t you come [Em] see me when
 you realize at last that you need friend
 i’ll sit and drink beside you
-as you laugh and curse my name
+as you [F] laugh and [Em] curse my [G] name
 
 ---
 She Came by Bus

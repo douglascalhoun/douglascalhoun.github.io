@@ -1,0 +1,155 @@
+<html>
+<head>
+<style>
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  /* max-width: 960px; */
+  /* margin: 0 auto; */
+  color: #333;
+}
+
+question {
+  height: 20vh;
+  background-color: #75929C;
+}
+
+responses {
+  display: block;
+  background-color: #84A5B0;
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: -1em 0 0 -1em;
+  padding: 1em 2em 2em 2em;
+  height: 70vh;
+}
+
+response {
+  padding: 1em 0 0 1em;
+  flex: 0 0 50%;
+}
+
+response > div {
+  width: 100%;
+  border: 1px solid black;
+  border-radius: 5px;  
+  padding: 1em 1em 0;
+  background: hsla(31,15%,50%,.8);
+  height: 20vh;
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  overflow: hidden;
+}
+
+response > div::after {
+  content: '\00a0';
+  display: block;
+  margin-top: 1em;
+  height: 0;
+  visibility: hidden;
+}
+
+footer {
+  height: 15vh;
+  background-color: lightcoral;
+  position: fixed;
+  bottom: 0;
+  width:100%
+}
+
+#timer {
+  height: 15vh;
+  background-color: black;
+  position: fixed;
+  bottom: 0;
+  width:100%;
+  z-index: 1;
+  opacity: .2;
+}
+
+response, question {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/mithril/mithril.js"></script>
+
+<script>
+
+  // render questions and responses
+  const question_div = document.getElementsByTagName('question')
+  const responses_div = document.getElementsByTagName('responses')
+
+
+  function render_new_question (question, responses) {
+    question_div.innerHTML = `<h1>${question}</h1>`
+    responses_div.innerHTML =  responses.map( (text, i) => `<div class='response'>
+        <div id='${i}'>${text}</div>
+      </div>`).join('')
+  }
+
+
+
+
+  function run_timer () {
+    const timer = document.getElementsByTagName('timer')[0]
+    const end = window.innerWidth
+    let position = timer.style.left = 0
+    
+
+    const clock = setInterval(function(){
+      timer.style.left = position += 1
+      if (position >= end) {
+        clearInterval(clock)
+        run_timer()
+      }  
+    }, 10)
+  }
+
+
+  document.body.addEventListener('click', (e) => {
+    question_div.textContent = e.target.id
+  });
+
+  var count = 0
+  var post = function(text, index) {
+      m.request({
+          method: "PUT",
+          url: `//rem-rest-api.herokuapp.com/api/question/${index}`,
+          data: {count: count - 1},
+          withCredentials: true,
+      })
+      .then(function(data) {
+          count = parseInt(data.count)
+          question_div.textContent = count
+      })
+  }
+  
+  let responses = [];
+
+  ['hi', 'hello', 'hola', 'howdy'].forEach( () => {} )
+  
+  var Question = {
+    view: function() {
+        return m("main", [
+            m("question", m("h1", "The Question")),
+            m("responses", responses),
+            m("footer"),
+            m("timer")
+        ])
+    }
+  }
+  
+  var root = document.body
+  m.mount(root, Question)
+
+</script></body>
+</html>

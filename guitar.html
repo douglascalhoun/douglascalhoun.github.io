@@ -11,54 +11,57 @@
 
 <style>
 
-* { margin: 0; padding: 0; color: #a2c7ed; box-sizing: border-box; }
+* { margin: 0; padding: 0; color: #222; box-sizing: border-box; }
 
-footer, aside {
+ aside {
   display: none;
 }
 body {
-	background-color: #133253;
-  display: flex;
-  flex-direction: column;
   margin: 0 auto;
-  height: 100vh;
   line-height: 1.4em;
 }
 
-header {
-  display: flex;
-  justify-content: space-between;
-	background-color: #133253;
+footer {
+  position: fixed;
+  z-index:  1;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+}
+footer>div {
+  display:flex;
+  justify-content: space-around;  
 }
 
-header div {
-  padding: 0.5em 2em;
+footer>div>div {
+  flex:1;
+  padding: 0.1em 0.5em;
+  background-color: red;
+  text-align: center;
+  cursor: pointer;
 }
 
 main {
-	display: flex;
   height: 100vh;
-  background-color: #041D37;
 }
 
 nav {
   order: -1;
-	background-color: #133253;
   padding: 1em;
-  display: flex;
   flex-direction: column;
-  overflow-y: scroll;
   width: 20em;
+  display: none;
+  padding-bottom: 30px;
 }
 
 nav a {
-  color: #738CA6;
+  display: block;
 }
 
 content {
-  padding-left: 3em;
-  padding-top: 2em;
-  overflow: scroll;
+  padding-left: 1em;
+  padding-top: 1em;
   width: 100vw;
 }
 
@@ -68,16 +71,19 @@ aside {
 }
 
 .active, .highlight {
-  color: palegoldenrod;
 }
 
 .note {
-  color: palegoldenrod;
+  color: rgb(255, 0, 0);
 }
 
 .high_contrast_mode {
-  color: black !important;
-  background-color: white !important
+  background-color: black !important;
+  color: white !important
+}
+
+.high_contrast_mode .note {
+  color: rgb(177, 255, 174) !important;
 }
 
 #add_song_modal {
@@ -109,10 +115,7 @@ aside {
     <textarea rows='10' id='add_song_body' placeholder='[C] add your [G] lovely [Am] song [F] thusly...' /></textarea><br>
     <span>close</span>
   </div>
-  <header>
-    <div>[ ↑ / ↓ ] browse songs - [ c ] show/hide chords - [ l ] high contrast mode - [ s ] <span id=autoscroll>autoscroll <span id=countdown></span></span></div>
-    <div id='add_song'>+ Add A Song</div>
-  </header>
+
   <main>
     <content>
     </content>
@@ -121,109 +124,68 @@ aside {
     <aside></aside>
   </main>
   <footer>
+    <div>
+      <div id=toggle_song_list>songs</div>
+      <div id=toggle_chords>chords</div>
+      <div id=toggle_theme>colors</div>
+      <div id=toggle_autoscroll>scroll<div id=countdown></div></div>
+      <div id='add_song'>+ add</div>
+    </div>
   </footer>
-<script src="js/utils.js"></script>
-<script>
-var interval_1, interval_2, scrolling
+<template>Clay Pidgeons
+I'm goin' down to the Greyhound station
+Gonna get a ticket to ride
+Gonna find that lady with two or three kids
+And sit down by her side
 
-$(function () {
-  var show_chords = localStorage.getItem('show_chords') || true
+Ride 'til the sun comes up and down around me
+'Bout two or three times
+Smokin' cigarettes in the last seat
+Tryin' to hide my sorrow from the people I meet
+And get along with it all
 
-  // display songs
-  var titles = []
-  var songs = $('template').html().split("---\n").map(function(song){
-    song = song.replace(/\[/g, "\<span class=note\>\[")
-    song = song.replace(/\]\ ?/g, "\]\ \<\/span\>")
-    song = song.split("\n")
-    titles.push($('<a href="#">').text(song.shift()))
-    return $('<pre>').html(song.join("\n"))
-  })
+Go down where the people say 'Y'all'
+Sing a song with a friend
+Change the shape that I'm in
+And get back in the game and start playin' again
 
-  $('nav').append(titles)
+I'd like to stay
+But I might have to go to start over again
+Might go back down to Texas
+Might go to somewhere that I've never been
 
-  // click handlers
-  $('nav a').click(function (e) {
-    e.preventDefault()
-    localStorage.setItem('last_song', $(this).index())
-    $('nav a').removeClass('active')
-    $(this).addClass('active')
-    $('content').html(songs[$(this).index()])
-    show_chords ? $('.note').show() : $('.note').hide()
-    var not_in_view = $('.active').length && ($('.active').position().top > window.innerHeight - 40 || $('.active').position().top < $('nav').scrollTop() + 40)
+And get up in the mornin' and go out at night
+And I won't have to go home
+Get used to bein' alone
+Change the words to this song, start singin' again
 
-    if (not_in_view) {
-      $('nav').scrollTop( $('.active').position().top /2 )
-    }
-  })
+I'm tired of runnin' 'round lookin'
+For answers to questions that I already know
+I could build me a castle of memories
+Just to have somewhere to go
 
-  $('#add_song').click(function (){
-    $('#add_song_modal').toggle()
-  })
+Count the days and the nights that it takes
+To get back in the saddle again
+Feed the pigeons some clay, turn the night into day
+Start talkin' again, when I know what to say
 
+I'm goin' down to the Greyhound station
+Gonna get a ticket to ride
+Gonna find that lady with two or three kids
+And sit down by her side
 
+Ride 'til the sun comes up and down around me
+'Bout two or three times
+Smokin' cigarettes in the last seat
+Tryin' to hide my sorrow from the people I meet
+And get along with it all
 
-  // autoload last viewed song
-  $('nav a').eq(localStorage.getItem('last_song')).click()
-
-  // hotkeys
-  press('&').to(function () {
-    if( !$('.active').length ) {
-      $('nav a').first().click()
-    } else if ( $('.active').is($('nav a').first()) ) {
-      $('nav a').last().click()
-    } else {
-      $('.active').prev().click()
-    }
-  })
-
-  press('(').to(function () {
-    if( !$('.active').length ) {
-      $('nav a').first().click()
-    } else if ( $('.active').is($('nav a').last()) ) {
-      $('nav a').first().click()
-    } else {
-      $('.active').next().click()
-    }
-  })
-
-  press('c').to(function(){
-    (show_chords = !show_chords) ? $('.note').show() : $('.note').hide()
-    localStorage.setItem('show_chords', show_chords)
-  })
-
-  press('l').to(function(){
-    $('*').toggleClass('high_contrast_mode')
-  })
-
-  press('s').to(function () {
-    $('#autoscroll').toggleClass('highlight')
-    if(scrolling = !scrolling) {
-      var countdown = 10
-      $('#countdown').text("in " + countdown)
-      interval_1 = setInterval(function() {
-        if (countdown-- > 0) {
-          $('#countdown').text("in " + countdown)
-        } else {
-          $('#countdown').text('')
-          clearInterval(interval_1)
-          interval_2 = setInterval(function () {
-            $('content').scrollTop($('content').scrollTop() + 1)
-          }, 200)
-        }
-
-      }, 1000 )
-    } else {
-      clearInterval(interval_1)
-      clearInterval(interval_2)
-      $('#countdown').text('')
-    }
-
-  })
-
-})
-</script>
-
-<template>Dream a Little Dream
+Go down where the people say 'Y'all'
+Feed the pigeons some clay
+Turn the night into day
+Start talkin' again when I know what to say
+---    
+Dream a Little Dream
 [C] Stars [B7] shining bright [Ab] above [G] you
 [C] Night [B7] breezes seem to [A] whisper I [A7] love you
 [F] Birds singing in the [Fm] Sycamore tree
@@ -1635,6 +1597,239 @@ look over yonder...
 dark clouds rising...
 the sun won't shine...
 that's the sign of the judgement...
+---
+
+
+[Verse]
+C            G7           C     G7
+ The sun has left and forgotten me
+       C  G7         C           C7
+It's dark, I cannot see
+    F
+Why does this rain pour down
+                      Fm
+I'm gonna drown
+     C
+In a sea
+G7
+   Of deep confusion
+C        G7         C7         G7
+Somebody told me, I don't know who
+    C    C7              F    Fm
+Whenever you are sad and blue
+           C           Em            Am    Am7
+And you're feelin' all alone and left behind
+       F            G7                 C     C7
+Just take a look inside you and you'll find
+          F                            Fm
+You gotta hold on, hold on through the night
+C                       C7
+Hang on, things will be all right
+D
+Even when it's dark
+D
+And not a bit of sparkling
+G
+Sing-song sunshine from above
+G7
+Spreading rays of sunny love
+F                            Fm
+Just hang on, hang on to the vine
+C                        C7
+Stay on, soon you'll be divine
+D                   D
+If you start to cry, look up to the sky
+G
+Something's coming up ahead
+G7
+To turn your tears to dew instead
+C        G7         C     G7
+And so I hold on to his advice
+C              C7              F     Fm
+When change is hard and not so nice
+       C              Em                   Am      Am7
+If you listen to your heart the whole night through
+           F                 G7              F  Fm C
+Your sunny someday will come one day soon to you
+
+Am       D7       G
+La la la la la la la
+            Cmaj7 F
+La la la la la la la
+Dm                E    E
+La la la la la la la
+
+Am            D7                 G
+Now that I've lost everything to you
+            Cmaj7                 F
+You say you wanna start something new
+         Dm                       E
+And it's breakin' my heart you're leavin'
+
+Baby, I'm grievin'
+Am               D7               G
+But if you wanna leave, take good care
+                Cmaj7                 F
+Hope you have a lot of nice things to wear
+           Dm                      E       G7
+But then a lot of nice things turn bad out there
+
+C   G                  F
+Oh, baby, baby, it's a wild world
+G                F              C
+It's hard to get by just upon a smile
+C   G                  F
+Oh, baby, baby, it's a wild world
+G             F                 C         Dm   E
+I'll always remember you like a child, girl
+
+Am                   D7                        G
+You know I've seen a lot of what the world can do
+         Cmaj7                F
+And it's breakin' my heart in two
+          Dm                    E
+Because I never wanna see you a sad, girl
+
+Don't be a bad girl
+Am               D7               G
+But if you wanna leave, take good care
+                Cmaj7                   F
+Hope you make a lot of nice friends out there
+           Dm                           E     G7
+But just remember there's a lot of bad, and beware
+
+C   G                  F
+Oh, baby, baby, it's a wild world
+G                F              C
+It's hard to get by just upon a smile
+C   G                  F
+Oh, baby, baby, it's a wild world
+G             F                 C         Dm   E
+I'll always remember you like a child, girl
+
+Am D7 G Cmaj7 F Dm E
+Lalalalala....
+E
+Baby, I love you
+
+Am               D7               G
+But if you wanna leave, take good care
+                Cmaj7                   F
+Hope you make a lot of nice friends out there
+           Dm                           E     G7
+But just remember there's a lot of bad, and beware
+
+C   G                  F
+Oh, baby, baby, it's a wild world
+G                F              C
+It's hard to get by just upon a smile
+C   G                  F
+Oh, baby, baby, it's a wild world
+G             F                 C         Dm
+I'll always remember you like a child, girl
 </template>
+
+<script src="js/utils.js"></script>
+<script>
+let interval_1, interval_2, scrolling
+
+let show_chords = localStorage.getItem('show_chords') || true
+
+// load songs
+const titles = []
+const songs = $('template').html().split("---\n").map(function(song) {
+    song = song.replace(/\[/g, "\<span class=note\>\[")
+    song = song.replace(/\]\ ?/g, "\]\ \<\/span\>")
+    song = song.split("\n")
+    titles.push($('<a href="#">').text(song.shift()))
+    return $('<pre>').html(song.join("\n"))
+})
+
+$('nav').append(titles)
+
+// click handlers
+$('nav a').click(function(e) {
+    e.preventDefault()
+    localStorage.setItem('last_song', $(this).index())
+    $('nav a').removeClass('active')
+    $(this).addClass('active')
+    $('content').html(songs[$(this).index()])
+    show_chords ? $('.note').show() : $('.note').hide()
+    var not_in_view = $('.active').length && ($('.active').position().top > window.innerHeight - 40 || $('.active').position().top < $('nav').scrollTop() + 40)
+
+    if (not_in_view) {
+        $('nav').scrollTop($('.active').position().top / 2)
+    }
+})
+
+$('#add_song').click(function() {
+    $('#add_song_modal').toggle()
+})
+
+// autoload last viewed song
+$('nav a').eq(localStorage.getItem('last_song')).click()
+
+// hotkeys
+press('&').to(function() {
+    if (!$('.active').length) {
+        $('nav a').first().click()
+    } else if ($('.active').is($('nav a').first())) {
+        $('nav a').last().click()
+    } else {
+        $('.active').prev().click()
+    }
+})
+
+press('(').to(function() {
+    if (!$('.active').length) {
+        $('nav a').first().click()
+    } else if ($('.active').is($('nav a').last())) {
+        $('nav a').first().click()
+    } else {
+        $('.active').next().click()
+    }
+})
+
+$('#toggle_song_list, nav a').click(function(){
+  $('nav').toggle()
+  $('content').toggle()
+})
+
+$('#toggle_chords').click(function() {
+    (show_chords = !show_chords) ? $('.note').show() : $('.note').hide()
+    localStorage.setItem('show_chords', show_chords)
+})
+
+$('#toggle_theme').click(function() {
+    $('*').toggleClass('high_contrast_mode')
+})
+
+$('#toggle_autoscroll').click(function() {
+    $('#autoscroll').toggleClass('highlight')
+    if (scrolling = !scrolling) {
+        var countdown = 10
+        $('#countdown').text("in " + countdown)
+        interval_1 = setInterval(function() {
+            if (countdown-- > 0) {
+                $('#countdown').text(" " + countdown)
+            } else {
+                $('#countdown').text('')
+                clearInterval(interval_1)
+                interval_2 = setInterval(function() {
+                    $(document).scrollTop($(document).scrollTop() + 1)
+                }, 200)
+            }
+
+        }, 1000)
+    } else {
+        clearInterval(interval_1)
+        clearInterval(interval_2)
+        $('#countdown').text('')
+    }
+
+})
+
+
+</script>
 </body>
 </html>

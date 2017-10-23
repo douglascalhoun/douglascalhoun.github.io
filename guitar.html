@@ -1788,7 +1788,7 @@ const songs = $('template').html().split("---\n").map(function(song) {
     song = song.replace(/\[/g, "\<span class=note\>\[")
     song = song.replace(/\]\ ?/g, "\]\ \<\/span\>")
     song = song.split("\n")
-    titles.push($('<a href="#">').text(song.shift()))
+    titles.push( $('<a href="#">').text( song[0] ) )
     return $('<pre>').html(song.join("\n"))
 })
 

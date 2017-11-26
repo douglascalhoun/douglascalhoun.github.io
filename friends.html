@@ -21,10 +21,35 @@
     </style>
   </head>
   <body>
-    <container>
-      <h1>Friends for Peace</h1>
-      <p>Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace</p>
-      <p>Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace Friends for Peace</p>
-    </container>
+    <script src='js/pixi.js'></script>
+    <script>
+var app = new PIXI.Application( window.innerHeight * (9/16), window.innerHeight, {backgroundColor: 0x1099bb});
+document.body.appendChild(app.view);
+
+var style = new PIXI.TextStyle({
+    fontFamily: 'Arial',
+    fontSize: 22,
+    fontStyle: 'italic',
+    fontWeight: 'bold',
+    letterSpacing: 5,
+    fill: ['#9999ff', '#00ff99'], // gr adient
+    stroke: '#4a1850',
+    strokeThickness: 5,
+    dropShadow: true,
+    dropShadowColor: '#000000',
+    dropShadowAngle: Math.PI / 6,
+    dropShadowDistance: 2,
+    wordWrap: true,
+    wordWrapWidth: app.renderer.width
+});
+
+var richText = new PIXI.Text('A E S T H E T I C', style);
+richText.anchor.set(0.5)
+richText.x = app.renderer.width / 2
+richText.y = app.renderer.height / 2
+
+app.stage.addChild(richText);
+
+    </script>
   </body>
 </html>

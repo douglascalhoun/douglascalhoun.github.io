@@ -1,25 +1,28 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>House Jams</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: monospace; display: flex; height: 100vh; }
-nav { width: 220px; background: #f5f5f5; padding: 20px; overflow-y: auto; border-right: 1px solid #ccc; }
-nav h1 { font-size: 16px; margin-bottom: 15px; }
-nav a { display: block; padding: 3px 0; color: #333; text-decoration: none; font-size: 14px; }
-nav a:hover { text-decoration: underline; }
-main { flex: 1; padding: 30px; overflow-y: auto; }
-.song { margin-bottom: 50px; padding-bottom: 30px; border-bottom: 1px solid #ddd; }
-.song h2 { font-size: 20px; margin-bottom: 15px; }
-.song pre { font-family: monospace; line-height: 1.5; white-space: pre-wrap; }
-</style>
-</head>
-<body>
-<nav><h1>House Jams</h1></nav>
-<main></main>
+<script>
+const nav = document.querySelector('nav');
+const main = document.querySelector('main');
+const template = document.querySelector('template');
+if (template) {
+  const songs = template.innerHTML.split('---\n').filter(s => s.trim());
+  songs.forEach(song => {
+    const lines = song.trim().split('\n');
+    const title = lines[0].trim();
+    const content = lines.slice(1).join('\n').trim();
+    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const link = document.createElement('a');
+    link.href = '#' + id;
+    link.textContent = title;
+    nav.appendChild(link);
+    const songDiv = document.createElement('div');
+    songDiv.className = 'song';
+    songDiv.id = id;
+    songDiv.innerHTML = '<h2>' + title + '</h2><pre>' + content + '</pre>';
+    main.appendChild(songDiv);
+  });
+}
 </script>
+</body>
+</html>
 <template>Over the Hill
     
     DGDGBD - tuning

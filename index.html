@@ -1730,32 +1730,56 @@ G             F                 C         Dm
 I'll always remember you like a child, girl
 </template>
 <script>
-const nav = document.querySelector('nav');
-const main = document.querySelector('main');
-const template = document.querySelector('template');
-if (template) {
-  const songs = template.innerHTML.split(/---\s*\n/).filter(s => s.trim());
-  songs.forEach(song => {
-    const lines = song.trim().split(/\n/);
-    const title = lines[0].trim();
-    const content = lines.slice(1).join('\n').trim();
-    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const link = document.createElement('a');
+document.addEventListener('DOMContentLoaded', function() {
+  var nav = document.querySelector('nav');
+  var main = document.querySelector('main');
+  var template = document.querySelector('template');
+  
+  if (!template) { return; }
+  
+  var content = template.innerHTML || '';
+  var parts = content.split('---');
+  
+  for (var i = 0; i < parts.length; i++) {
+    var song = parts[i].trim();
+    if (!song) { continue; }
+    
+    var lines = song.split('\n');
+    var title = '';
+    var body = '';
+    
+    for (var j = 0; j < lines.length; j++) {
+      if (j === 0) {
+        title = lines[j].trim();
+      } else {
+        body += lines[j] + '\n';
+      }
+    }
+    
+    if (!title) { continue; }
+    
+    var id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    
+    var link = document.createElement('a');
     link.href = '#' + id;
     link.textContent = title;
     nav.appendChild(link);
-    const songDiv = document.createElement('div');
+    
+    var songDiv = document.createElement('div');
     songDiv.className = 'song';
     songDiv.id = id;
-    const h2 = document.createElement('h2');
+    
+    var h2 = document.createElement('h2');
     h2.textContent = title;
-    const pre = document.createElement('pre');
-    pre.textContent = content;
     songDiv.appendChild(h2);
+    
+    var pre = document.createElement('pre');
+    pre.textContent = body.trim();
     songDiv.appendChild(pre);
+    
     main.appendChild(songDiv);
-  });
-}
+  }
+});
 </script>
 </body>
 </html>

@@ -202,29 +202,29 @@ export default class GameScene extends Phaser.Scene {
     
     onResize(gameSize) {
         const { width, height } = gameSize;
-        const margin = 80;
-        const joystickRadius = 60;
-        const bottomMargin = 100;
+        const margin = 20;
+        const joystickRadius = 50;
+        const bottomMargin = 30;
         
         if (this.leftJoystick) {
             this.leftJoystick.setPosition(
                 margin + joystickRadius,
-                height - bottomMargin
+                height - bottomMargin - joystickRadius
             );
             this.leftLabel.setPosition(
                 margin + joystickRadius,
-                height - bottomMargin - 100
+                height - bottomMargin - joystickRadius - 70
             );
         }
         
         if (this.rightJoystick) {
             this.rightJoystick.setPosition(
                 width - margin - joystickRadius,
-                height - bottomMargin
+                height - bottomMargin - joystickRadius
             );
             this.rightLabel.setPosition(
                 width - margin - joystickRadius,
-                height - bottomMargin - 100
+                height - bottomMargin - joystickRadius - 70
             );
         }
     }

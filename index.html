@@ -3,127 +3,43 @@
 <head>
 <meta charset="UTF-8">
 <title>House Jams</title>
-<meta property="og:title" content="House Jams"/>
-<meta property="og:type" content="website" />
-<meta property="og:image" content="https://static.greatbigcanvas.com/images/square/art-licensing/bob-marley,2003176.jpg?max=128"/>
-<meta property="og:url" content="https://douglascalhoun.github.io/guitar.html" />
-<meta property="og:description" content="We be jammin'"/>
-
 <style>
-
-* { margin: 0; padding: 0; color: #222; box-sizing: border-box; }
-
- aside {
-  display: none;
-}
-body {
-  line-height: 1.4em;
-}
-
-footer {
-  position: fixed;
-  z-index:  1;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-}
-footer>div {
-  display:flex;
-  justify-content: space-around;  
-}
-
-footer>div>div {
-  flex:1;
-  padding: 0.1em 0.5em;
-  background-color: red;
-  text-align: center;
-  cursor: pointer;
-}
-
-main {
-  height: 100vh;
-  padding:1em;
-}
-
-nav {
-  order: -1;
-  padding: 1em;
-  flex-direction: column;
-  display: none;
-  padding-bottom: 30px;
-}
-
-nav a {
-  display: block;
-}
-
-content {
-  padding-bottom: 20px;
-}
-
-.active, .highlight {
-}
-
-.note {
-  color: rgb(255, 0, 0);
-}
-
-.high_contrast_mode {
-  background-color: black !important;
-  color: white !important
-}
-
-.high_contrast_mode .note {
-  color: rgb(177, 255, 174) !important;
-}
-
-#add_song_modal {
-	position: fixed;
-	top: 2em;
-	right: 0;
-  padding: 1em;
-  background-color: #133253;
-  border: 1px solid black;
-}
-
-#add_song_title, #add_song_body {
-  width: 400px;
-  margin: .5em;
-  padding: .5em;
-}
-
-@media (max-width: 600px){
-	main{
-    flex-direction: column;
-	}
-}
-
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: monospace; display: flex; height: 100vh; }
+nav { width: 220px; background: #f5f5f5; padding: 20px; overflow-y: auto; border-right: 1px solid #ccc; }
+nav h1 { font-size: 16px; margin-bottom: 15px; }
+nav a { display: block; padding: 3px 0; color: #333; text-decoration: none; font-size: 14px; }
+nav a:hover { text-decoration: underline; }
+main { flex: 1; padding: 30px; overflow-y: auto; }
+.song { margin-bottom: 50px; padding-bottom: 30px; border-bottom: 1px solid #ddd; }
+.song h2 { font-size: 20px; margin-bottom: 15px; }
+.song pre { font-family: monospace; line-height: 1.5; white-space: pre-wrap; }
 </style>
 </head>
 <body>
-  <div id='add_song_modal' style="display: none;">
-    <input id='add_song_title' placeholder='title'><br>
-    <textarea rows='10' id='add_song_body' placeholder='[C] add your [G] lovely [Am] song [F] thusly...' /></textarea><br>
-    <span>close</span>
-  </div>
-
-  <main>
-    <content>
-    </content>
-    <nav>
-    </nav>
-    <aside></aside>
-  </main>
-  <footer>
-    <div>
-      <div id=toggle_song_list>songs</div>
-      <div id=toggle_chords>chords</div>
-      <div id=toggle_theme>colors</div>
-      <div id=toggle_autoscroll>scroll<div id=countdown></div></div>
-      <div id='add_song'>+ add</div>
-    </div>
-  </footer>
+<nav><h1>House Jams</h1></nav>
+<main></main>
+<script>
+const nav = document.querySelector('nav');
+const main = document.querySelector('main');
+const template = document.querySelector('template').innerHTML;
+const songs = template.split('---\n').filter(s => s.trim());
+songs.forEach(song => {
+  const lines = song.trim().split('\n');
+  const title = lines[0].trim();
+  const content = lines.slice(1).join('\n').trim();
+  const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const link = document.createElement('a');
+  link.href = '#' + id;
+  link.textContent = title;
+  nav.appendChild(link);
+  const songDiv = document.createElement('div');
+  songDiv.className = 'song';
+  songDiv.id = id;
+  songDiv.innerHTML = '<h2>' + title + '</h2><pre>' + content + '</pre>';
+  main.appendChild(songDiv);
+});
+</script>
 <template>Over the Hill
     
     DGDGBD - tuning
@@ -1834,108 +1750,5 @@ Oh, baby, baby, it's a wild world
 G             F                 C         Dm
 I'll always remember you like a child, girl
 </template>
-
-<script src="js/utils.js"></script>
-<script>
-let interval_1, interval_2, scrolling
-
-let show_chords = localStorage.getItem('show_chords') || true
-
-// load songs
-const titles = []
-const songs = $('template').html().split("---\n").map(function(song) {
-    song = song.replace(/\[/g, "\<span class=note\>\[")
-    song = song.replace(/\]\ ?/g, "\]\ \<\/span\>")
-    song = song.split("\n")
-    titles.push($('<a href="#">').text(song.shift()))
-    return $('<pre>').html(song.join("\n"))
-})
-
-$('nav').append(titles)
-
-// click handlers
-$('nav a').click(function(e) {
-    e.preventDefault()
-    localStorage.setItem('last_song', $(this).index())
-    $('nav a').removeClass('active')
-    $(this).addClass('active')
-    $('content').html(songs[$(this).index()])
-    show_chords ? $('.note').show() : $('.note').hide()
-    var not_in_view = $('.active').length && ($('.active').position().top > window.innerHeight - 40 || $('.active').position().top < $('nav').scrollTop() + 40)
-
-    if (not_in_view) {
-        $('nav').scrollTop($('.active').position().top / 2)
-    }
-})
-
-$('#add_song').click(function() {
-    $('#add_song_modal').toggle()
-})
-
-// autoload last viewed song
-$('nav a').eq(localStorage.getItem('last_song')).click()
-
-// hotkeys
-press('&').to(function() {
-    if (!$('.active').length) {
-        $('nav a').first().click()
-    } else if ($('.active').is($('nav a').first())) {
-        $('nav a').last().click()
-    } else {
-        $('.active').prev().click()
-    }
-})
-
-press('(').to(function() {
-    if (!$('.active').length) {
-        $('nav a').first().click()
-    } else if ($('.active').is($('nav a').last())) {
-        $('nav a').first().click()
-    } else {
-        $('.active').next().click()
-    }
-})
-
-$('#toggle_song_list, nav a').click(function(){
-  $('nav').toggle()
-  $('content').toggle()
-})
-
-$('#toggle_chords').click(function() {
-    (show_chords = !show_chords) ? $('.note').show() : $('.note').hide()
-    localStorage.setItem('show_chords', show_chords)
-})
-
-$('#toggle_theme').click(function() {
-    $('*').toggleClass('high_contrast_mode')
-})
-
-$('#toggle_autoscroll').click(function() {
-    $(this).toggleClass('highlight')
-    if (scrolling = !scrolling) {
-        var countdown = 10
-        $('#countdown').text("in " + countdown)
-        interval_1 = setInterval(function() {
-            if (countdown-- > 0) {
-                $('#countdown').text(" " + countdown)
-            } else {
-                $('#countdown').text('')
-                clearInterval(interval_1)
-                interval_2 = setInterval(function() {
-                    $(document).scrollTop($(document).scrollTop() + 1)
-                }, 200)
-            }
-
-        }, 1000)
-    } else {
-        clearInterval(interval_1)
-        clearInterval(interval_2)
-        $('#countdown').text('')
-    }
-
-})
-
-
-</script>
 </body>
 </html>

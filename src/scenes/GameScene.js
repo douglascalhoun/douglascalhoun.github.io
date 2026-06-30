@@ -28,43 +28,19 @@ export default class GameScene extends Phaser.Scene {
     createStarField(worldSize) {
         this.starLayers = [];
         
-        const bgStars = this.add.graphics();
-        bgStars.setDepth(-100);
-        for (let i = 0; i < 200; i++) {
-            const x = Phaser.Math.Between(0, worldSize);
-            const y = Phaser.Math.Between(0, worldSize);
-            const size = Phaser.Math.FloatBetween(0.5, 1.5);
-            const alpha = Phaser.Math.FloatBetween(0.3, 0.8);
-            bgStars.fillStyle(0xffffff, alpha);
-            bgStars.fillCircle(x, y, size);
-        }
-        bgStars.setScrollFactor(0.1);
-        this.starLayers.push(bgStars);
-        
-        const midStars = this.add.graphics();
-        midStars.setDepth(-90);
-        for (let i = 0; i < 150; i++) {
-            const x = Phaser.Math.Between(0, worldSize);
-            const y = Phaser.Math.Between(0, worldSize);
-            const size = Phaser.Math.FloatBetween(1, 2);
-            const alpha = Phaser.Math.FloatBetween(0.5, 1);
-            midStars.fillStyle(0xffffff, alpha);
-            midStars.fillCircle(x, y, size);
-        }
-        midStars.setScrollFactor(0.3);
-        this.starLayers.push(midStars);
-        
-        const fgStars = this.add.graphics();
-        fgStars.setDepth(-80);
+        // Simplified static star field - minimal parallax
+        const stars = this.add.graphics();
+        stars.setDepth(-100);
         for (let i = 0; i < 100; i++) {
             const x = Phaser.Math.Between(0, worldSize);
             const y = Phaser.Math.Between(0, worldSize);
-            const size = Phaser.Math.FloatBetween(1.5, 3);
-            fgStars.fillStyle(0xffffff, 1);
-            fgStars.fillCircle(x, y, size);
+            const size = Phaser.Math.FloatBetween(0.8, 1.5);
+            const alpha = Phaser.Math.FloatBetween(0.4, 0.7);
+            stars.fillStyle(0xffffff, alpha);
+            stars.fillCircle(x, y, size);
         }
-        fgStars.setScrollFactor(0.6);
-        this.starLayers.push(fgStars);
+        stars.setScrollFactor(0.05);
+        this.starLayers.push(stars);
     }
     
     createPlanet(x, y, radius) {
@@ -119,31 +95,34 @@ export default class GameScene extends Phaser.Scene {
     }
     
     setupTouchControls() {
-        const margin = 80;
-        const joystickRadius = 60;
-        const bottomMargin = 100;
+        const margin = 20;
+        const joystickRadius = 50;
+        const bottomMargin = 30;
         
+        // Left joystick for rotation - far left edge
         this.leftJoystick = new VirtualJoystick(
             this,
             margin + joystickRadius,
-            this.scale.height - bottomMargin,
+            this.scale.height - bottomMargin - joystickRadius,
             joystickRadius,
             'left'
         );
         
+        // Right joystick for thrust - far right edge
         this.rightJoystick = new VirtualJoystick(
             this,
             this.scale.width - margin - joystickRadius,
-            this.scale.height - bottomMargin,
+            this.scale.height - bottomMargin - joystickRadius,
             joystickRadius,
             'right'
         );
         
+        // Labels
         this.leftLabel = this.add.text(
             margin + joystickRadius,
-            this.scale.height - bottomMargin - 100,
+            this.scale.height - bottomMargin - joystickRadius - 70,
             'TURN',
-            { fontSize: '14px', fill: '#888' }
+            { fontSize: '12px', fill: '#666' }
         );
         this.leftLabel.setOrigin(0.5);
         this.leftLabel.setScrollFactor(0);
@@ -151,9 +130,9 @@ export default class GameScene extends Phaser.Scene {
         
         this.rightLabel = this.add.text(
             this.scale.width - margin - joystickRadius,
-            this.scale.height - bottomMargin - 100,
+            this.scale.height - bottomMargin - joystickRadius - 70,
             'THRUST',
-            { fontSize: '14px', fill: '#888' }
+            { fontSize: '12px', fill: '#666' }
         );
         this.rightLabel.setOrigin(0.5);
         this.rightLabel.setScrollFactor(0);

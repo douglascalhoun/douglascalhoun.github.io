@@ -32,17 +32,17 @@ function resizeCanvas() {
 
 window.addEventListener('resize', resizeCanvas);
 
-// Tile types - only emoji and colors
+// Tile types - only emoji and colors (muted for better visibility)
 const TILES = {
-    GRASS: { color: '#4CAF50', walkable: true, emoji: '🌱' },
-    WATER: { color: '#1976D2', walkable: false, emoji: '💧' },
-    TREE: { color: '#2E7D32', walkable: false, emoji: '🌲' },
-    MOUNTAIN: { color: '#607D8B', walkable: false, emoji: '⛰️' },
-    SAND: { color: '#FBC02D', walkable: true, emoji: '🏖️' },
-    STONE: { color: '#757575', walkable: true, emoji: '🪨' },
-    TREASURE: { color: '#FFD700', walkable: true, emoji: '💎', collectible: true },
-    FLOWER: { color: '#81C784', walkable: true, emoji: '🌸' },
-    HEART: { color: '#FFE5E5', walkable: true, emoji: '❤️', collectible: true }
+    GRASS: { color: '#A5D6A7', walkable: true, emoji: '🌱', opacity: 0.3 },
+    WATER: { color: '#90CAF9', walkable: false, emoji: '💧', opacity: 0.4 },
+    TREE: { color: '#81C784', walkable: false, emoji: '🌲', opacity: 0.5 },
+    MOUNTAIN: { color: '#B0BEC5', walkable: false, emoji: '⛰️', opacity: 0.5 },
+    SAND: { color: '#FFE082', walkable: true, emoji: '🏖️', opacity: 0.3 },
+    STONE: { color: '#BDBDBD', walkable: true, emoji: '🪨', opacity: 0.3 },
+    TREASURE: { color: '#FFD700', walkable: true, emoji: '💎', collectible: true, opacity: 1.0 },
+    FLOWER: { color: '#C8E6C9', walkable: true, emoji: '🌸', opacity: 0.4 },
+    HEART: { color: '#FFCDD2', walkable: true, emoji: '❤️', collectible: true, opacity: 1.0 }
 };
 
 // Enemy types
@@ -368,9 +368,9 @@ function updateCamera() {
 function draw() {
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
-    // Calculate camera offset to center player
-    const offsetX = canvasWidth / 2 - game.camera.x * TILE_SIZE;
-    const offsetY = canvasHeight / 2 - game.camera.y * TILE_SIZE;
+    // Calculate camera offset to center player in the middle of their tile
+    const offsetX = canvasWidth / 2 - (game.camera.x * TILE_SIZE + TILE_SIZE / 2);
+    const offsetY = canvasHeight / 2 - (game.camera.y * TILE_SIZE + TILE_SIZE / 2);
     
     // Calculate visible tile range
     const startX = Math.max(0, Math.floor(game.camera.x - tilesX / 2));
@@ -390,19 +390,23 @@ function draw() {
             ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
             
             // Draw subtle grid
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
             ctx.lineWidth = 1;
             ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
             
-            // Draw emoji centered in tile
-            ctx.font = `${TILE_SIZE * 0.6}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(
-                tileType.emoji,
-                screenX + TILE_SIZE / 2,
-                screenY + TILE_SIZE / 2
-            );
+            // Draw emoji centered in tile with reduced opacity for background tiles
+            if (tileType.emoji) {
+                ctx.globalAlpha = tileType.opacity || 0.3;
+                ctx.font = `${TILE_SIZE * 0.35}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(
+                    tileType.emoji,
+                    screenX + TILE_SIZE / 2,
+                    screenY + TILE_SIZE / 2
+                );
+                ctx.globalAlpha = 1.0;
+            }
         }
     }
     
@@ -423,25 +427,32 @@ function draw() {
         // Draw shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.beginPath();
-        ctx.ellipse(screenX + TILE_SIZE/2, screenY + TILE_SIZE*0.8, TILE_SIZE*0.3, TILE_SIZE*0.15, 0, 0, Math.PI * 2);
+        ctx.ellipse(screenX + TILE_SIZE/2, screenY + TILE_SIZE*0.85, TILE_SIZE*0.35, TILE_SIZE*0.15, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Draw enemy
-        ctx.font = `${TILE_SIZE * 0.7}px Arial`;
+        // Draw enemy - larger and more prominent
+        ctx.font = `${TILE_SIZE * 0.85}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        
+        // Subtle glow for enemies
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 8;
+        
         ctx.fillText(
             enemyData.emoji,
             screenX + TILE_SIZE / 2,
             screenY + TILE_SIZE / 2
         );
         
+        ctx.shadowBlur = 0;
+        
         // Draw health bar if damaged
         if (enemy.hp < enemy.maxHp) {
             const barWidth = TILE_SIZE * 0.8;
             const barHeight = 6;
             const barX = screenX + (TILE_SIZE - barWidth) / 2;
-            const barY = screenY + TILE_SIZE * 0.15;
+            const barY = screenY + TILE_SIZE * 0.1;
             
             ctx.fillStyle = '#000';
             ctx.fillRect(barX, barY, barWidth, barHeight);
@@ -465,13 +476,13 @@ function draw() {
             return;
         }
         
-        // Draw glowing effect
-        const pulse = Math.sin(Date.now() / 300) * 0.3 + 0.7;
+        // Draw glowing effect - more prominent
+        const pulse = Math.sin(Date.now() / 300) * 0.2 + 0.8;
         ctx.globalAlpha = pulse;
         ctx.shadowColor = '#FFD700';
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 20;
         
-        ctx.font = `${TILE_SIZE * 0.6}px Arial`;
+        ctx.font = `${TILE_SIZE * 0.8}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(
@@ -484,7 +495,7 @@ function draw() {
         ctx.globalAlpha = 1.0;
     });
     
-    // Draw player at center with glow
+    // Draw player at center with glow - larger and more prominent
     const playerScreenX = canvasWidth / 2;
     const playerScreenY = canvasHeight / 2;
     
@@ -493,9 +504,17 @@ function draw() {
         ctx.globalAlpha = 0.5;
     }
     
+    // Draw player shadow
+    ctx.globalAlpha = (game.player.invulnerable && Math.floor(Date.now() / 100) % 2 === 0) ? 0.15 : 0.3;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(playerScreenX, playerScreenY + TILE_SIZE*0.35, TILE_SIZE*0.35, TILE_SIZE*0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = (game.player.invulnerable && Math.floor(Date.now() / 100) % 2 === 0) ? 0.5 : 1.0;
+    
     ctx.shadowColor = '#FFD700';
-    ctx.shadowBlur = 20;
-    ctx.font = `bold ${TILE_SIZE * 0.8}px Arial`;
+    ctx.shadowBlur = 25;
+    ctx.font = `bold ${TILE_SIZE * 0.9}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(game.player.emoji, playerScreenX, playerScreenY);

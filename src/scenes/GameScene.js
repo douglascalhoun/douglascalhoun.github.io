@@ -375,6 +375,9 @@ export default class GameScene extends Phaser.Scene {
             this.attemptDocking();
         }
         
+        // Update center marker
+        this.centerMarker.setPosition(this.scale.width / 2, this.scale.height / 2);
+        
         const speed = Math.round(this.player.getSpeed());
         const distanceToStation = Math.round(Phaser.Math.Distance.Between(
             this.player.getX(),
@@ -384,14 +387,22 @@ export default class GameScene extends Phaser.Scene {
         ));
         
         let statusText = [
+            `Ship: (${Math.round(this.player.getX())}, ${Math.round(this.player.getY())})`,
             `Speed: ${speed}`,
-            `Distance to station: ${distanceToStation}`,
+            `To Station: ${distanceToStation}`,
+            `Camera: (${Math.round(this.cameras.main.scrollX)}, ${Math.round(this.cameras.main.scrollY)})`,
+            `Screen: ${this.scale.width}x${this.scale.height}`,
+            '',
+            'LOOK FOR:',
+            '• Cyan circle at center',
+            '• HUGE magenta circle = ship',
+            '• Yellow triangle on circle',
         ];
         
         if (inDockingRange && !this.isDocked) {
-            statusText.push('[ Press D to DOCK ]');
+            statusText.push('', '[ Press D to DOCK ]');
         } else if (this.isDocked) {
-            statusText.push('[ DOCKED - Press D to UNDOCK ]');
+            statusText.push('', '[ DOCKED - Press D to UNDOCK ]');
         }
         
         this.debugText.setText(statusText);

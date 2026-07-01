@@ -25,6 +25,15 @@ export default class GameScene extends Phaser.Scene {
         
         this.setupTouchControls();
         this.createDebugText();
+        this.createDockButton();
+        
+        // Docking state
+        this.isDocked = false;
+        this.dockingUI = null;
+        
+        // Setup keyboard controls
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.dockKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
         
         this.scale.on('resize', this.onResize, this);
     }
@@ -157,30 +166,46 @@ export default class GameScene extends Phaser.Scene {
     update(time, delta) {
         if (!this.player) return;
         
-        this.player.update(delta, this.leftJoystick, this.rightJoystick);
+        // Don't update player if docked
+        if (!this.isDocked) {
+            this.player.update(delta, this.leftJoystick, this.rightJoystick);
+        }
+        
+        // Update station
+        const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
+        
+        // Show/hide dock button based on range
+        if (inDockingRange && !this.isDocked) {
+            this.dockButton.setAlpha(1);
+        } else if (!this.isDocked) {
+            this.dockButton.setAlpha(0);
+        }
+        
+        // Check for dock key press
+        if (Phaser.Input.Keyboard.JustDown(this.dockKey)) {
+            this.attemptDocking();
+        }
         
         const speed = Math.round(this.player.getSpeed());
-        const distanceToPlanet = Math.round(Phaser.Math.Distance.Between(
+        const distanceToStation = Math.round(Phaser.Math.Distance.Between(
             this.player.getX(),
             this.player.getY(),
-            this.planet.x,
-            this.planet.y
+            this.station.getX(),
+            this.station.getY()
         ));
-        const distanceToBoundary = Math.round(
-            this.systemBoundary.radius - Phaser.Math.Distance.Between(
-                this.player.getX(),
-                this.player.getY(),
-                this.systemBoundary.x,
-                this.systemBoundary.y
-            )
-        );
         
-        this.debugText.setText([
+        let statusText = [
             `Speed: ${speed}`,
-            `Distance to planet: ${distanceToPlanet}`,
-            `Distance to boundary: ${distanceToBoundary}`,
-            `Position: ${Math.round(this.player.getX())}, ${Math.round(this.player.getY())}`
-        ]);
+            `Distance to station: ${distanceToStation}`,
+        ];
+        
+        if (inDockingRange && !this.isDocked) {
+            statusText.push('[ Press D to DOCK ]');
+        } else if (this.isDocked) {
+            statusText.push('[ DOCKED - Press D to UNDOCK ]');
+        }
+        
+        this.debugText.setText(statusText);
     }
     
     onResize(gameSize) {

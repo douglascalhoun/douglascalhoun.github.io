@@ -8,11 +8,11 @@ export default class VirtualJoystick {
         this.active = false;
         
         // Create visual elements with lower opacity
-        this.baseCircle = scene.add.circle(x, y, radius, 0x333333, 0.2);
+        this.baseCircle = scene.add.circle(x, y, radius, 0x333333, 0.15);
         this.baseCircle.setDepth(1000);
         this.baseCircle.setScrollFactor(0);
         
-        this.stickCircle = scene.add.circle(x, y, radius * 0.5, 0x666666, 0.4);
+        this.stickCircle = scene.add.circle(x, y, radius * 0.5, 0x666666, 0.3);
         this.stickCircle.setDepth(1001);
         this.stickCircle.setScrollFactor(0);
         

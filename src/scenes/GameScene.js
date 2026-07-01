@@ -188,6 +188,52 @@ export default class GameScene extends Phaser.Scene {
         this.dockButton.on('pointerdown', () => {
             this.attemptDocking();
         });
+        
+        // Fire button for mobile
+        this.fireButton = this.add.circle(
+            this.scale.width / 2,
+            this.scale.height - 150,
+            30,
+            0xff0000,
+            0.5
+        );
+        this.fireButton.setStrokeStyle(2, 0xff0000);
+        this.fireButton.setScrollFactor(0);
+        this.fireButton.setDepth(1500);
+        this.fireButton.setInteractive();
+        
+        this.fireButton.on('pointerdown', () => {
+            this.fireWeapon();
+        });
+        
+        this.fireLabel = this.add.text(
+            this.scale.width / 2,
+            this.scale.height - 150,
+            'FIRE',
+            { fontSize: '12px', fill: '#ffffff' }
+        );
+        this.fireLabel.setOrigin(0.5);
+        this.fireLabel.setScrollFactor(0);
+        this.fireLabel.setDepth(1501);
+    }
+    
+    fireWeapon() {
+        const now = Date.now();
+        if (now - this.lastFireTime < this.fireRate) return;
+        if (this.isDocked) return;
+        
+        this.lastFireTime = now;
+        
+        // Create projectile at player position
+        const projectile = new Projectile(
+            this,
+            this.player.getX(),
+            this.player.getY(),
+            this.player.container.rotation,
+            500
+        );
+        
+        this.projectiles.push(projectile);
     }
     
     attemptDocking() {
@@ -303,6 +349,14 @@ export default class GameScene extends Phaser.Scene {
         
         // Update NPCs
         this.npcs.forEach(npc => npc.update(time, delta));
+        
+        // Update projectiles
+        this.projectiles = this.projectiles.filter(proj => proj.update());
+        
+        // Check for fire key
+        if (this.fireKey.isDown) {
+            this.fireWeapon();
+        }
         
         // Show/hide dock button based on range
         if (inDockingRange && !this.isDocked) {

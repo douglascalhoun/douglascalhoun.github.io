@@ -2,18 +2,23 @@ export default class Player {
     constructor(scene, x, y) {
         this.scene = scene;
         
+        // Add a HUGE visible circle to debug positioning
+        this.debugCircle = scene.add.circle(0, 0, 100, 0xff00ff, 1);
+        this.debugCircle.setDepth(1000);
+        
         // Create ship sprite - much larger and bright yellow
         this.sprite = scene.add.graphics();
         this.sprite.fillStyle(0xffff00, 1);  // Bright yellow
-        this.sprite.fillTriangle(0, -25, -15, 15, 15, 15);  // Larger triangle
+        this.sprite.fillTriangle(0, -40, -25, 25, 25, 25);  // Even larger triangle
         // Add cockpit detail
         this.sprite.fillStyle(0xff0000, 1);
-        this.sprite.fillCircle(0, -5, 5);
+        this.sprite.fillCircle(0, -10, 8);
         this.sprite.setPosition(x, y);
         
         this.container = scene.add.container(x, y);
+        this.container.add(this.debugCircle);
         this.container.add(this.sprite);
-        this.container.setDepth(10);  // Ensure it's visible above background
+        this.container.setDepth(1000);  // Put it way on top
         scene.physics.world.enable(this.container);
         
         this.body = this.container.body;

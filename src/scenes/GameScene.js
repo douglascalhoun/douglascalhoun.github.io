@@ -327,13 +327,18 @@ export default class GameScene extends Phaser.Scene {
     
     createDebugText() {
         this.debugText = this.add.text(16, 16, '', {
-            fontSize: '14px',
-            fill: '#fff',
+            fontSize: '16px',
+            fill: '#00ff00',
             backgroundColor: '#000',
             padding: { x: 10, y: 5 }
         });
         this.debugText.setScrollFactor(0);
         this.debugText.setDepth(2000);
+        
+        // Add center screen indicator to verify camera/rendering works
+        this.centerMarker = this.add.circle(0, 0, 50, 0x00ffff, 0.5);
+        this.centerMarker.setScrollFactor(0);
+        this.centerMarker.setDepth(2000);
     }
     
     update(time, delta) {

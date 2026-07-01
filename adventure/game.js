@@ -41,27 +41,49 @@ const TILES = {
     SAND: { color: '#FBC02D', walkable: true, emoji: '🏖️' },
     STONE: { color: '#757575', walkable: true, emoji: '🪨' },
     TREASURE: { color: '#FFD700', walkable: true, emoji: '💎', collectible: true },
-    FLOWER: { color: '#81C784', walkable: true, emoji: '🌸' }
+    FLOWER: { color: '#81C784', walkable: true, emoji: '🌸' },
+    HEART: { color: '#FFE5E5', walkable: true, emoji: '❤️', collectible: true }
+};
+
+// Enemy types
+const ENEMY_TYPES = {
+    SLIME: { emoji: '🟢', hp: 2, damage: 1, speed: 800, color: '#4CAF50' },
+    BAT: { emoji: '🦇', hp: 1, damage: 1, speed: 600, color: '#9C27B0' },
+    SKELETON: { emoji: '💀', hp: 3, damage: 2, speed: 1000, color: '#757575' },
+    SPIDER: { emoji: '🕷️', hp: 2, damage: 1, speed: 700, color: '#F44336' }
 };
 
 // Game state
 const game = {
     player: {
-        x: 20, // Start in middle of world
+        x: 20,
         y: 20,
         emoji: '🧙',
+        maxHealth: 6,
+        health: 6,
+        facing: 'down',
+        invulnerable: false,
+        invulnerableUntil: 0
     },
     camera: {
         x: 20,
         y: 20,
     },
+    combat: {
+        attacking: false,
+        attackCooldown: 0,
+        attackRange: 1.5
+    },
     treasures: {
         collected: 0,
         total: 10
     },
+    enemies: [],
     world: [],
     treasurePositions: [],
-    started: false
+    started: false,
+    lastUpdate: Date.now(),
+    animations: []
 };
 
 // Generate procedural world
@@ -168,6 +190,18 @@ function generateWorld() {
         }
     }
     
+    // Place hearts for health recovery
+    const heartSpots = [
+        { x: 10, y: 10 }, { x: 30, y: 10 }, { x: 10, y: 30 }, { x: 30, y: 30 },
+        { x: 20, y: 15 }, { x: 25, y: 20 }
+    ];
+    
+    heartSpots.forEach(({ x, y }) => {
+        if (TILES[game.world[y][x]].walkable && game.world[y][x] !== 'TREASURE') {
+            game.world[y][x] = 'HEART';
+        }
+    });
+    
     // Place treasures in interesting locations
     const treasureSpots = [
         { x: 2, y: 2 }, { x: 37, y: 2 }, { x: 2, y: 37 }, { x: 37, y: 37 }, // Corners
@@ -182,6 +216,52 @@ function generateWorld() {
             game.treasurePositions.push({ x, y });
         }
     });
+    
+    // Spawn enemies
+    spawnEnemies();
+}
+
+// Spawn enemies in the world
+function spawnEnemies() {
+    game.enemies = [];
+    
+    // Spawn different enemy types
+    const enemyCount = 15;
+    const types = Object.keys(ENEMY_TYPES);
+    
+    for (let i = 0; i < enemyCount; i++) {
+        const type = types[Math.floor(Math.random() * types.length)];
+        const enemyData = ENEMY_TYPES[type];
+        
+        // Find a valid spawn position (walkable, not near player)
+        let x, y, attempts = 0;
+        do {
+            x = Math.floor(Math.random() * WORLD_WIDTH);
+            y = Math.floor(Math.random() * WORLD_HEIGHT);
+            const distFromPlayer = Math.sqrt((x - game.player.x) ** 2 + (y - game.player.y) ** 2);
+            attempts++;
+            
+            if (attempts > 100) break; // Prevent infinite loop
+            
+        } while (
+            !TILES[game.world[y][x]].walkable || 
+            game.world[y][x] === 'TREASURE' ||
+            game.world[y][x] === 'HEART' ||
+            distFromPlayer < 5 // Don't spawn too close to player
+        );
+        
+        if (attempts <= 100) {
+            game.enemies.push({
+                type,
+                x,
+                y,
+                hp: enemyData.hp,
+                maxHp: enemyData.hp,
+                lastMove: Date.now(),
+                alive: true
+            });
+        }
+    }
 }
 
 // Camera follows player smoothly
@@ -232,9 +312,59 @@ function draw() {
         }
     }
     
+    // Draw enemies
+    game.enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+        
+        const enemyData = ENEMY_TYPES[enemy.type];
+        const screenX = enemy.x * TILE_SIZE + offsetX;
+        const screenY = enemy.y * TILE_SIZE + offsetY;
+        
+        // Skip if off-screen
+        if (screenX < -TILE_SIZE || screenX > canvasWidth + TILE_SIZE ||
+            screenY < -TILE_SIZE || screenY > canvasHeight + TILE_SIZE) {
+            return;
+        }
+        
+        // Draw shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.beginPath();
+        ctx.ellipse(screenX + TILE_SIZE/2, screenY + TILE_SIZE*0.8, TILE_SIZE*0.3, TILE_SIZE*0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw enemy
+        ctx.font = `${TILE_SIZE * 0.7}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+            enemyData.emoji,
+            screenX + TILE_SIZE / 2,
+            screenY + TILE_SIZE / 2
+        );
+        
+        // Draw health bar if damaged
+        if (enemy.hp < enemy.maxHp) {
+            const barWidth = TILE_SIZE * 0.8;
+            const barHeight = 6;
+            const barX = screenX + (TILE_SIZE - barWidth) / 2;
+            const barY = screenY + TILE_SIZE * 0.15;
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+            
+            ctx.fillStyle = '#F44336';
+            ctx.fillRect(barX + 1, barY + 1, (barWidth - 2) * (enemy.hp / enemy.maxHp), barHeight - 2);
+        }
+    });
+    
     // Draw player at center with glow
     const playerScreenX = canvasWidth / 2;
     const playerScreenY = canvasHeight / 2;
+    
+    // Flash when invulnerable
+    if (game.player.invulnerable && Math.floor(Date.now() / 100) % 2 === 0) {
+        ctx.globalAlpha = 0.5;
+    }
     
     ctx.shadowColor = '#FFD700';
     ctx.shadowBlur = 20;
@@ -243,12 +373,61 @@ function draw() {
     ctx.textBaseline = 'middle';
     ctx.fillText(game.player.emoji, playerScreenX, playerScreenY);
     ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
+    
+    // Draw sword attack animation
+    if (game.combat.attacking) {
+        const swordAngle = {
+            'up': -Math.PI / 2,
+            'down': Math.PI / 2,
+            'left': Math.PI,
+            'right': 0
+        }[game.player.facing];
+        
+        const swordDist = TILE_SIZE * 0.8;
+        const swordX = playerScreenX + Math.cos(swordAngle) * swordDist;
+        const swordY = playerScreenY + Math.sin(swordAngle) * swordDist;
+        
+        ctx.font = `${TILE_SIZE * 0.6}px Arial`;
+        ctx.save();
+        ctx.translate(swordX, swordY);
+        ctx.rotate(swordAngle);
+        ctx.fillText('⚔️', 0, 0);
+        ctx.restore();
+    }
+    
+    // Draw damage numbers
+    game.animations = game.animations.filter(anim => {
+        const age = Date.now() - anim.startTime;
+        if (age > anim.duration) return false;
+        
+        const progress = age / anim.duration;
+        const screenX = anim.x * TILE_SIZE + offsetX;
+        const screenY = anim.y * TILE_SIZE + offsetY - progress * 30;
+        
+        ctx.globalAlpha = 1 - progress;
+        ctx.font = 'bold 24px Arial';
+        ctx.fillStyle = anim.color;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText(anim.text, screenX + TILE_SIZE/2, screenY);
+        ctx.fillText(anim.text, screenX + TILE_SIZE/2, screenY);
+        ctx.globalAlpha = 1.0;
+        
+        return true;
+    });
 }
 
 // Move player in the world
 function movePlayer(dx, dy) {
     const newX = game.player.x + dx;
     const newY = game.player.y + dy;
+    
+    // Update facing direction
+    if (dx > 0) game.player.facing = 'right';
+    else if (dx < 0) game.player.facing = 'left';
+    else if (dy > 0) game.player.facing = 'down';
+    else if (dy < 0) game.player.facing = 'up';
     
     // Check world bounds
     if (newX < 0 || newX >= WORLD_WIDTH || newY < 0 || newY >= WORLD_HEIGHT) {
@@ -263,6 +442,12 @@ function movePlayer(dx, dy) {
         return false;
     }
     
+    // Check for enemy collision
+    const enemyAtTarget = game.enemies.find(e => e.alive && e.x === newX && e.y === newY);
+    if (enemyAtTarget) {
+        return false;
+    }
+    
     // Move player
     game.player.x = newX;
     game.player.y = newY;
@@ -274,6 +459,7 @@ function movePlayer(dx, dy) {
     if (tileType.collectible && targetTile === 'TREASURE') {
         game.world[newY][newX] = 'GRASS';
         game.treasures.collected++;
+        addAnimation(newX, newY, '+💎', '#FFD700', 800);
         
         // Victory check
         if (game.treasures.collected === game.treasures.total) {
@@ -284,30 +470,222 @@ function movePlayer(dx, dy) {
         }
     }
     
+    // Check for heart
+    if (targetTile === 'HEART') {
+        if (game.player.health < game.player.maxHealth) {
+            game.world[newY][newX] = 'GRASS';
+            game.player.health = Math.min(game.player.maxHealth, game.player.health + 2);
+            addAnimation(newX, newY, '+2❤️', '#F44336', 800);
+        }
+    }
+    
     // Update UI
     updateHUD();
     draw();
     return true;
 }
 
+// Player attack
+function playerAttack() {
+    if (game.combat.attackCooldown > Date.now() || game.combat.attacking) {
+        return;
+    }
+    
+    game.combat.attacking = true;
+    game.combat.attackCooldown = Date.now() + 500;
+    
+    // Calculate attack position based on facing
+    const attackOffsets = {
+        'up': { x: 0, y: -1 },
+        'down': { x: 0, y: 1 },
+        'left': { x: -1, y: 0 },
+        'right': { x: 1, y: 0 }
+    };
+    
+    const offset = attackOffsets[game.player.facing];
+    const attackX = game.player.x + offset.x;
+    const attackY = game.player.y + offset.y;
+    
+    // Check for enemies in attack range
+    game.enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+        
+        const dist = Math.sqrt((enemy.x - attackX) ** 2 + (enemy.y - attackY) ** 2);
+        if (dist < game.combat.attackRange) {
+            enemy.hp -= 1;
+            addAnimation(enemy.x, enemy.y, '-1', '#FFF', 600);
+            
+            if (enemy.hp <= 0) {
+                enemy.alive = false;
+                addAnimation(enemy.x, enemy.y, '💥', '#FF9800', 800);
+            }
+        }
+    });
+    
+    setTimeout(() => {
+        game.combat.attacking = false;
+    }, 200);
+    
+    draw();
+}
+
+// Enemy AI and movement
+function updateEnemies() {
+    const now = Date.now();
+    
+    game.enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+        
+        const enemyData = ENEMY_TYPES[enemy.type];
+        
+        // Check if it's time to move
+        if (now - enemy.lastMove < enemyData.speed) {
+            return;
+        }
+        
+        enemy.lastMove = now;
+        
+        // Calculate distance to player
+        const dx = game.player.x - enemy.x;
+        const dy = game.player.y - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // If player is close, move towards them
+        if (dist < 8) {
+            let moveX = 0, moveY = 0;
+            
+            if (Math.abs(dx) > Math.abs(dy)) {
+                moveX = dx > 0 ? 1 : -1;
+            } else {
+                moveY = dy > 0 ? 1 : -1;
+            }
+            
+            const newX = enemy.x + moveX;
+            const newY = enemy.y + moveY;
+            
+            // Check if new position is valid
+            if (newX >= 0 && newX < WORLD_WIDTH && newY >= 0 && newY < WORLD_HEIGHT) {
+                const targetTile = game.world[newY][newX];
+                const blocked = !TILES[targetTile].walkable || 
+                               game.enemies.some(e => e.alive && e !== enemy && e.x === newX && e.y === newY);
+                
+                if (!blocked) {
+                    enemy.x = newX;
+                    enemy.y = newY;
+                    
+                    // Check collision with player
+                    if (enemy.x === game.player.x && enemy.y === game.player.y) {
+                        damagePlayer(enemyData.damage);
+                    }
+                }
+            }
+        } else {
+            // Random movement when far from player
+            if (Math.random() < 0.3) {
+                const dirs = [{x:0,y:-1}, {x:0,y:1}, {x:-1,y:0}, {x:1,y:0}];
+                const dir = dirs[Math.floor(Math.random() * dirs.length)];
+                const newX = enemy.x + dir.x;
+                const newY = enemy.y + dir.y;
+                
+                if (newX >= 0 && newX < WORLD_WIDTH && newY >= 0 && newY < WORLD_HEIGHT) {
+                    const targetTile = game.world[newY][newX];
+                    if (TILES[targetTile].walkable) {
+                        enemy.x = newX;
+                        enemy.y = newY;
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Damage player
+function damagePlayer(damage) {
+    if (game.player.invulnerable) return;
+    
+    game.player.health -= damage;
+    game.player.invulnerable = true;
+    game.player.invulnerableUntil = Date.now() + 1500;
+    
+    addAnimation(game.player.x, game.player.y, `-${damage}`, '#F44336', 800);
+    
+    setTimeout(() => {
+        game.player.invulnerable = false;
+    }, 1500);
+    
+    if (game.player.health <= 0) {
+        game.player.health = 0;
+        setTimeout(() => {
+            alert('💀 Game Over! You were defeated...');
+            resetGame();
+        }, 100);
+    }
+    
+    updateHUD();
+}
+
+// Add animation
+function addAnimation(x, y, text, color, duration) {
+    game.animations.push({
+        x, y, text, color, duration,
+        startTime: Date.now()
+    });
+}
+
 // Update HUD display
 function updateHUD() {
     document.getElementById('treasures').textContent = 
         `${game.treasures.collected} / ${game.treasures.total}`;
-    document.getElementById('position').textContent = 
-        `${game.player.x}, ${game.player.y}`;
+    
+    // Draw hearts
+    const heartsHTML = [];
+    const fullHearts = Math.floor(game.player.health / 2);
+    const halfHeart = game.player.health % 2;
+    const emptyHearts = Math.floor((game.player.maxHealth - game.player.health) / 2);
+    
+    for (let i = 0; i < fullHearts; i++) {
+        heartsHTML.push('❤️');
+    }
+    if (halfHeart) {
+        heartsHTML.push('💔');
+    }
+    for (let i = 0; i < emptyHearts; i++) {
+        heartsHTML.push('🖤');
+    }
+    
+    document.getElementById('health').innerHTML = heartsHTML.join(' ');
 }
 
 // Reset game
 function resetGame() {
     game.player.x = 20;
     game.player.y = 20;
+    game.player.health = game.player.maxHealth;
+    game.player.facing = 'down';
+    game.player.invulnerable = false;
     game.treasures.collected = 0;
     game.treasurePositions = [];
+    game.enemies = [];
+    game.animations = [];
+    game.combat.attacking = false;
+    game.combat.attackCooldown = 0;
     generateWorld();
     updateCamera();
     updateHUD();
     draw();
+}
+
+// Game loop for enemy updates
+function gameLoop() {
+    if (!game.started) {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+    
+    updateEnemies();
+    draw();
+    
+    requestAnimationFrame(gameLoop);
 }
 
 // Handle button controls
@@ -315,7 +693,11 @@ document.querySelectorAll('.control-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.preventDefault();
         const dir = btn.dataset.dir;
-        if (dir) handleDirection(dir);
+        if (dir) {
+            handleDirection(dir);
+        } else if (btn.dataset.action === 'attack') {
+            playerAttack();
+        }
     });
 });
 
@@ -336,6 +718,9 @@ document.addEventListener('keydown', (e) => {
     if (dir && game.started) {
         e.preventDefault();
         handleDirection(dir);
+    } else if ((e.key === ' ' || e.key === 'Spacebar') && game.started) {
+        e.preventDefault();
+        playerAttack();
     }
 });
 
@@ -344,17 +729,27 @@ let touchStartX = 0;
 let touchStartY = 0;
 let touchEndX = 0;
 let touchEndY = 0;
+let touchStartTime = 0;
 
 canvas.addEventListener('touchstart', (e) => {
     touchStartX = e.changedTouches[0].clientX;
     touchStartY = e.changedTouches[0].clientY;
+    touchStartTime = Date.now();
 }, { passive: true });
 
 canvas.addEventListener('touchend', (e) => {
     touchEndX = e.changedTouches[0].clientX;
     touchEndY = e.changedTouches[0].clientY;
+    const touchDuration = Date.now() - touchStartTime;
+    
     if (game.started) {
-        handleSwipe();
+        // Quick tap = attack
+        if (touchDuration < 200 && Math.abs(touchEndX - touchStartX) < 10 && Math.abs(touchEndY - touchStartY) < 10) {
+            playerAttack();
+        } else {
+            // Swipe = move
+            handleSwipe();
+        }
     }
 }, { passive: true });
 
@@ -404,6 +799,8 @@ generateWorld();
 updateCamera();
 updateHUD();
 draw();
+gameLoop();
 
 console.log('🗺️ Tile Adventure loaded! Explore the scrolling world!');
 console.log(`World size: ${WORLD_WIDTH}x${WORLD_HEIGHT} tiles`);
+console.log('🎮 Tap to attack, swipe to move!');

@@ -1,4 +1,5 @@
 import Player from '../entities/Player.js';
+import Station from '../entities/Station.js';
 import VirtualJoystick from '../utils/VirtualJoystick.js';
 
 export default class GameScene extends Phaser.Scene {
@@ -13,6 +14,9 @@ export default class GameScene extends Phaser.Scene {
         this.createStarField(worldSize);
         this.createPlanet(worldSize / 2, worldSize / 2, 300);
         this.createSystemBoundary(worldSize / 2, worldSize / 2, worldSize * 0.45);
+        
+        // Add station near the planet
+        this.station = new Station(this, worldSize / 2 + 600, worldSize / 2 - 400, "Outpost Alpha");
         
         this.player = new Player(this, worldSize / 2 - 800, worldSize / 2);
         

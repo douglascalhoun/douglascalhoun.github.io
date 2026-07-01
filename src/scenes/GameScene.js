@@ -1,6 +1,7 @@
 import Player from '../entities/Player.js';
 import Station from '../entities/Station.js';
 import NPCShip from '../entities/NPCShip.js';
+import Projectile from '../entities/Projectile.js';
 import VirtualJoystick from '../utils/VirtualJoystick.js';
 
 export default class GameScene extends Phaser.Scene {
@@ -19,6 +20,12 @@ export default class GameScene extends Phaser.Scene {
         // Add station near the planet
         this.station = new Station(this, worldSize / 2 + 600, worldSize / 2 - 400, "Outpost Alpha");
         
+        // Add NPC ships
+        this.npcs = [];
+        this.npcs.push(new NPCShip(this, worldSize / 2 + 300, worldSize / 2 + 500, 'trader'));
+        this.npcs.push(new NPCShip(this, worldSize / 2 - 500, worldSize / 2 + 300, 'trader'));
+        this.npcs.push(new NPCShip(this, worldSize / 2 + 800, worldSize / 2 - 600, 'fighter'));
+        
         this.player = new Player(this, worldSize / 2 - 800, worldSize / 2);
         
         this.cameras.main.startFollow(this.player.container, true, 0.1, 0.1);
@@ -32,9 +39,15 @@ export default class GameScene extends Phaser.Scene {
         this.isDocked = false;
         this.dockingUI = null;
         
+        // Projectiles
+        this.projectiles = [];
+        this.lastFireTime = 0;
+        this.fireRate = 250; // ms between shots
+        
         // Setup keyboard controls
         this.cursors = this.input.keyboard.createCursorKeys();
         this.dockKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+        this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         
         this.scale.on('resize', this.onResize, this);
     }
@@ -287,6 +300,9 @@ export default class GameScene extends Phaser.Scene {
         
         // Update station
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
+        
+        // Update NPCs
+        this.npcs.forEach(npc => npc.update(time, delta));
         
         // Show/hide dock button based on range
         if (inDockingRange && !this.isDocked) {

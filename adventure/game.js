@@ -53,6 +53,60 @@ const ENEMY_TYPES = {
     SPIDER: { emoji: '🕷️', hp: 2, damage: 1, speed: 700, color: '#F44336' }
 };
 
+// Item types
+const ITEM_TYPES = {
+    SWORD: { 
+        emoji: '⚔️', 
+        name: 'Iron Sword', 
+        damage: 1, 
+        description: 'A basic sword',
+        equipped: false 
+    },
+    SHIELD: { 
+        emoji: '🛡️', 
+        name: 'Wooden Shield', 
+        defense: 1, 
+        description: 'Blocks some damage',
+        equipped: false 
+    },
+    BOW: { 
+        emoji: '🏹', 
+        name: 'Wooden Bow', 
+        damage: 2, 
+        ranged: true,
+        description: 'Shoots arrows at range',
+        equipped: false 
+    },
+    POTION: { 
+        emoji: '🧪', 
+        name: 'Health Potion', 
+        healing: 4, 
+        consumable: true,
+        description: 'Restores 2 hearts' 
+    },
+    KEY: { 
+        emoji: '🔑', 
+        name: 'Golden Key', 
+        special: true,
+        description: 'Opens locked doors' 
+    },
+    BOMB: { 
+        emoji: '💣', 
+        name: 'Bomb', 
+        damage: 3, 
+        aoe: true,
+        consumable: true,
+        description: 'Destroys obstacles and enemies' 
+    },
+    BOOTS: { 
+        emoji: '👢', 
+        name: 'Speed Boots', 
+        speed: 2,
+        equipped: false,
+        description: 'Move faster' 
+    }
+};
+
 // Game state
 const game = {
     player: {
@@ -63,7 +117,8 @@ const game = {
         health: 6,
         facing: 'down',
         invulnerable: false,
-        invulnerableUntil: 0
+        invulnerableUntil: 0,
+        coins: 0
     },
     camera: {
         x: 20,
@@ -72,18 +127,26 @@ const game = {
     combat: {
         attacking: false,
         attackCooldown: 0,
-        attackRange: 1.5
+        attackRange: 1.5,
+        attackDamage: 1
+    },
+    inventory: {
+        items: [],
+        maxSize: 20,
+        selectedSlot: 0
     },
     treasures: {
         collected: 0,
         total: 10
     },
     enemies: [],
+    items: [], // Items in the world
     world: [],
     treasurePositions: [],
     started: false,
     lastUpdate: Date.now(),
-    animations: []
+    animations: [],
+    showInventory: false
 };
 
 // Generate procedural world
@@ -219,6 +282,37 @@ function generateWorld() {
     
     // Spawn enemies
     spawnEnemies();
+    
+    // Spawn items in the world
+    spawnItems();
+}
+
+// Spawn items in the world
+function spawnItems() {
+    game.items = [];
+    
+    const itemPlacements = [
+        { type: 'SWORD', x: 8, y: 8 },
+        { type: 'SHIELD', x: 32, y: 8 },
+        { type: 'BOW', x: 8, y: 32 },
+        { type: 'POTION', x: 32, y: 32 },
+        { type: 'POTION', x: 20, y: 12 },
+        { type: 'KEY', x: 15, y: 15 },
+        { type: 'BOMB', x: 25, y: 25 },
+        { type: 'BOMB', x: 12, y: 28 },
+        { type: 'BOOTS', x: 28, y: 12 }
+    ];
+    
+    itemPlacements.forEach(({ type, x, y }) => {
+        if (TILES[game.world[y][x]].walkable) {
+            game.items.push({
+                type,
+                x,
+                y,
+                collected: false
+            });
+        }
+    });
 }
 
 // Spawn enemies in the world
@@ -357,6 +451,39 @@ function draw() {
         }
     });
     
+    // Draw items in world
+    game.items.forEach(item => {
+        if (item.collected) return;
+        
+        const itemData = ITEM_TYPES[item.type];
+        const screenX = item.x * TILE_SIZE + offsetX;
+        const screenY = item.y * TILE_SIZE + offsetY;
+        
+        // Skip if off-screen
+        if (screenX < -TILE_SIZE || screenX > canvasWidth + TILE_SIZE ||
+            screenY < -TILE_SIZE || screenY > canvasHeight + TILE_SIZE) {
+            return;
+        }
+        
+        // Draw glowing effect
+        const pulse = Math.sin(Date.now() / 300) * 0.3 + 0.7;
+        ctx.globalAlpha = pulse;
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur = 15;
+        
+        ctx.font = `${TILE_SIZE * 0.6}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+            itemData.emoji,
+            screenX + TILE_SIZE / 2,
+            screenY + TILE_SIZE / 2
+        );
+        
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1.0;
+    });
+    
     // Draw player at center with glow
     const playerScreenX = canvasWidth / 2;
     const playerScreenY = canvasHeight / 2;
@@ -416,6 +543,115 @@ function draw() {
         
         return true;
     });
+    
+    // Draw inventory overlay if open
+    if (game.showInventory) {
+        drawInventory();
+    }
+}
+
+// Draw inventory UI
+function drawInventory() {
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    const invWidth = Math.min(600, canvasWidth - 40);
+    const invHeight = Math.min(500, canvasHeight - 100);
+    const invX = (canvasWidth - invWidth) / 2;
+    const invY = (canvasHeight - invHeight) / 2;
+    
+    // Inventory background
+    ctx.fillStyle = '#1a1a2e';
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 4;
+    ctx.fillRect(invX, invY, invWidth, invHeight);
+    ctx.strokeRect(invX, invY, invWidth, invHeight);
+    
+    // Title
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎒 INVENTORY', canvasWidth / 2, invY + 40);
+    
+    // Coins display
+    ctx.font = 'bold 24px Arial';
+    ctx.fillStyle = '#FFF';
+    ctx.fillText(`💰 ${game.player.coins}`, canvasWidth / 2, invY + 75);
+    
+    // Item grid
+    const cols = 5;
+    const rows = 3;
+    const cellSize = Math.min(80, (invWidth - 60) / cols);
+    const gridX = invX + (invWidth - cols * cellSize) / 2;
+    const gridY = invY + 100;
+    
+    for (let i = 0; i < cols * rows; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = gridX + col * cellSize;
+        const y = gridY + row * cellSize;
+        
+        // Cell background
+        ctx.fillStyle = i === game.inventory.selectedSlot ? '#FFD700' : '#2d2d44';
+        ctx.fillRect(x, y, cellSize - 4, cellSize - 4);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, cellSize - 4, cellSize - 4);
+        
+        // Draw item if exists
+        if (game.inventory.items[i]) {
+            const item = game.inventory.items[i];
+            const itemData = ITEM_TYPES[item.type];
+            
+            ctx.font = `${cellSize * 0.5}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(
+                itemData.emoji,
+                x + (cellSize - 4) / 2,
+                y + (cellSize - 4) / 2
+            );
+            
+            // Quantity for consumables
+            if (item.quantity > 1) {
+                ctx.font = 'bold 16px Arial';
+                ctx.fillStyle = '#FFF';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.strokeText(`${item.quantity}`, x + cellSize - 20, y + cellSize - 15);
+                ctx.fillText(`${item.quantity}`, x + cellSize - 20, y + cellSize - 15);
+            }
+        }
+    }
+    
+    // Selected item description
+    if (game.inventory.items[game.inventory.selectedSlot]) {
+        const item = game.inventory.items[game.inventory.selectedSlot];
+        const itemData = ITEM_TYPES[item.type];
+        
+        const descY = gridY + rows * cellSize + 30;
+        
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(itemData.name, canvasWidth / 2, descY);
+        
+        ctx.fillStyle = '#FFF';
+        ctx.font = '18px Arial';
+        ctx.fillText(itemData.description, canvasWidth / 2, descY + 30);
+        
+        // Controls hint
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#AAA';
+        ctx.fillText('Tap item or press E to use/equip', canvasWidth / 2, descY + 60);
+    }
+    
+    // Close hint
+    ctx.font = '16px Arial';
+    ctx.fillStyle = '#AAA';
+    ctx.textAlign = 'center';
+    ctx.fillText('Press I or tap outside to close', canvasWidth / 2, invY + invHeight - 20);
 }
 
 // Move player in the world
@@ -479,10 +715,118 @@ function movePlayer(dx, dy) {
         }
     }
     
+    // Check for items
+    const itemAtPos = game.items.find(item => !item.collected && item.x === newX && item.y === newY);
+    if (itemAtPos) {
+        pickupItem(itemAtPos);
+    }
+    
     // Update UI
     updateHUD();
     draw();
     return true;
+}
+
+// Pickup item
+function pickupItem(worldItem) {
+    const itemData = ITEM_TYPES[worldItem.type];
+    
+    // Check if consumable and already have it - stack it
+    if (itemData.consumable) {
+        const existing = game.inventory.items.find(item => item.type === worldItem.type);
+        if (existing) {
+            existing.quantity = (existing.quantity || 1) + 1;
+        } else {
+            game.inventory.items.push({
+                type: worldItem.type,
+                quantity: 1
+            });
+        }
+    } else {
+        // Add to inventory if space
+        if (game.inventory.items.length < game.inventory.maxSize) {
+            game.inventory.items.push({
+                type: worldItem.type,
+                quantity: 1
+            });
+        } else {
+            addAnimation(game.player.x, game.player.y, 'Full!', '#FF9800', 800);
+            return;
+        }
+    }
+    
+    worldItem.collected = true;
+    addAnimation(worldItem.x, worldItem.y, `+${itemData.emoji}`, '#FFD700', 1000);
+}
+
+// Use/equip item
+function useItem(slot) {
+    const item = game.inventory.items[slot];
+    if (!item) return;
+    
+    const itemData = ITEM_TYPES[item.type];
+    
+    // Consumables
+    if (itemData.consumable) {
+        if (itemData.healing) {
+            // Health potion
+            if (game.player.health < game.player.maxHealth) {
+                game.player.health = Math.min(game.player.maxHealth, game.player.health + itemData.healing);
+                addAnimation(game.player.x, game.player.y, `+${itemData.healing/2}❤️`, '#F44336', 800);
+                item.quantity--;
+                if (item.quantity <= 0) {
+                    game.inventory.items.splice(slot, 1);
+                }
+                updateHUD();
+            }
+        } else if (itemData.aoe) {
+            // Bomb - damage nearby enemies
+            game.enemies.forEach(enemy => {
+                if (!enemy.alive) return;
+                const dist = Math.sqrt((enemy.x - game.player.x) ** 2 + (enemy.y - game.player.y) ** 2);
+                if (dist < 3) {
+                    enemy.hp -= itemData.damage;
+                    addAnimation(enemy.x, enemy.y, `-${itemData.damage}`, '#FF9800', 600);
+                    if (enemy.hp <= 0) {
+                        enemy.alive = false;
+                        addAnimation(enemy.x, enemy.y, '💥', '#FF9800', 800);
+                        game.player.coins += 5;
+                    }
+                }
+            });
+            item.quantity--;
+            if (item.quantity <= 0) {
+                game.inventory.items.splice(slot, 1);
+            }
+            addAnimation(game.player.x, game.player.y, '💥', '#FF9800', 1000);
+        }
+    } else {
+        // Equipment - toggle equip
+        itemData.equipped = !itemData.equipped;
+        
+        // Update stats based on equipment
+        updatePlayerStats();
+        
+        addAnimation(game.player.x, game.player.y, itemData.equipped ? 'Equipped!' : 'Unequipped', '#FFD700', 800);
+    }
+    
+    draw();
+}
+
+// Update player stats based on equipped items
+function updatePlayerStats() {
+    // Base damage
+    game.combat.attackDamage = 1;
+    
+    // Check equipped items
+    game.inventory.items.forEach(item => {
+        const itemData = ITEM_TYPES[item.type];
+        if (itemData.equipped) {
+            if (itemData.damage) {
+                game.combat.attackDamage += itemData.damage;
+            }
+        }
+    });
 }
 
 // Player attack
@@ -512,12 +856,15 @@ function playerAttack() {
         
         const dist = Math.sqrt((enemy.x - attackX) ** 2 + (enemy.y - attackY) ** 2);
         if (dist < game.combat.attackRange) {
-            enemy.hp -= 1;
-            addAnimation(enemy.x, enemy.y, '-1', '#FFF', 600);
+            enemy.hp -= game.combat.attackDamage;
+            addAnimation(enemy.x, enemy.y, `-${game.combat.attackDamage}`, '#FFF', 600);
             
             if (enemy.hp <= 0) {
                 enemy.alive = false;
                 addAnimation(enemy.x, enemy.y, '💥', '#FF9800', 800);
+                // Drop coins
+                game.player.coins += Math.floor(Math.random() * 5) + 3;
+                updateHUD();
             }
         }
     });
@@ -654,6 +1001,7 @@ function updateHUD() {
     }
     
     document.getElementById('health').innerHTML = heartsHTML.join(' ');
+    document.getElementById('coins').textContent = game.player.coins;
 }
 
 // Reset game
@@ -663,12 +1011,18 @@ function resetGame() {
     game.player.health = game.player.maxHealth;
     game.player.facing = 'down';
     game.player.invulnerable = false;
+    game.player.coins = 0;
     game.treasures.collected = 0;
     game.treasurePositions = [];
     game.enemies = [];
+    game.items = [];
+    game.inventory.items = [];
+    game.inventory.selectedSlot = 0;
     game.animations = [];
     game.combat.attacking = false;
     game.combat.attackCooldown = 0;
+    game.combat.attackDamage = 1;
+    game.showInventory = false;
     generateWorld();
     updateCamera();
     updateHUD();
@@ -693,10 +1047,15 @@ document.querySelectorAll('.control-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.preventDefault();
         const dir = btn.dataset.dir;
-        if (dir) {
+        const action = btn.dataset.action;
+        
+        if (dir && !game.showInventory) {
             handleDirection(dir);
-        } else if (btn.dataset.action === 'attack') {
+        } else if (action === 'attack' && !game.showInventory) {
             playerAttack();
+        } else if (action === 'inventory') {
+            game.showInventory = !game.showInventory;
+            draw();
         }
     });
 });
@@ -714,13 +1073,25 @@ document.addEventListener('keydown', (e) => {
         'd': 'right'
     };
     
-    const dir = keyMap[e.key];
-    if (dir && game.started) {
+    const dir = keyMap[e.key.toLowerCase()];
+    if (dir && game.started && !game.showInventory) {
         e.preventDefault();
         handleDirection(dir);
-    } else if ((e.key === ' ' || e.key === 'Spacebar') && game.started) {
+    } else if ((e.key === ' ' || e.key === 'Spacebar') && game.started && !game.showInventory) {
         e.preventDefault();
         playerAttack();
+    } else if (e.key.toLowerCase() === 'i' && game.started) {
+        e.preventDefault();
+        game.showInventory = !game.showInventory;
+        draw();
+    } else if (e.key.toLowerCase() === 'e' && game.started && game.showInventory) {
+        e.preventDefault();
+        useItem(game.inventory.selectedSlot);
+    } else if (game.showInventory && ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].includes(e.key)) {
+        e.preventDefault();
+        const slot = e.key === '0' ? 9 : parseInt(e.key) - 1;
+        game.inventory.selectedSlot = slot;
+        draw();
     }
 });
 
@@ -742,16 +1113,57 @@ canvas.addEventListener('touchend', (e) => {
     touchEndY = e.changedTouches[0].clientY;
     const touchDuration = Date.now() - touchStartTime;
     
-    if (game.started) {
-        // Quick tap = attack
-        if (touchDuration < 200 && Math.abs(touchEndX - touchStartX) < 10 && Math.abs(touchEndY - touchStartY) < 10) {
-            playerAttack();
-        } else {
-            // Swipe = move
-            handleSwipe();
-        }
+    if (!game.started) return;
+    
+    // If inventory is open, handle inventory taps
+    if (game.showInventory) {
+        handleInventoryTouch(touchEndX, touchEndY);
+        return;
+    }
+    
+    // Quick tap = attack
+    if (touchDuration < 200 && Math.abs(touchEndX - touchStartX) < 10 && Math.abs(touchEndY - touchStartY) < 10) {
+        playerAttack();
+    } else {
+        // Swipe = move
+        handleSwipe();
     }
 }, { passive: true });
+
+function handleInventoryTouch(x, y) {
+    const invWidth = Math.min(600, canvasWidth - 40);
+    const invHeight = Math.min(500, canvasHeight - 100);
+    const invX = (canvasWidth - invWidth) / 2;
+    const invY = (canvasHeight - invHeight) / 2;
+    
+    // Check if tap is outside inventory - close it
+    if (x < invX || x > invX + invWidth || y < invY || y > invY + invHeight) {
+        game.showInventory = false;
+        draw();
+        return;
+    }
+    
+    // Check if tap is on an item slot
+    const cols = 5;
+    const cellSize = Math.min(80, (invWidth - 60) / cols);
+    const gridX = invX + (invWidth - cols * cellSize) / 2;
+    const gridY = invY + 100;
+    
+    const col = Math.floor((x - gridX) / cellSize);
+    const row = Math.floor((y - gridY) / cellSize);
+    
+    if (col >= 0 && col < cols && row >= 0 && row < 3) {
+        const slot = row * cols + col;
+        if (slot < game.inventory.maxSize) {
+            if (game.inventory.items[slot]) {
+                // Use the item
+                useItem(slot);
+            }
+            game.inventory.selectedSlot = slot;
+            draw();
+        }
+    }
+}
 
 function handleSwipe() {
     const deltaX = touchEndX - touchStartX;

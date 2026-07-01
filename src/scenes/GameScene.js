@@ -1,5 +1,6 @@
 import Player from '../entities/Player.js';
 import Station from '../entities/Station.js';
+import NPCShip from '../entities/NPCShip.js';
 import VirtualJoystick from '../utils/VirtualJoystick.js';
 
 export default class GameScene extends Phaser.Scene {
@@ -150,6 +151,119 @@ export default class GameScene extends Phaser.Scene {
         this.rightLabel.setOrigin(0.5);
         this.rightLabel.setScrollFactor(0);
         this.rightLabel.setDepth(1000);
+    }
+    
+    createDockButton() {
+        // Dock button for mobile
+        this.dockButton = this.add.text(
+            this.scale.width / 2,
+            this.scale.height - 50,
+            'DOCK',
+            {
+                fontSize: '20px',
+                fill: '#00ff00',
+                backgroundColor: '#003300',
+                padding: { x: 20, y: 10 }
+            }
+        );
+        this.dockButton.setOrigin(0.5);
+        this.dockButton.setScrollFactor(0);
+        this.dockButton.setDepth(1500);
+        this.dockButton.setAlpha(0);
+        this.dockButton.setInteractive();
+        
+        this.dockButton.on('pointerdown', () => {
+            this.attemptDocking();
+        });
+    }
+    
+    attemptDocking() {
+        if (this.isDocked) {
+            this.undock();
+        } else {
+            const distance = Phaser.Math.Distance.Between(
+                this.player.getX(),
+                this.player.getY(),
+                this.station.getX(),
+                this.station.getY()
+            );
+            if (distance < 200) {
+                this.dock();
+            }
+        }
+    }
+    
+    dock() {
+        this.isDocked = true;
+        this.showStationUI();
+        this.dockButton.setText('UNDOCK');
+    }
+    
+    undock() {
+        this.isDocked = false;
+        this.hideStationUI();
+        this.dockButton.setText('DOCK');
+    }
+    
+    showStationUI() {
+        if (this.dockingUI) return;
+        
+        // Create docking UI overlay
+        const overlay = this.add.rectangle(
+            this.scale.width / 2,
+            this.scale.height / 2,
+            this.scale.width * 0.8,
+            this.scale.height * 0.6,
+            0x000000,
+            0.9
+        );
+        overlay.setScrollFactor(0);
+        overlay.setDepth(2000);
+        
+        const title = this.add.text(
+            this.scale.width / 2,
+            this.scale.height / 2 - 150,
+            `Welcome to ${this.station.getName()}`,
+            { fontSize: '24px', fill: '#00ff00' }
+        );
+        title.setOrigin(0.5);
+        title.setScrollFactor(0);
+        title.setDepth(2001);
+        
+        const options = this.add.text(
+            this.scale.width / 2,
+            this.scale.height / 2,
+            'Station Services:\n\n' +
+            '• Refuel & Repairs\n' +
+            '• Trade Goods\n' +
+            '• Ship Upgrades\n' +
+            '• Mission Board\n\n' +
+            '(Coming Soon)',
+            {
+                fontSize: '18px',
+                fill: '#ffffff',
+                align: 'center',
+                lineSpacing: 10
+            }
+        );
+        options.setOrigin(0.5);
+        options.setScrollFactor(0);
+        options.setDepth(2001);
+        
+        this.dockingUI = {
+            overlay,
+            title,
+            options
+        };
+    }
+    
+    hideStationUI() {
+        if (this.dockingUI) {
+            this.dockingUI.overlay.destroy();
+            this.dockingUI.title.destroy();
+            this.dockingUI.options.destroy();
+            this.dockingUI = null;
+        }
     }
     
     createDebugText() {

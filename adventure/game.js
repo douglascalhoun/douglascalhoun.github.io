@@ -116,8 +116,6 @@ const game = {
         maxHealth: 6,
         health: 6,
         facing: 'down',
-        invulnerable: false,
-        invulnerableUntil: 0,
         coins: 0
     },
     camera: {
@@ -125,10 +123,11 @@ const game = {
         y: 20,
     },
     combat: {
-        attacking: false,
-        attackCooldown: 0,
-        attackRange: 1.5,
-        attackDamage: 1
+        inCombat: false,
+        currentEnemy: null,
+        playerTurn: true,
+        attackDamage: 1,
+        combatLog: []
     },
     inventory: {
         items: [],
@@ -140,11 +139,10 @@ const game = {
         total: 10
     },
     enemies: [],
-    items: [], // Items in the world
+    items: [],
     world: [],
     treasurePositions: [],
     started: false,
-    lastUpdate: Date.now(),
     animations: [],
     showInventory: false
 };
@@ -521,28 +519,7 @@ function draw() {
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1.0;
     
-    // Draw sword attack animation
-    if (game.combat.attacking) {
-        const swordAngle = {
-            'up': -Math.PI / 2,
-            'down': Math.PI / 2,
-            'left': Math.PI,
-            'right': 0
-        }[game.player.facing];
-        
-        const swordDist = TILE_SIZE * 0.8;
-        const swordX = playerScreenX + Math.cos(swordAngle) * swordDist;
-        const swordY = playerScreenY + Math.sin(swordAngle) * swordDist;
-        
-        ctx.font = `${TILE_SIZE * 0.6}px Arial`;
-        ctx.save();
-        ctx.translate(swordX, swordY);
-        ctx.rotate(swordAngle);
-        ctx.fillText('⚔️', 0, 0);
-        ctx.restore();
-    }
-    
-    // Draw damage numbers
+    // Draw damage numbers and animations
     game.animations = game.animations.filter(anim => {
         const age = Date.now() - anim.startTime;
         if (age > anim.duration) return false;
@@ -562,6 +539,11 @@ function draw() {
         
         return true;
     });
+    
+    // Draw combat UI if in combat
+    if (game.combat.inCombat) {
+        drawCombatUI();
+    }
     
     // Draw inventory overlay if open
     if (game.showInventory) {
@@ -673,8 +655,122 @@ function drawInventory() {
     ctx.fillText('Press I or tap outside to close', canvasWidth / 2, invY + invHeight - 20);
 }
 
+// Draw combat UI
+function drawCombatUI() {
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    const enemy = game.combat.currentEnemy;
+    const enemyData = ENEMY_TYPES[enemy.type];
+    
+    // Combat box
+    const boxWidth = Math.min(500, canvasWidth - 40);
+    const boxHeight = Math.min(400, canvasHeight - 200);
+    const boxX = (canvasWidth - boxWidth) / 2;
+    const boxY = canvasHeight - boxHeight - 20;
+    
+    // Box background
+    ctx.fillStyle = '#1a1a2e';
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 4;
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    
+    // Enemy info at top
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 28px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${enemyData.emoji} ${enemy.type}`, canvasWidth / 2, boxY + 40);
+    
+    // Enemy health bar
+    const healthBarWidth = boxWidth - 80;
+    const healthBarX = boxX + 40;
+    const healthBarY = boxY + 60;
+    
+    ctx.fillStyle = '#333';
+    ctx.fillRect(healthBarX, healthBarY, healthBarWidth, 20);
+    
+    ctx.fillStyle = '#F44336';
+    const healthPercent = enemy.hp / enemy.maxHp;
+    ctx.fillRect(healthBarX, healthBarY, healthBarWidth * healthPercent, 20);
+    
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(healthBarX, healthBarY, healthBarWidth, 20);
+    
+    ctx.fillStyle = '#FFF';
+    ctx.font = '14px Arial';
+    ctx.fillText(`HP: ${enemy.hp}/${enemy.maxHp}`, canvasWidth / 2, healthBarY + 15);
+    
+    // Combat log
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#DDD';
+    let logY = boxY + 110;
+    game.combat.combatLog.forEach(msg => {
+        ctx.fillText(msg, boxX + 30, logY);
+        logY += 25;
+    });
+    
+    // Combat buttons
+    if (game.combat.playerTurn) {
+        const buttonWidth = (boxWidth - 60) / 3;
+        const buttonHeight = 60;
+        const buttonY = boxY + boxHeight - buttonHeight - 20;
+        const buttonGap = 10;
+        
+        const buttons = [
+            { label: '⚔️ Attack', action: 'attack', x: boxX + 20 },
+            { label: '🧪 Item', action: 'item', x: boxX + 20 + buttonWidth + buttonGap },
+            { label: '🏃 Run', action: 'run', x: boxX + 20 + (buttonWidth + buttonGap) * 2 }
+        ];
+        
+        buttons.forEach(btn => {
+            // Button background
+            ctx.fillStyle = '#e94560';
+            ctx.fillRect(btn.x, buttonY, buttonWidth - buttonGap, buttonHeight);
+            
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(btn.x, buttonY, buttonWidth - buttonGap, buttonHeight);
+            
+            // Button text
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(btn.label, btn.x + (buttonWidth - buttonGap) / 2, buttonY + 37);
+            
+            // Store button bounds for touch detection
+            if (!btn.bounds) {
+                btn.bounds = {
+                    x: btn.x,
+                    y: buttonY,
+                    width: buttonWidth - buttonGap,
+                    height: buttonHeight,
+                    action: btn.action
+                };
+            }
+        });
+        
+        // Store buttons for click detection
+        game.combat.buttons = buttons.map(b => b.bounds);
+    } else {
+        // Enemy's turn indicator
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText("Enemy's Turn...", canvasWidth / 2, boxY + boxHeight - 50);
+    }
+}
+
 // Move player in the world
 function movePlayer(dx, dy) {
+    // Can't move during combat or when inventory is open
+    if (game.combat.inCombat || game.showInventory) {
+        return false;
+    }
+    
     const newX = game.player.x + dx;
     const newY = game.player.y + dy;
     
@@ -697,9 +793,10 @@ function movePlayer(dx, dy) {
         return false;
     }
     
-    // Check for enemy collision
+    // Check for enemy - trigger turn-based combat!
     const enemyAtTarget = game.enemies.find(e => e.alive && e.x === newX && e.y === newY);
     if (enemyAtTarget) {
+        startCombat(enemyAtTarget);
         return false;
     }
     
@@ -848,146 +945,129 @@ function updatePlayerStats() {
     });
 }
 
-// Player attack
-function playerAttack() {
-    if (game.combat.attackCooldown > Date.now() || game.combat.attacking) {
-        return;
-    }
+// Turn-Based Combat System
+
+// Start combat with an enemy
+function startCombat(enemy) {
+    game.combat.inCombat = true;
+    game.combat.currentEnemy = enemy;
+    game.combat.playerTurn = true;
+    game.combat.combatLog = [];
     
-    game.combat.attacking = true;
-    game.combat.attackCooldown = Date.now() + 500;
-    
-    // Calculate attack position based on facing
-    const attackOffsets = {
-        'up': { x: 0, y: -1 },
-        'down': { x: 0, y: 1 },
-        'left': { x: -1, y: 0 },
-        'right': { x: 1, y: 0 }
-    };
-    
-    const offset = attackOffsets[game.player.facing];
-    const attackX = game.player.x + offset.x;
-    const attackY = game.player.y + offset.y;
-    
-    // Check for enemies in attack range
-    game.enemies.forEach(enemy => {
-        if (!enemy.alive) return;
-        
-        const dist = Math.sqrt((enemy.x - attackX) ** 2 + (enemy.y - attackY) ** 2);
-        if (dist < game.combat.attackRange) {
-            enemy.hp -= game.combat.attackDamage;
-            addAnimation(enemy.x, enemy.y, `-${game.combat.attackDamage}`, '#FFF', 600);
-            
-            if (enemy.hp <= 0) {
-                enemy.alive = false;
-                addAnimation(enemy.x, enemy.y, '💥', '#FF9800', 800);
-                // Drop coins
-                game.player.coins += Math.floor(Math.random() * 5) + 3;
-                updateHUD();
-            }
-        }
-    });
-    
-    setTimeout(() => {
-        game.combat.attacking = false;
-    }, 200);
+    const enemyData = ENEMY_TYPES[enemy.type];
+    addCombatLog(`⚔️ A wild ${enemy.type} appears!`);
     
     draw();
 }
 
-// Enemy AI and movement
-function updateEnemies() {
-    const now = Date.now();
+// Player chooses to attack
+function combatAttack() {
+    if (!game.combat.playerTurn) return;
     
-    game.enemies.forEach(enemy => {
-        if (!enemy.alive) return;
-        
-        const enemyData = ENEMY_TYPES[enemy.type];
-        
-        // Check if it's time to move
-        if (now - enemy.lastMove < enemyData.speed) {
-            return;
-        }
-        
-        enemy.lastMove = now;
-        
-        // Calculate distance to player
-        const dx = game.player.x - enemy.x;
-        const dy = game.player.y - enemy.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        // If player is close, move towards them
-        if (dist < 8) {
-            let moveX = 0, moveY = 0;
-            
-            if (Math.abs(dx) > Math.abs(dy)) {
-                moveX = dx > 0 ? 1 : -1;
-            } else {
-                moveY = dy > 0 ? 1 : -1;
-            }
-            
-            const newX = enemy.x + moveX;
-            const newY = enemy.y + moveY;
-            
-            // Check if new position is valid
-            if (newX >= 0 && newX < WORLD_WIDTH && newY >= 0 && newY < WORLD_HEIGHT) {
-                const targetTile = game.world[newY][newX];
-                const blocked = !TILES[targetTile].walkable || 
-                               game.enemies.some(e => e.alive && e !== enemy && e.x === newX && e.y === newY);
-                
-                if (!blocked) {
-                    enemy.x = newX;
-                    enemy.y = newY;
-                    
-                    // Check collision with player
-                    if (enemy.x === game.player.x && enemy.y === game.player.y) {
-                        damagePlayer(enemyData.damage);
-                    }
-                }
-            }
-        } else {
-            // Random movement when far from player
-            if (Math.random() < 0.3) {
-                const dirs = [{x:0,y:-1}, {x:0,y:1}, {x:-1,y:0}, {x:1,y:0}];
-                const dir = dirs[Math.floor(Math.random() * dirs.length)];
-                const newX = enemy.x + dir.x;
-                const newY = enemy.y + dir.y;
-                
-                if (newX >= 0 && newX < WORLD_WIDTH && newY >= 0 && newY < WORLD_HEIGHT) {
-                    const targetTile = game.world[newY][newX];
-                    if (TILES[targetTile].walkable) {
-                        enemy.x = newX;
-                        enemy.y = newY;
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Damage player
-function damagePlayer(damage) {
-    if (game.player.invulnerable) return;
+    const enemy = game.combat.currentEnemy;
+    const enemyData = ENEMY_TYPES[enemy.type];
     
-    game.player.health -= damage;
-    game.player.invulnerable = true;
-    game.player.invulnerableUntil = Date.now() + 1500;
+    // Player attacks
+    const damage = game.combat.attackDamage;
+    enemy.hp -= damage;
+    addCombatLog(`You attack for ${damage} damage!`);
+    addAnimation(enemy.x, enemy.y, `-${damage}`, '#FFF', 600);
     
-    addAnimation(game.player.x, game.player.y, `-${damage}`, '#F44336', 800);
-    
-    setTimeout(() => {
-        game.player.invulnerable = false;
-    }, 1500);
-    
-    if (game.player.health <= 0) {
-        game.player.health = 0;
+    if (enemy.hp <= 0) {
+        // Enemy defeated!
+        enemy.alive = false;
+        const coins = Math.floor(Math.random() * 5) + 3;
+        game.player.coins += coins;
+        addCombatLog(`${enemy.type} defeated! +${coins} coins`);
+        addAnimation(enemy.x, enemy.y, '💥', '#FF9800', 1000);
+        
         setTimeout(() => {
-            alert('💀 Game Over! You were defeated...');
-            resetGame();
-        }, 100);
+            endCombat();
+        }, 1500);
+    } else {
+        // Enemy's turn
+        game.combat.playerTurn = false;
+        setTimeout(() => {
+            enemyTurn();
+        }, 800);
     }
     
     updateHUD();
+    draw();
+}
+
+// Player uses an item in combat
+function combatUseItem() {
+    if (!game.combat.playerTurn) return;
+    
+    // Open inventory during combat
+    game.showInventory = true;
+    draw();
+}
+
+// Player tries to run from combat
+function combatRun() {
+    if (!game.combat.playerTurn) return;
+    
+    const runChance = 0.7; // 70% chance to escape
+    
+    if (Math.random() < runChance) {
+        addCombatLog("You escaped!");
+        setTimeout(() => {
+            endCombat();
+        }, 800);
+    } else {
+        addCombatLog("Couldn't escape!");
+        game.combat.playerTurn = false;
+        setTimeout(() => {
+            enemyTurn();
+        }, 800);
+    }
+    
+    draw();
+}
+
+// Enemy's turn to attack
+function enemyTurn() {
+    const enemy = game.combat.currentEnemy;
+    const enemyData = ENEMY_TYPES[enemy.type];
+    
+    // Enemy attacks player
+    const damage = enemyData.damage;
+    game.player.health -= damage;
+    addCombatLog(`${enemy.type} attacks for ${damage} damage!`);
+    addAnimation(game.player.x, game.player.y, `-${damage}`, '#F44336', 600);
+    
+    if (game.player.health <= 0) {
+        game.player.health = 0;
+        addCombatLog("You were defeated...");
+        setTimeout(() => {
+            alert('💀 Game Over! You were defeated...');
+            resetGame();
+        }, 1500);
+    } else {
+        // Back to player's turn
+        game.combat.playerTurn = true;
+    }
+    
+    updateHUD();
+    draw();
+}
+
+// End combat
+function endCombat() {
+    game.combat.inCombat = false;
+    game.combat.currentEnemy = null;
+    game.combat.combatLog = [];
+    draw();
+}
+
+// Add message to combat log
+function addCombatLog(message) {
+    game.combat.combatLog.push(message);
+    if (game.combat.combatLog.length > 4) {
+        game.combat.combatLog.shift();
+    }
 }
 
 // Add animation
@@ -1029,7 +1109,6 @@ function resetGame() {
     game.player.y = 20;
     game.player.health = game.player.maxHealth;
     game.player.facing = 'down';
-    game.player.invulnerable = false;
     game.player.coins = 0;
     game.treasures.collected = 0;
     game.treasurePositions = [];
@@ -1038,9 +1117,10 @@ function resetGame() {
     game.inventory.items = [];
     game.inventory.selectedSlot = 0;
     game.animations = [];
-    game.combat.attacking = false;
-    game.combat.attackCooldown = 0;
+    game.combat.inCombat = false;
+    game.combat.currentEnemy = null;
     game.combat.attackDamage = 1;
+    game.combat.combatLog = [];
     game.showInventory = false;
     generateWorld();
     updateCamera();
@@ -1048,14 +1128,14 @@ function resetGame() {
     draw();
 }
 
-// Game loop for enemy updates
+// Game loop for animations only
 function gameLoop() {
     if (!game.started) {
         requestAnimationFrame(gameLoop);
         return;
     }
     
-    updateEnemies();
+    // Just handle animations, no enemy movement
     draw();
     
     requestAnimationFrame(gameLoop);
@@ -1068,11 +1148,9 @@ document.querySelectorAll('.control-btn').forEach(btn => {
         const dir = btn.dataset.dir;
         const action = btn.dataset.action;
         
-        if (dir && !game.showInventory) {
+        if (dir && !game.showInventory && !game.combat.inCombat) {
             handleDirection(dir);
-        } else if (action === 'attack' && !game.showInventory) {
-            playerAttack();
-        } else if (action === 'inventory') {
+        } else if (action === 'inventory' && !game.combat.inCombat) {
             game.showInventory = !game.showInventory;
             draw();
         }
@@ -1093,13 +1171,10 @@ document.addEventListener('keydown', (e) => {
     };
     
     const dir = keyMap[e.key.toLowerCase()];
-    if (dir && game.started && !game.showInventory) {
+    if (dir && game.started && !game.showInventory && !game.combat.inCombat) {
         e.preventDefault();
         handleDirection(dir);
-    } else if ((e.key === ' ' || e.key === 'Spacebar') && game.started && !game.showInventory) {
-        e.preventDefault();
-        playerAttack();
-    } else if (e.key.toLowerCase() === 'i' && game.started) {
+    } else if (e.key.toLowerCase() === 'i' && game.started && !game.combat.inCombat) {
         e.preventDefault();
         game.showInventory = !game.showInventory;
         draw();
@@ -1111,6 +1186,19 @@ document.addEventListener('keydown', (e) => {
         const slot = e.key === '0' ? 9 : parseInt(e.key) - 1;
         game.inventory.selectedSlot = slot;
         draw();
+    }
+    // Combat keys
+    else if (game.combat.inCombat && game.combat.playerTurn) {
+        if (e.key.toLowerCase() === 'a' || e.key === ' ') {
+            e.preventDefault();
+            combatAttack();
+        } else if (e.key.toLowerCase() === 'i') {
+            e.preventDefault();
+            combatUseItem();
+        } else if (e.key.toLowerCase() === 'r') {
+            e.preventDefault();
+            combatRun();
+        }
     }
 });
 
@@ -1134,20 +1222,42 @@ canvas.addEventListener('touchend', (e) => {
     
     if (!game.started) return;
     
+    // If in combat, handle combat button taps
+    if (game.combat.inCombat && game.combat.buttons) {
+        handleCombatTouch(touchEndX, touchEndY);
+        return;
+    }
+    
     // If inventory is open, handle inventory taps
     if (game.showInventory) {
         handleInventoryTouch(touchEndX, touchEndY);
         return;
     }
     
-    // Quick tap = attack
-    if (touchDuration < 200 && Math.abs(touchEndX - touchStartX) < 10 && Math.abs(touchEndY - touchStartY) < 10) {
-        playerAttack();
-    } else {
-        // Swipe = move
-        handleSwipe();
-    }
+    // Swipe = move (removed tap to attack)
+    handleSwipe();
 }, { passive: true });
+
+function handleCombatTouch(x, y) {
+    if (!game.combat.playerTurn) return;
+    
+    game.combat.buttons.forEach(btn => {
+        if (x >= btn.x && x <= btn.x + btn.width &&
+            y >= btn.y && y <= btn.y + btn.height) {
+            switch(btn.action) {
+                case 'attack':
+                    combatAttack();
+                    break;
+                case 'item':
+                    combatUseItem();
+                    break;
+                case 'run':
+                    combatRun();
+                    break;
+            }
+        }
+    });
+}
 
 function handleInventoryTouch(x, y) {
     const invWidth = Math.min(600, canvasWidth - 40);

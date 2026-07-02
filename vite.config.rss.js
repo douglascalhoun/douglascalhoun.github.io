@@ -7,9 +7,7 @@ export default defineConfig({
     outDir: 'dist-rss',
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        main: './index-rss.html'
-      }
+      input: './index.html'
     }
   }
 });

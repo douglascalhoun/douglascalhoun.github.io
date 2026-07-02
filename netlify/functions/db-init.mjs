@@ -4,22 +4,22 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFilename = fileURLToPath(import.meta.url);
+const currentDirname = path.dirname(currentFilename);
 
 export default async (req) => {
   try {
     const db = await getDatabase();
     
     // Read schema file
-    const schemaPath = path.join(__dirname, '../../db/schema.sql');
+    const schemaPath = path.join(currentDirname, '../../db/schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
     // Execute schema
     await db.query(schema);
     
     // Read seed data
-    const seedPath = path.join(__dirname, '../../db/seed-feeds.sql');
+    const seedPath = path.join(currentDirname, '../../db/seed-feeds.sql');
     const seedData = fs.readFileSync(seedPath, 'utf8');
     
     // Execute seed data (ignore duplicates)

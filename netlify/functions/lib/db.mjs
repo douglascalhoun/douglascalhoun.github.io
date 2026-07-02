@@ -8,34 +8,25 @@ export async function getDatabase() {
     return dbClient;
   }
   
-  // Try Netlify Database first
-  try {
-    const { getDb } = await import('@netlify/database');
-    dbClient = await getDb();
-    return dbClient;
-  } catch (error) {
-    console.log('Netlify Database not available, trying standard Postgres connection...');
-  }
-  
-  // Fall back to standard Postgres if DATABASE_URL is provided
+  // Use standard Postgres connection string
   const connectionString = Netlify.env.get('DATABASE_URL');
-  if (connectionString) {
-    const pg = await import('pg');
-    const { Client } = pg.default || pg;
-    
-    const client = new Client({ connectionString });
-    await client.connect();
-    
-    dbClient = {
-      query: async (text, params) => {
-        return await client.query(text, params);
-      }
-    };
-    
-    return dbClient;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL environment variable not set. Please configure a Postgres database connection.');
   }
   
-  throw new Error('No database connection available. Set DATABASE_URL environment variable or provision Netlify Database.');
+  const pg = await import('pg');
+  const { Client } = pg.default || pg;
+  
+  const client = new Client({ connectionString });
+  await client.connect();
+  
+  dbClient = {
+    query: async (text, params) => {
+      return await client.query(text, params);
+    }
+  };
+  
+  return dbClient;
 }
 
 export async function getActiveFeeds(db) {

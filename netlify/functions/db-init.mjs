@@ -1,5 +1,5 @@
 // Database initialization function
-import { getDb } from '@netlify/database';
+import { getDatabase } from './lib/db.mjs';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 export default async (req) => {
   try {
-    const db = await getDb();
+    const db = await getDatabase();
     
     // Read schema file
     const schemaPath = path.join(__dirname, '../../db/schema.sql');

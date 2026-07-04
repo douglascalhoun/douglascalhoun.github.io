@@ -1,0 +1,18 @@
+{
+  "name": "space-nova",
+  "version": "0.1.0",
+  "description": "Simplified Escape Velocity Nova remake",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  }
+}

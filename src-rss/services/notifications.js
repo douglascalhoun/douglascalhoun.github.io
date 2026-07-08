@@ -1,21 +1,24 @@
 // Push notification service
 import * as api from './api';
 
-function generateUserId() {
-  // Generate a simple user ID based on browser fingerprint
+export function getUserId() {
+  const existing = localStorage.getItem('userId');
+  if (existing) return existing;
+
   const nav = navigator;
   const screen = window.screen;
   const guid = `${nav.userAgent}-${screen.width}x${screen.height}`;
-  
-  // Simple hash function
+
   let hash = 0;
   for (let i = 0; i < guid.length; i++) {
     const char = guid.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash;
   }
-  
-  return `user-${Math.abs(hash)}`;
+
+  const userId = `user-${Math.abs(hash)}`;
+  localStorage.setItem('userId', userId);
+  return userId;
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -38,43 +41,31 @@ export async function subscribeToNotifications(preferences = {}) {
     throw new Error('Push notifications are not supported in this browser');
   }
 
-  // Request notification permission
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     throw new Error('Notification permission denied');
   }
 
-  // Register service worker
   let registration;
   try {
     registration = await navigator.serviceWorker.register('/sw.js');
-    console.log('Service Worker registered:', registration);
-    
-    // Wait for service worker to be ready
     await navigator.serviceWorker.ready;
   } catch (error) {
     console.error('Service Worker registration failed:', error);
     throw new Error('Failed to register service worker: ' + error.message);
   }
 
-  // Get VAPID public key
   const publicKey = await api.getVapidPublicKey();
-  
-  // Subscribe to push notifications
+
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(publicKey)
   });
 
-  console.log('Push subscription:', subscription);
-
-  // Send subscription to server
-  const userId = generateUserId();
+  const userId = getUserId();
   await api.subscribe(userId, subscription, preferences);
 
-  // Store subscription locally
   localStorage.setItem('pushSubscription', JSON.stringify(subscription));
-  localStorage.setItem('userId', userId);
 
   return subscription;
 }
@@ -92,14 +83,13 @@ export async function unsubscribeFromNotifications() {
   const subscription = await registration.pushManager.getSubscription();
   if (subscription) {
     await subscription.unsubscribe();
-    console.log('Unsubscribed from push notifications');
   }
 
   localStorage.removeItem('pushSubscription');
 }
 
 export function hasNotificationSupport() {
-  return 'Notification' in window && 
-         'serviceWorker' in navigator && 
+  return 'Notification' in window &&
+         'serviceWorker' in navigator &&
          'PushManager' in window;
 }

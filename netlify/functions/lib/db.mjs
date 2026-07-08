@@ -93,11 +93,12 @@ export async function getRecentArticles(db, limit = 50, offset = 0) {
 
 export async function getUnnotifiedArticles(db) {
   const result = await db.query(
-    `SELECT a.*, f.name as feed_name, f.category as feed_category
+    `SELECT a.*, f.name as feed_name, f.category as feed_category, f.country as feed_country
      FROM articles a
      JOIN feeds f ON a.feed_id = f.id
      WHERE a.notified = false
-     ORDER BY a.pub_date DESC`
+     ORDER BY a.pub_date DESC
+     LIMIT 100`
   );
   return result.rows;
 }
@@ -119,8 +120,8 @@ export async function getSubscriptions(db) {
 export async function insertSubscription(db, subscription) {
   const result = await db.query(
     `INSERT INTO subscriptions 
-     (user_id, push_subscription, notification_enabled, keywords, excluded_keywords, categories, countries)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     (user_id, push_subscription, notification_enabled, keywords, excluded_keywords, categories, countries, max_notifications_per_hour)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
     [
       subscription.userId,
@@ -129,7 +130,8 @@ export async function insertSubscription(db, subscription) {
       subscription.keywords || [],
       subscription.excludedKeywords || [],
       subscription.categories || [],
-      subscription.countries || []
+      subscription.countries || [],
+      subscription.maxNotificationsPerHour || 20
     ]
   );
   return result.rows[0];

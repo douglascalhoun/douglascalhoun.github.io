@@ -49,14 +49,17 @@ export default async (req) => {
              excluded_keywords = $3,
              categories = $4,
              countries = $5,
+             max_notifications_per_hour = COALESCE($6, max_notifications_per_hour, 20),
+             notification_enabled = true,
              updated_at = NOW()
-         WHERE user_id = $6`,
+         WHERE user_id = $7`,
         [
           subscription,
           preferences?.keywords || [],
           preferences?.excludedKeywords || [],
           preferences?.categories || [],
           preferences?.countries || [],
+          preferences?.maxNotificationsPerHour ?? 20,
           userId
         ]
       );
@@ -78,7 +81,8 @@ export default async (req) => {
         keywords: preferences?.keywords || [],
         excludedKeywords: preferences?.excludedKeywords || [],
         categories: preferences?.categories || [],
-        countries: preferences?.countries || []
+        countries: preferences?.countries || [],
+        maxNotificationsPerHour: preferences?.maxNotificationsPerHour || 20
       });
       
       return new Response(

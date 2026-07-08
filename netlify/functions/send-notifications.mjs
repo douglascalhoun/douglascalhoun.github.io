@@ -127,11 +127,35 @@ export default async (req) => {
       );
     }
     
+    // Cap how many new articles we process per run to avoid floods
+    const articlesToProcess = articles.slice(0, 40);
+    results.rateLimitedSkipped = 0;
+
+    // Preload hourly send counts for rate limiting
+    const hourlyCounts = {};
+    for (const subscription of subscriptions) {
+      const countResult = await db.query(
+        `SELECT COUNT(*) as count
+         FROM notification_log
+         WHERE subscription_id = $1
+           AND status = 'sent'
+           AND sent_at > NOW() - INTERVAL '1 hour'`,
+        [subscription.id]
+      );
+      hourlyCounts[subscription.id] = parseInt(countResult.rows[0].count);
+    }
+
     // Send notifications
-    for (const article of articles) {
+    for (const article of articlesToProcess) {
       for (const subscription of subscriptions) {
         // Check if article matches user preferences
         if (!matchesPreferences(article, subscription)) {
+          continue;
+        }
+
+        const maxPerHour = subscription.max_notifications_per_hour || 20;
+        if ((hourlyCounts[subscription.id] || 0) >= maxPerHour) {
+          results.rateLimitedSkipped++;
           continue;
         }
         
@@ -158,6 +182,7 @@ export default async (req) => {
           );
           
           results.notificationsSent++;
+          hourlyCounts[subscription.id] = (hourlyCounts[subscription.id] || 0) + 1;
           await logNotification(db, subscription.id, article.id, 'sent');
         } catch (error) {
           console.error(`Failed to send notification:`, error);
@@ -182,6 +207,11 @@ export default async (req) => {
       }
       
       // Mark article as notified
+      await markArticleNotified(db, article.id);
+    }
+
+    // Mark remaining unprocessed articles as notified to avoid backlog floods
+    for (const article of articles.slice(40)) {
       await markArticleNotified(db, article.id);
     }
     

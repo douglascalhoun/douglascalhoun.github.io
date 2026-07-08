@@ -1,11 +1,11 @@
 {
-  "name": "RSS News Aggregator",
-  "short_name": "RSS News",
+  "name": "Worldwire",
+  "short_name": "Worldwire",
   "description": "Global news aggregator with push notifications",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#f3efe6",
+  "theme_color": "#0f5c4c",
   "icons": [
     {
       "src": "/icon-192.png",

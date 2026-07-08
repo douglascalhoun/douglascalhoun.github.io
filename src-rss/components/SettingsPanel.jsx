@@ -5,9 +5,10 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
     keywords: preferences.keywords || [],
     excludedKeywords: preferences.excludedKeywords || [],
     categories: preferences.categories || [],
-    countries: preferences.countries || []
+    countries: preferences.countries || [],
+    maxNotificationsPerHour: preferences.maxNotificationsPerHour || 20
   });
-  
+
   const [keywordInput, setKeywordInput] = useState('');
   const [excludedKeywordInput, setExcludedKeywordInput] = useState('');
 
@@ -51,7 +52,7 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
     const newCategories = localPrefs.categories.includes(category)
       ? localPrefs.categories.filter(c => c !== category)
       : [...localPrefs.categories, category];
-    
+
     setLocalPrefs({ ...localPrefs, categories: newCategories });
   }
 
@@ -59,7 +60,7 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
     const newCountries = localPrefs.countries.includes(country)
       ? localPrefs.countries.filter(c => c !== country)
       : [...localPrefs.countries, country];
-    
+
     setLocalPrefs({ ...localPrefs, countries: newCountries });
   }
 
@@ -71,23 +72,23 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
   return (
     <div className="settings-panel">
       <div className="panel-header">
-        <h2>⚙️ Notification Preferences</h2>
+        <h2>Notification Preferences</h2>
         <button className="btn-close" onClick={onClose}>✕</button>
       </div>
-      
+
       <div className="panel-content">
         <section className="settings-section">
-          <h3>🔍 Include Keywords</h3>
+          <h3>Include Keywords</h3>
           <p className="help-text">Only notify for articles containing these keywords (leave empty for all)</p>
           <div className="keyword-input">
-            <input 
+            <input
               type="text"
               value={keywordInput}
               onChange={(e) => setKeywordInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addKeyword()}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
               placeholder="e.g., climate, technology, sports"
             />
-            <button onClick={addKeyword} className="btn btn-small">Add</button>
+            <button onClick={addKeyword} className="btn btn-primary">Add</button>
           </div>
           <div className="tag-list">
             {localPrefs.keywords.map(keyword => (
@@ -100,17 +101,17 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
         </section>
 
         <section className="settings-section">
-          <h3>🚫 Exclude Keywords</h3>
+          <h3>Exclude Keywords</h3>
           <p className="help-text">Never notify for articles containing these keywords</p>
           <div className="keyword-input">
-            <input 
+            <input
               type="text"
               value={excludedKeywordInput}
               onChange={(e) => setExcludedKeywordInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addExcludedKeyword()}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addExcludedKeyword())}
               placeholder="e.g., celebrity, gossip"
             />
-            <button onClick={addExcludedKeyword} className="btn btn-small">Add</button>
+            <button onClick={addExcludedKeyword} className="btn btn-primary">Add</button>
           </div>
           <div className="tag-list">
             {localPrefs.excludedKeywords.map(keyword => (
@@ -123,12 +124,29 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
         </section>
 
         <section className="settings-section">
-          <h3>📂 Categories</h3>
+          <h3>Rate Limit</h3>
+          <p className="help-text">Max push notifications per hour</p>
+          <div className="keyword-input">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={localPrefs.maxNotificationsPerHour}
+              onChange={(e) => setLocalPrefs({
+                ...localPrefs,
+                maxNotificationsPerHour: Math.max(1, Math.min(100, parseInt(e.target.value) || 20))
+              })}
+            />
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>Categories</h3>
           <p className="help-text">Select categories to receive (leave empty for all)</p>
           <div className="checkbox-list">
             {categories.map(category => (
               <label key={category} className="checkbox-label">
-                <input 
+                <input
                   type="checkbox"
                   checked={localPrefs.categories.includes(category)}
                   onChange={() => toggleCategory(category)}
@@ -140,12 +158,12 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
         </section>
 
         <section className="settings-section">
-          <h3>🌍 Countries</h3>
+          <h3>Countries</h3>
           <p className="help-text">Select regions to receive (leave empty for all)</p>
           <div className="checkbox-list">
             {availableCountries.map(country => (
               <label key={country} className="checkbox-label">
-                <input 
+                <input
                   type="checkbox"
                   checked={localPrefs.countries.includes(country)}
                   onChange={() => toggleCountry(country)}

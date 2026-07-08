@@ -3,7 +3,7 @@
 -- Global / International
 INSERT INTO feeds (name, url, category, country, language) VALUES
 ('BBC World News', 'https://feeds.bbci.co.uk/news/world/rss.xml', 'world', 'UK', 'en'),
-('Reuters World', 'http://feeds.reuters.com/reuters/worldNews', 'world', 'Global', 'en'),
+('NYT World', 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'world', 'US', 'en'),
 ('Al Jazeera', 'https://www.aljazeera.com/xml/rss/all.xml', 'world', 'Qatar', 'en'),
 ('The Guardian World', 'https://www.theguardian.com/world/rss', 'world', 'UK', 'en');
 

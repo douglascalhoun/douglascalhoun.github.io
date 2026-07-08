@@ -35,10 +35,12 @@
         }
         #hud {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 20px;
+            top: 12px;
+            left: 12px;
+            right: 12px;
             display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
             justify-content: space-between;
             align-items: flex-start;
             pointer-events: none;
@@ -47,13 +49,14 @@
         .stat {
             background: rgba(0, 0, 0, 0.7);
             backdrop-filter: blur(10px);
-            padding: 10px 16px;
+            padding: 8px 12px;
             border-radius: 12px;
             border: 2px solid rgba(255, 215, 0, 0.5);
             color: #fff;
-            font-size: 18px;
+            font-size: 14px;
             font-weight: bold;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            max-width: 48%;
         }
         .stat-label {
             color: #FFD700;
@@ -152,8 +155,12 @@
             <div id="health">❤️ ❤️ ❤️</div>
         </div>
         <div class="stat">
-            <span class="stat-label">TREASURES</span>
-            <span id="treasures">0 / 10</span>
+            <span class="stat-label">QUEST</span>
+            <span id="quest">Talk to the Elder</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">GEMS</span>
+            <span id="treasures">0 / 8</span>
         </div>
         <div class="stat">
             <span class="stat-label">COINS</span>
@@ -175,11 +182,12 @@
     
     <div id="title">
         <h1>⚔️ Adventure Quest</h1>
-        <p>Explore a dangerous world!<br>
-        ⚔️ Turn-based combat • 💎 Collect treasures • ❤️ Find hearts<br><br>
+        <p>Turn-based combat • Talk to NPCs • Enter buildings<br>
+        Complete quests from the Elder!<br><br>
         <strong>Controls:</strong><br>
-        Swipe to move around the world<br>
-        Walk into enemies to start combat!</p>
+        Swipe / arrows to move<br>
+        Walk into monsters to fight<br>
+        Walk into people / doors to interact</p>
         <button id="start-btn">Start Adventure</button>
     </div>
     

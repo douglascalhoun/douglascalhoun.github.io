@@ -1,3 +1,5 @@
+import Phaser from 'phaser';
+
 export default class VirtualJoystick {
     constructor(scene, x, y, radius = 60, side = 'left') {
         this.scene = scene;
@@ -7,16 +9,15 @@ export default class VirtualJoystick {
         this.side = side;
         this.active = false;
         
-        // Create visual elements
-        this.baseCircle = scene.add.circle(x, y, radius, 0x333333, 0.3);
+        // Create visual elements with lower opacity
+        this.baseCircle = scene.add.circle(x, y, radius, 0x333333, 0.15);
         this.baseCircle.setDepth(1000);
         this.baseCircle.setScrollFactor(0);
         
-        this.stickCircle = scene.add.circle(x, y, radius * 0.5, 0x666666, 0.6);
+        this.stickCircle = scene.add.circle(x, y, radius * 0.5, 0x666666, 0.3);
         this.stickCircle.setDepth(1001);
         this.stickCircle.setScrollFactor(0);
         
-        // Touch data
         this.pointer = null;
         this.startX = x;
         this.startY = y;
@@ -58,13 +59,9 @@ export default class VirtualJoystick {
         const dy = pointer.y - this.startY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Calculate force (0 to 1)
         this.force = Math.min(distance / this.radius, 1);
-        
-        // Calculate angle
         this.angle = Math.atan2(dy, dx);
         
-        // Update stick position (clamped to radius)
         const clampedDistance = Math.min(distance, this.radius);
         this.stickCircle.x = this.startX + Math.cos(this.angle) * clampedDistance;
         this.stickCircle.y = this.startY + Math.sin(this.angle) * clampedDistance;

@@ -1,134 +1,197 @@
+import Phaser from 'phaser';
+
 export default class Player {
     constructor(scene, x, y) {
         this.scene = scene;
-        
-        // Create ship sprite (triangle for now, can be replaced with actual sprite)
+
         this.sprite = scene.add.graphics();
-        this.sprite.fillStyle(0x00ff00, 1);
-        this.sprite.fillTriangle(0, -15, -10, 10, 10, 10);
-        this.sprite.setPosition(x, y);
-        
-        // Convert graphics to a game object we can add physics to
-        this.container = scene.add.container(x, y);
-        this.container.add(this.sprite);
+        this.drawShip();
+
+        this.container = scene.add.container(x, y, [this.sprite]);
+        this.container.setDepth(100);
         scene.physics.world.enable(this.container);
-        
-        // Physics properties - mimicking EV Nova's feel
+
         this.body = this.container.body;
-        this.body.setDrag(0); // No drag in space
+        this.body.setCircle(18, -18, -18);
+        this.body.setDrag(0);
         this.body.setMaxVelocity(400);
-        
-        // Ship properties
-        this.rotation = 0; // Radians
+        this.body.setCollideWorldBounds(true);
+
+        this.rotation = 0;
         this.rotationSpeed = 0;
-        this.maxRotationSpeed = 3; // rad/s
+        this.maxRotationSpeed = 3;
         this.rotationAccel = 0.15;
         this.rotationDrag = 0.92;
-        
-        // Thrust properties
-        this.mainThrust = 200; // Forward thrust
-        this.reverseThrust = 100; // Reverse thrust
-        this.lateralThrust = 150; // Side thrust
-        
-        // Engine trail effect
-        this.engineParticles = null;
+
+        this.mainThrust = 200;
+        this.reverseThrust = 100;
+        this.lateralThrust = 150;
+
+        this.maxShields = 100;
+        this.shields = 100;
+        this.maxHull = 100;
+        this.hull = 100;
+        this.shieldRegen = 8;
+        this.shieldRegenDelay = 2500;
+        this.lastHitTime = 0;
+
+        this.credits = 500;
+        this.cargo = {
+            food: 0,
+            ore: 0,
+            tech: 0
+        };
+        this.cargoCapacity = 20;
     }
-    
+
+    drawShip() {
+        this.sprite.clear();
+        // Hull
+        this.sprite.fillStyle(0x44ff88, 1);
+        this.sprite.fillTriangle(0, -22, -14, 16, 14, 16);
+        // Cockpit
+        this.sprite.fillStyle(0xffffff, 1);
+        this.sprite.fillCircle(0, -4, 4);
+        // Engine glow
+        this.sprite.fillStyle(0x66aaff, 0.9);
+        this.sprite.fillTriangle(-6, 16, 6, 16, 0, 24);
+        // Outline for contrast
+        this.sprite.lineStyle(2, 0x0a2a14, 1);
+        this.sprite.strokeTriangle(0, -22, -14, 16, 14, 16);
+    }
+
     update(delta, leftJoystick, rightJoystick) {
-        const dt = delta / 1000; // Convert to seconds
-        
-        // ROTATION CONTROL (left joystick)
+        const dt = delta / 1000;
+
         if (leftJoystick.isActive()) {
             const force = leftJoystick.getForce();
             const angle = leftJoystick.getAngle();
-            
-            // Horizontal component controls rotation
             const rotInput = Math.cos(angle) * force;
             this.rotationSpeed += rotInput * this.rotationAccel;
-            
-            // Clamp rotation speed
             this.rotationSpeed = Phaser.Math.Clamp(
                 this.rotationSpeed,
                 -this.maxRotationSpeed,
                 this.maxRotationSpeed
             );
         } else {
-            // Apply rotation drag when not actively turning
             this.rotationSpeed *= this.rotationDrag;
             if (Math.abs(this.rotationSpeed) < 0.01) this.rotationSpeed = 0;
         }
-        
-        // Update rotation
+
         this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
-        
-        // THRUST CONTROL (right joystick)
+
         if (rightJoystick.isActive()) {
             const force = rightJoystick.getForce();
             const angle = rightJoystick.getAngle();
-            
-            // Convert joystick angle to thrust direction in world space
-            const thrustX = Math.cos(angle) * force;
-            const thrustY = Math.sin(angle) * force;
-            
-            // Apply thrust relative to ship's facing
-            // Forward/backward (relative to joystick vertical)
+
             const forwardComponent = Math.sin(angle) * force;
             const lateralComponent = Math.cos(angle) * force;
-            
-            // Calculate thrust in world space based on ship rotation
+
             const shipForwardX = Math.sin(this.rotation);
             const shipForwardY = -Math.cos(this.rotation);
             const shipRightX = Math.cos(this.rotation);
             const shipRightY = Math.sin(this.rotation);
-            
-            // Forward/reverse thrust
+
             let thrustMagnitude;
             if (forwardComponent < 0) {
-                // Forward thrust (joystick up)
                 thrustMagnitude = Math.abs(forwardComponent) * this.mainThrust;
             } else {
-                // Reverse thrust (joystick down)
                 thrustMagnitude = -forwardComponent * this.reverseThrust;
             }
-            
-            const forwardThrustX = shipForwardX * thrustMagnitude;
-            const forwardThrustY = shipForwardY * thrustMagnitude;
-            
-            // Lateral thrust (left/right)
-            const lateralThrustX = shipRightX * lateralComponent * this.lateralThrust;
-            const lateralThrustY = shipRightY * lateralComponent * this.lateralThrust;
-            
-            // Apply combined thrust
+
             this.body.setAcceleration(
-                forwardThrustX + lateralThrustX,
-                forwardThrustY + lateralThrustY
+                shipForwardX * thrustMagnitude + shipRightX * lateralComponent * this.lateralThrust,
+                shipForwardY * thrustMagnitude + shipRightY * lateralComponent * this.lateralThrust
             );
         } else {
-            // No thrust
             this.body.setAcceleration(0, 0);
         }
+
+        this.regenShields(delta);
     }
-    
+
+    regenShields(delta) {
+        if (this.shields >= this.maxShields) return;
+        if (Date.now() - this.lastHitTime < this.shieldRegenDelay) return;
+        this.shields = Math.min(this.maxShields, this.shields + this.shieldRegen * (delta / 1000));
+    }
+
+    takeDamage(amount) {
+        this.lastHitTime = Date.now();
+        let remaining = amount;
+
+        if (this.shields > 0) {
+            const absorbed = Math.min(this.shields, remaining);
+            this.shields -= absorbed;
+            remaining -= absorbed;
+        }
+
+        if (remaining > 0) {
+            this.hull -= remaining;
+        }
+
+        this.flashHit();
+        return this.hull <= 0;
+    }
+
+    flashHit() {
+        this.container.setAlpha(0.4);
+        this.scene.time.delayedCall(80, () => {
+            if (this.container && this.container.active) {
+                this.container.setAlpha(1);
+            }
+        });
+    }
+
+    repair(costPerPoint = 2) {
+        const missing = Math.ceil(this.maxHull - this.hull + this.maxShields - this.shields);
+        if (missing <= 0) return { repaired: false, cost: 0, message: 'Ship already at full integrity.' };
+
+        const affordable = Math.floor(this.credits / costPerPoint);
+        const points = Math.min(missing, affordable);
+        if (points <= 0) return { repaired: false, cost: 0, message: 'Not enough credits.' };
+
+        let remaining = points;
+        const shieldNeed = this.maxShields - this.shields;
+        const shieldFill = Math.min(shieldNeed, remaining);
+        this.shields += shieldFill;
+        remaining -= shieldFill;
+        this.hull = Math.min(this.maxHull, this.hull + remaining);
+
+        const cost = points * costPerPoint;
+        this.credits -= cost;
+        return { repaired: true, cost, message: `Repaired for ${cost} credits.` };
+    }
+
+    getCargoUsed() {
+        return this.cargo.food + this.cargo.ore + this.cargo.tech;
+    }
+
     getX() {
         return this.container.x;
     }
-    
+
     getY() {
         return this.container.y;
     }
-    
+
+    getRotation() {
+        return this.rotation;
+    }
+
     getVelocity() {
         return {
             x: this.body.velocity.x,
             y: this.body.velocity.y
         };
     }
-    
+
     getSpeed() {
-        return Math.sqrt(
-            this.body.velocity.x ** 2 + 
-            this.body.velocity.y ** 2
-        );
+        return Math.sqrt(this.body.velocity.x ** 2 + this.body.velocity.y ** 2);
+    }
+
+    destroy() {
+        this.container.destroy();
     }
 }

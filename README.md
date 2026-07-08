@@ -1,40 +1,32 @@
 # Space Nova
 
-A simplified browser-based remake of the classic space game Escape Velocity Nova.
+A simplified browser-based remake of Escape Velocity Nova.
 
-## Current Status: Flight Prototype
+## Live
 
-### What's Working:
-- ✅ Touch-based flight controls (dual joysticks)
-- ✅ Realistic momentum-based physics
-- ✅ Planet in fixed world coordinates
-- ✅ Star field with parallax scrolling
-- ✅ Visual system boundary ring
-- ✅ Responsive design (mobile + desktop)
+https://douglascalhoun.github.io/
 
-### Controls:
-- **Left Joystick**: Rotate ship
-- **Right Joystick**: Thrust (forward/back/strafe)
+## Phase 3 Status
 
-### Testing:
-Optimized for Safari on iPhone 17E
+- Dual-thumb flight controls (turn + thrust)
+- Momentum physics, planet, system boundary
+- Space station docking
+- Combat: player weapons, fighter NPCs that shoot back
+- Shields / hull with regen and station repair
+- Credits, cargo, and station buy/sell trading
+- Respawn on destruction (credits kept)
 
-### Tech Stack:
-- Phaser 3 (game engine)
-- Vite (build tool)
-- Vanilla JavaScript
+## Controls
 
-## Development
+- **Left joystick / A-D feel**: turn
+- **Right joystick**: thrust
+- **FIRE** button or **Space**: shoot
+- **DOCK** button or **D**: dock / undock near station
+
+## Dev
 
 ```bash
 npm install
 npm run dev
-```
-
-## Build
-
-```bash
 npm run build
 ```
-
-Outputs to `dist/` folder for deployment.

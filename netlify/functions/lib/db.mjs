@@ -1,31 +1,31 @@
-// Database helper utilities
-// Works with both Netlify Database and standard Postgres connection strings
+// Database helper utilities for standard Postgres (DATABASE_URL)
+import pg from 'pg';
 
+const { Client } = pg;
 let dbClient = null;
 
 export async function getDatabase() {
   if (dbClient) {
     return dbClient;
   }
-  
-  // Use standard Postgres connection string
+
   const connectionString = Netlify.env.get('DATABASE_URL');
   if (!connectionString) {
     throw new Error('DATABASE_URL environment variable not set. Please configure a Postgres database connection.');
   }
-  
-  const pg = await import('pg');
-  const { Client } = pg.default || pg;
-  
-  const client = new Client({ connectionString });
+
+  const client = new Client({
+    connectionString,
+    ssl: connectionString.includes('sslmode=require') || connectionString.includes('neon.tech')
+      ? { rejectUnauthorized: false }
+      : undefined
+  });
   await client.connect();
-  
+
   dbClient = {
-    query: async (text, params) => {
-      return await client.query(text, params);
-    }
+    query: async (text, params) => client.query(text, params)
   };
-  
+
   return dbClient;
 }
 

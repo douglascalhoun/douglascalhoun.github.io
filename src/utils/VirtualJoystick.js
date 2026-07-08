@@ -1,3 +1,5 @@
+import Phaser from 'phaser';
+
 export default class VirtualJoystick {
     constructor(scene, x, y, radius = 60, side = 'left') {
         this.scene = scene;

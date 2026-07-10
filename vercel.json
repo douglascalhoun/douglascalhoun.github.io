@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/adventure",
+      "destination": "/adventure/index.html"
+    },
+    {
+      "source": "/adventure/(.*)",
+      "destination": "/adventure/$1"
+    }
+  ]
+}

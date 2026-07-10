@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Tile Adventure</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            font-family: 'Courier New', monospace;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+        }
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        #hud {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .stat {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 8px 12px;
+            border-radius: 12px;
+            border: 2px solid rgba(255, 215, 0, 0.5);
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            max-width: 48%;
+        }
+        .stat-label {
+            color: #FFD700;
+            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            display: grid;
+            grid-template-columns: repeat(3, 80px);
+            grid-template-rows: repeat(3, 80px);
+            gap: 8px;
+            z-index: 10;
+            pointer-events: all;
+        }
+        .control-btn {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            color: #fff;
+            font-size: 32px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            touch-action: manipulation;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            transition: all 0.1s;
+        }
+        .control-btn:active {
+            background: rgba(255, 215, 0, 0.8);
+            border-color: #FFD700;
+            transform: scale(0.9);
+            box-shadow: 0 2px 8px rgba(255, 215, 0, 0.6);
+        }
+        .control-btn.empty {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #title {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px 50px;
+            border-radius: 20px;
+            border: 3px solid #FFD700;
+            pointer-events: all;
+        }
+        #title h1 {
+            font-size: 36px;
+            margin-bottom: 15px;
+            color: #FFD700;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+        }
+        #title p {
+            font-size: 16px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        #start-btn {
+            background: #FFD700;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+        #start-btn:active {
+            transform: scale(0.95);
+        }
+        #title.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+    
+    <div id="hud">
+        <div class="stat">
+            <span class="stat-label">HEALTH</span>
+            <div id="health">❤️ ❤️ ❤️</div>
+        </div>
+        <div class="stat">
+            <span class="stat-label">QUEST</span>
+            <span id="quest">Talk to the Elder</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">GEMS</span>
+            <span id="treasures">0 / 8</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">COINS</span>
+            <span id="coins">0</span> 💰
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div class="control-btn" data-action="inventory">🎒</div>
+        <div class="control-btn" data-dir="up">▲</div>
+        <div class="control-btn empty"></div>
+        <div class="control-btn" data-dir="left">◄</div>
+        <div class="control-btn empty"></div>
+        <div class="control-btn" data-dir="right">►</div>
+        <div class="control-btn empty"></div>
+        <div class="control-btn" data-dir="down">▼</div>
+        <div class="control-btn empty"></div>
+    </div>
+    
+    <div id="title">
+        <h1>⚔️ Adventure Quest</h1>
+        <p>Turn-based combat • Talk to NPCs • Enter buildings<br>
+        Complete quests from the Elder!<br><br>
+        <strong>Controls:</strong><br>
+        Swipe / arrows to move<br>
+        Walk into monsters to fight<br>
+        Walk into people / doors to interact</p>
+        <button id="start-btn">Start Adventure</button>
+    </div>
+    
+    <script type="module" src="./game.js"></script>
+</body>
+</html>

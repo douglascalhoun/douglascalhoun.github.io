@@ -112,17 +112,19 @@ export default async (req) => {
 
     // Re-score recent articles with new editorial model
     const recent = await db.query(
-      `SELECT a.id, a.title, a.description, a.categories, f.category, f.priority
+      `SELECT a.id, a.title, a.description, a.categories, f.category, f.priority, f.active
        FROM articles a
        JOIN feeds f ON f.id = a.feed_id
        ORDER BY a.pub_date DESC NULLS LAST
-       LIMIT 1500`
+       LIMIT 2500`
     );
 
     let rescored = 0;
     let kept = 0;
     for (const row of recent.rows) {
       const result = scoreArticle(row, { category: row.category, priority: row.priority });
+      // Articles from retired feeds are hidden unless they still score as high-impact tech/events
+      const keep = row.active ? result.keep : (result.keep && result.score >= 28 && (result.topics.includes('ai') || result.topics.includes('vr') || result.topics.includes('tech')));
       await db.query(
         `UPDATE articles
          SET relevance_score = $1,
@@ -130,11 +132,23 @@ export default async (req) => {
              topics = $3,
              filter_reasons = $4
          WHERE id = $5`,
-        [result.score, result.keep, result.topics, result.reasons, row.id]
+        [result.score, keep, result.topics, result.reasons, row.id]
       );
       rescored++;
-      if (result.keep) kept++;
+      if (keep) kept++;
     }
+
+    // Hide remaining articles from inactive feeds that were never rescored
+    await db.query(
+      `UPDATE articles a
+       SET is_relevant = false,
+           filter_reasons = ARRAY['retired_source']
+       FROM feeds f
+       WHERE a.feed_id = f.id
+         AND f.active = false
+         AND COALESCE(a.is_relevant, true) = true
+         AND COALESCE(a.relevance_score, 0) < 28`
+    );
 
     const feeds = await db.query(
       `SELECT name, category, active, priority FROM feeds ORDER BY active DESC, priority DESC NULLS LAST, name`

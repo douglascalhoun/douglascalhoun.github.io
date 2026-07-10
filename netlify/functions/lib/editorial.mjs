@@ -27,14 +27,10 @@ export const EDITORIAL_FEEDS = [
   { name: 'Meta Quest Blog', url: 'https://www.meta.com/blog/quest/rss/', category: 'vr', country: 'US', priority: 6 },
 
   // Business / markets with tech gravity
-  { name: 'FT Technology', url: 'https://www.ft.com/technology?format=rss', category: 'business', country: 'UK', priority: 7 },
-  { name: 'WSJ Tech', url: 'https://feeds.a.dj.com/rss/RSSWSJD.xml', category: 'business', country: 'US', priority: 6 },
   { name: 'Bloomberg Technology', url: 'https://feeds.bloomberg.com/technology/news.rss', category: 'business', country: 'US', priority: 6 },
 
   // Selective geopolitics / major world events (not play-by-play)
-  { name: 'BBC World News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', category: 'world', country: 'UK', priority: 5 },
-  { name: 'AP Top News', url: 'https://rsshub.app/apnews/topics/apf-topnews', category: 'world', country: 'Global', priority: 5 },
-  { name: 'The Economist', url: 'https://www.economist.com/finance-and-economics/rss.xml', category: 'business', country: 'UK', priority: 5 }
+  { name: 'BBC World News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', category: 'world', country: 'UK', priority: 5 }
 ];
 
 /** Hard rejects — almost never surface */

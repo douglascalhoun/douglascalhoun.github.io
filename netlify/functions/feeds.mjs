@@ -31,9 +31,10 @@ export default async (req) => {
         COUNT(a.id) as article_count,
         MAX(a.pub_date) as latest_article_date
       FROM feeds f
-      LEFT JOIN articles a ON f.id = a.feed_id
+      LEFT JOIN articles a ON f.id = a.feed_id AND COALESCE(a.is_relevant, true) = true
+      WHERE f.active = true
       GROUP BY f.id
-      ORDER BY f.name
+      ORDER BY COALESCE(f.priority, 5) DESC, f.name
     `);
     
     // Group by category

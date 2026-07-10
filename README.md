@@ -8,28 +8,32 @@ https://douglascalhoun.github.io/
 
 ## Phase 4 Status
 
-- Dual-thumb flight controls (turn + thrust)
-- Momentum physics, planet, system boundary
-- Space station docking with Trade + Upgrades tabs
-- Combat: player weapons, fighter NPCs that shoot back
-- Shields / hull with regen and station repair
-- Credits, cargo, and station buy/sell trading
-- Ship upgrades: Engines, Shields, Hull, Weapons, Cargo (5 levels each)
-- Respawn keeps credits, cargo, kills, and upgrades
+- Dual-thumb flight + laptop keyboard controls
+- Momentum physics with naval-style turn bleed (tactical duels)
+- Station docking with trade, repair, and ship upgrades
+- Combat: hit damage, flee at 1 HP, disabled wrecks, escalating fighters
+- Off-screen edge markers for planet / station / ships
+- Combat pauses while docked
 
 ## Controls
 
+### Laptop / keyboard
+- **A / D**: turn left / right
+- **W / S**: thrust forward / reverse
+- **J / K**: strafe left / right
+- **Space**: fire
+- **E**: dock / undock near station
+
+### Mobile / touch
 - **Left joystick**: turn
 - **Right joystick**: thrust
-- **FIRE** button or **Space**: shoot
-- **DOCK** button or **D**: dock / undock near station
+- **FIRE** button: shoot
+- **DOCK** button: dock / undock near station
 
 ## Dev
 
 ```bash
 npm install
 npm run dev
-npm run build:pages
+npm run build
 ```
-
-`build:pages` builds from `index.source.html` and syncs `index.html` + `assets/` for GitHub Pages.

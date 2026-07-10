@@ -23,7 +23,7 @@ const UPGRADE_DEFS = {
         label: 'Weapons',
         maxLevel: 5,
         costs: [220, 450, 800, 1200, 1800],
-        describe: (level) => `Damage +${level * 4}, fire rate +${level * 8}%`
+        describe: (level) => `Extra hit chance / fire rate +${level * 8}%`
     },
     cargo: {
         label: 'Cargo Hold',
@@ -45,29 +45,32 @@ export default class Player {
         scene.physics.world.enable(this.container);
 
         this.body = this.container.body;
-        this.body.setCircle(18, -18, -18);
-        this.body.setDrag(0);
-        this.body.setMaxVelocity(400);
+        this.body.setCircle(16, -16, -16);
+        // Mild drag = settle into fights instead of coasting past
+        this.body.setDrag(40);
+        this.body.setMaxVelocity(260);
         this.body.setCollideWorldBounds(true);
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        this.maxRotationSpeed = 3;
-        this.rotationAccel = 0.15;
-        this.rotationDrag = 0.92;
+        this.maxRotationSpeed = 7.2;
+        this.rotationAccel = 0.85;
+        this.rotationDrag = 0.78;
+        this.turnBleed = 0.55;
 
-        this.baseMainThrust = 200;
-        this.baseReverseThrust = 100;
-        this.baseLateralThrust = 150;
-        this.baseMaxVelocity = 400;
+        // Naval-tactical base stats (upgrades scale from these)
+        this.baseMainThrust = 380;
+        this.baseReverseThrust = 420;
+        this.baseLateralThrust = 360;
+        this.baseMaxVelocity = 260;
         this.baseMaxShields = 100;
         this.baseMaxHull = 100;
-        this.baseShieldRegen = 8;
-        this.baseWeaponDamage = 14;
-        this.baseFireRate = 220;
+        this.baseShieldRegen = 10;
+        this.baseWeaponDamage = 1; // hit-based combat
+        this.baseFireRate = 180;
         this.baseCargoCapacity = 20;
 
-        this.shieldRegenDelay = 2500;
+        this.shieldRegenDelay = 2200;
         this.lastHitTime = 0;
 
         this.credits = saved?.credits ?? 500;
@@ -103,7 +106,7 @@ export default class Player {
         this.maxShields = this.baseMaxShields + s * 20;
         this.shieldRegen = this.baseShieldRegen + s * 2;
         this.maxHull = this.baseMaxHull + h * 20;
-        this.weaponDamage = this.baseWeaponDamage + w * 4;
+        this.weaponDamage = this.baseWeaponDamage; // still 1 hit; upgrades mainly affect fire rate
         this.fireRate = Math.max(90, Math.round(this.baseFireRate * (1 - w * 0.08)));
         this.cargoCapacity = this.baseCargoCapacity + c * 8;
 
@@ -150,7 +153,6 @@ export default class Player {
         this.credits -= cost;
         this.upgrades[key] = level + 1;
         this.applyUpgrades(false);
-        // Newly purchased shield/hull capacity fills the gained amount
         if (key === 'shields') this.shields = Math.min(this.maxShields, this.shields + 20);
         if (key === 'hull') this.hull = Math.min(this.maxHull, this.hull + 20);
 
@@ -177,55 +179,78 @@ export default class Player {
         this.sprite.fillTriangle(0, -22, -14, 16, 14, 16);
         this.sprite.fillStyle(0xffffff, 1);
         this.sprite.fillCircle(0, -4, 4);
-        this.sprite.fillStyle(0x66aaff, 0.9);
-        this.sprite.fillTriangle(-6, 16, 6, 16, 0, 24);
+        this.sprite.fillStyle(0x66aaff, 0.95);
+        this.sprite.fillTriangle(-6, 16, 6, 16, 0, 26);
         this.sprite.lineStyle(2, 0x0a2a14, 1);
         this.sprite.strokeTriangle(0, -22, -14, 16, 14, 16);
     }
 
-    update(delta, leftJoystick, rightJoystick) {
+    update(delta, leftJoystick, rightJoystick, keys = null) {
         const dt = delta / 1000;
 
-        if (leftJoystick.isActive()) {
-            const force = leftJoystick.getForce();
-            const angle = leftJoystick.getAngle();
-            const rotInput = Math.cos(angle) * force;
-            this.rotationSpeed += rotInput * this.rotationAccel;
-            this.rotationSpeed = Phaser.Math.Clamp(
+        let rotInput = 0;
+        if (keys) {
+            if (keys.A.isDown) rotInput -= 1;
+            if (keys.D.isDown) rotInput += 1;
+        }
+        if (leftJoystick && leftJoystick.isActive()) {
+            rotInput += Math.cos(leftJoystick.getAngle()) * leftJoystick.getForce();
+        }
+
+        if (Math.abs(rotInput) > 0.01) {
+            this.rotationSpeed = Phaser.Math.Linear(
                 this.rotationSpeed,
-                -this.maxRotationSpeed,
-                this.maxRotationSpeed
+                rotInput * this.maxRotationSpeed,
+                Math.min(1, this.rotationAccel * 10 * dt)
             );
         } else {
-            this.rotationSpeed *= this.rotationDrag;
-            if (Math.abs(this.rotationSpeed) < 0.01) this.rotationSpeed = 0;
+            this.rotationSpeed *= Math.pow(this.rotationDrag, dt * 60);
+            if (Math.abs(this.rotationSpeed) < 0.02) this.rotationSpeed = 0;
         }
 
         this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
 
-        if (rightJoystick.isActive()) {
+        const turnAmount = Math.min(1, Math.abs(this.rotationSpeed) / this.maxRotationSpeed);
+        if (turnAmount > 0.15) {
+            const bleed = 1 - turnAmount * this.turnBleed * dt * 3.2;
+            this.body.velocity.x *= bleed;
+            this.body.velocity.y *= bleed;
+        }
+
+        let forwardInput = 0;
+        let lateralInput = 0;
+
+        if (keys) {
+            if (keys.W.isDown) forwardInput += 1;
+            if (keys.S.isDown) forwardInput -= 1;
+            if (keys.K.isDown) lateralInput += 1;
+            if (keys.J.isDown) lateralInput -= 1;
+        }
+
+        if (rightJoystick && rightJoystick.isActive()) {
             const force = rightJoystick.getForce();
             const angle = rightJoystick.getAngle();
+            forwardInput += -Math.sin(angle) * force;
+            lateralInput += Math.cos(angle) * force;
+        }
 
-            const forwardComponent = Math.sin(angle) * force;
-            const lateralComponent = Math.cos(angle) * force;
+        forwardInput = Phaser.Math.Clamp(forwardInput, -1, 1);
+        lateralInput = Phaser.Math.Clamp(lateralInput, -1, 1);
 
-            const shipForwardX = Math.sin(this.rotation);
-            const shipForwardY = -Math.cos(this.rotation);
-            const shipRightX = Math.cos(this.rotation);
-            const shipRightY = Math.sin(this.rotation);
+        const shipForwardX = Math.sin(this.rotation);
+        const shipForwardY = -Math.cos(this.rotation);
+        const shipRightX = Math.cos(this.rotation);
+        const shipRightY = Math.sin(this.rotation);
 
-            let thrustMagnitude;
-            if (forwardComponent < 0) {
-                thrustMagnitude = Math.abs(forwardComponent) * this.mainThrust;
-            } else {
-                thrustMagnitude = -forwardComponent * this.reverseThrust;
-            }
+        let thrustMagnitude = 0;
+        if (forwardInput > 0) thrustMagnitude = forwardInput * this.mainThrust;
+        else if (forwardInput < 0) thrustMagnitude = forwardInput * this.reverseThrust;
 
+        if (Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01) {
             this.body.setAcceleration(
-                shipForwardX * thrustMagnitude + shipRightX * lateralComponent * this.lateralThrust,
-                shipForwardY * thrustMagnitude + shipRightY * lateralComponent * this.lateralThrust
+                shipForwardX * thrustMagnitude + shipRightX * lateralInput * this.lateralThrust,
+                shipForwardY * thrustMagnitude + shipRightY * lateralInput * this.lateralThrust
             );
         } else {
             this.body.setAcceleration(0, 0);
@@ -243,17 +268,12 @@ export default class Player {
     takeDamage(amount) {
         this.lastHitTime = Date.now();
         let remaining = amount;
-
         if (this.shields > 0) {
             const absorbed = Math.min(this.shields, remaining);
             this.shields -= absorbed;
             remaining -= absorbed;
         }
-
-        if (remaining > 0) {
-            this.hull -= remaining;
-        }
-
+        if (remaining > 0) this.hull -= remaining;
         this.flashHit();
         return this.hull <= 0;
     }
@@ -261,27 +281,22 @@ export default class Player {
     flashHit() {
         this.container.setAlpha(0.4);
         this.scene.time.delayedCall(80, () => {
-            if (this.container && this.container.active) {
-                this.container.setAlpha(1);
-            }
+            if (this.container && this.container.active) this.container.setAlpha(1);
         });
     }
 
     repair(costPerPoint = 2) {
         const missing = Math.ceil(this.maxHull - this.hull + this.maxShields - this.shields);
         if (missing <= 0) return { repaired: false, cost: 0, message: 'Ship already at full integrity.' };
-
         const affordable = Math.floor(this.credits / costPerPoint);
         const points = Math.min(missing, affordable);
         if (points <= 0) return { repaired: false, cost: 0, message: 'Not enough credits.' };
 
         let remaining = points;
-        const shieldNeed = this.maxShields - this.shields;
-        const shieldFill = Math.min(shieldNeed, remaining);
+        const shieldFill = Math.min(this.maxShields - this.shields, remaining);
         this.shields += shieldFill;
         remaining -= shieldFill;
         this.hull = Math.min(this.maxHull, this.hull + remaining);
-
         const cost = points * costPerPoint;
         this.credits -= cost;
         return { repaired: true, cost, message: `Repaired for ${cost} credits.` };
@@ -291,30 +306,14 @@ export default class Player {
         return this.cargo.food + this.cargo.ore + this.cargo.tech;
     }
 
-    getX() {
-        return this.container.x;
-    }
-
-    getY() {
-        return this.container.y;
-    }
-
-    getRotation() {
-        return this.rotation;
-    }
-
+    getX() { return this.container.x; }
+    getY() { return this.container.y; }
+    getRotation() { return this.rotation; }
     getVelocity() {
-        return {
-            x: this.body.velocity.x,
-            y: this.body.velocity.y
-        };
+        return { x: this.body.velocity.x, y: this.body.velocity.y };
     }
-
     getSpeed() {
         return Math.sqrt(this.body.velocity.x ** 2 + this.body.velocity.y ** 2);
     }
-
-    destroy() {
-        this.container.destroy();
-    }
+    destroy() { this.container.destroy(); }
 }

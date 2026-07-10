@@ -30,7 +30,7 @@ export default async (req) => {
     const unreadOnly = url.searchParams.get('unread') === 'true';
     const userId = url.searchParams.get('userId');
     const includeFiltered = url.searchParams.get('includeFiltered') === 'true';
-    const minScore = parseInt(url.searchParams.get('minScore') || '12');
+    const minScore = parseInt(url.searchParams.get('minScore') || '18');
     const topic = url.searchParams.get('topic');
 
     const db = await getDatabase();

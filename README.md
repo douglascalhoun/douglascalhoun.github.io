@@ -18,10 +18,18 @@ https://douglascalhoun.github.io/
 
 ## Controls
 
-- **Left joystick / A-D feel**: turn
+### Laptop / keyboard
+- **A / D**: turn left / right
+- **W / S**: thrust forward / reverse
+- **J / K**: strafe left / right
+- **Space**: fire
+- **E**: dock / undock near station
+
+### Mobile / touch
+- **Left joystick**: turn
 - **Right joystick**: thrust
-- **FIRE** button or **Space**: shoot
-- **DOCK** button or **D**: dock / undock near station
+- **FIRE** button: shoot
+- **DOCK** button: dock / undock near station
 
 ## Dev
 

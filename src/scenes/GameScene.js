@@ -35,6 +35,7 @@ export default class GameScene extends Phaser.Scene {
         this.fireRate = 180;
         this.isDocked = false;
         this.dockingUI = null;
+        this.stationTab = 'trade';
         this.gameOver = false;
         this.statusMessage = '';
         this.statusMessageUntil = 0;
@@ -52,7 +53,7 @@ export default class GameScene extends Phaser.Scene {
         this.fireKey = this.keys.SPACE;
 
         this.scale.on('resize', this.onResize, this);
-        this.showToast('WASD turn/thrust · J/K strafe · Space fire · E dock');
+        this.showToast('WASD turn/thrust · J/K strafe · Space fire · E dock · upgrades at station');
     }
 
     spawnNPCs() {
@@ -201,7 +202,8 @@ export default class GameScene extends Phaser.Scene {
     fireWeapon() {
         if (this.gameOver || this.isDocked) return;
         const now = Date.now();
-        if (now - this.lastFireTime < this.fireRate) return;
+        const rate = this.player.fireRate ?? this.fireRate;
+        if (now - this.lastFireTime < rate) return;
         this.lastFireTime = now;
 
         const projectile = new Projectile(
@@ -281,53 +283,100 @@ export default class GameScene extends Phaser.Scene {
 
     showStationUI() {
         if (this.dockingUI) return;
+        this.stationTab = 'trade';
         const cx = this.scale.width / 2;
         const cy = this.scale.height / 2;
+        const panelW = Math.min(440, this.scale.width * 0.92);
+        const panelH = Math.min(520, this.scale.height * 0.82);
 
-        const overlay = this.add.rectangle(cx, cy, Math.min(420, this.scale.width * 0.9), Math.min(460, this.scale.height * 0.78), 0x06140c, 0.96)
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x06140c, 0.96)
             .setStrokeStyle(2, 0x33aa66)
             .setScrollFactor(0)
             .setDepth(2500);
 
-        const title = this.add.text(cx, cy - overlay.height / 2 + 28, this.station.getName(), {
-            fontSize: '22px',
+        const title = this.add.text(cx, cy - panelH / 2 + 24, this.station.getName(), {
+            fontSize: '20px',
             fill: '#9dffb0'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
 
-        const subtitle = this.add.text(cx, cy - overlay.height / 2 + 58, 'Trade & Repair', {
-            fontSize: '14px',
-            fill: '#88aa99'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
+        const tradeTab = this.makeStationButton(cx - 80, cy - panelH / 2 + 58, 'Trade', () => {
+            this.stationTab = 'trade';
+            this.rebuildStationBody();
+        });
+        const upgradeTab = this.makeStationButton(cx + 80, cy - panelH / 2 + 58, 'Upgrades', () => {
+            this.stationTab = 'upgrades';
+            this.rebuildStationBody();
+        });
 
-        this.stationStatus = this.add.text(cx, cy - overlay.height / 2 + 90, '', {
-            fontSize: '13px',
+        this.stationStatus = this.add.text(cx, cy - panelH / 2 + 92, '', {
+            fontSize: '12px',
             fill: '#d8ffe8',
             align: 'center'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
 
-        const buttons = [];
-        const goods = [
-            { key: 'food', label: 'Food' },
-            { key: 'ore', label: 'Ore' },
-            { key: 'tech', label: 'Tech' }
-        ];
+        this.dockingUI = {
+            overlay,
+            title,
+            tabs: [tradeTab, upgradeTab],
+            buttons: [],
+            status: this.stationStatus,
+            panelW,
+            panelH,
+            cx,
+            cy
+        };
+        this.rebuildStationBody();
+    }
 
-        goods.forEach((good, index) => {
-            const y = cy - 40 + index * 58;
-            const buy = this.makeStationButton(cx - 90, y, `Buy ${good.label}`, () => this.buyGood(good.key));
-            const sell = this.makeStationButton(cx + 90, y, `Sell ${good.label}`, () => this.sellGood(good.key));
-            buttons.push(buy, sell);
-        });
+    clearStationBodyButtons() {
+        if (!this.dockingUI) return;
+        this.dockingUI.buttons.forEach((b) => b.destroy());
+        this.dockingUI.buttons = [];
+    }
 
-        const repairBtn = this.makeStationButton(cx, cy + 150, 'Repair Ship', () => {
-            const result = this.player.repair(2);
-            this.showToast(result.message);
-            this.refreshStationStatus();
-        });
-        buttons.push(repairBtn);
+    rebuildStationBody() {
+        if (!this.dockingUI) return;
+        this.clearStationBodyButtons();
+        const { cx, cy, panelH } = this.dockingUI;
+        const buttons = this.dockingUI.buttons;
 
-        this.dockingUI = { overlay, title, subtitle, buttons, status: this.stationStatus };
+        if (this.stationTab === 'trade') {
+            const goods = [
+                { key: 'food', label: 'Food' },
+                { key: 'ore', label: 'Ore' },
+                { key: 'tech', label: 'Tech' }
+            ];
+            goods.forEach((good, index) => {
+                const y = cy - 30 + index * 52;
+                buttons.push(this.makeStationButton(cx - 95, y, `Buy ${good.label}`, () => this.buyGood(good.key)));
+                buttons.push(this.makeStationButton(cx + 95, y, `Sell ${good.label}`, () => this.sellGood(good.key)));
+            });
+            buttons.push(this.makeStationButton(cx, cy + panelH / 2 - 48, 'Repair Ship', () => {
+                const result = this.player.repair(2);
+                this.showToast(result.message);
+                this.refreshStationStatus();
+            }));
+        } else {
+            const defs = Player.getUpgradeDefs();
+            Object.keys(defs).forEach((key, index) => {
+                const def = defs[key];
+                const level = this.player.getUpgradeLevel(key);
+                const cost = this.player.getUpgradeCost(key);
+                const y = cy - 50 + index * 48;
+                const label = cost === null
+                    ? `${def.label} Lv${level} MAX`
+                    : `${def.label} Lv${level} → ${level + 1} (${cost}c)`;
+                buttons.push(this.makeStationButton(cx, y, label, () => this.buyUpgrade(key)));
+            });
+        }
+
         this.refreshStationStatus();
+    }
+
+    buyUpgrade(key) {
+        const result = this.player.buyUpgrade(key);
+        this.showToast(result.message);
+        this.rebuildStationBody();
     }
 
     makeStationButton(x, y, label, onClick) {
@@ -348,10 +397,19 @@ export default class GameScene extends Phaser.Scene {
         if (!this.stationStatus) return;
         const p = this.player;
         const prices = this.station.prices;
+        const u = p.upgrades;
+        if (this.stationTab === 'upgrades') {
+            this.stationStatus.setText([
+                `Credits: ${p.credits}   Kills: ${p.kills}`,
+                `E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
+                `Rate ${p.fireRate}ms  Cap ${p.cargoCapacity}  MaxSpd ${Math.round(p.body.maxVelocityX)}`
+            ].join('\n'));
+            return;
+        }
         this.stationStatus.setText([
             `Credits: ${p.credits}`,
             `Cargo: ${p.getCargoUsed()}/${p.cargoCapacity}  (F:${p.cargo.food} O:${p.cargo.ore} T:${p.cargo.tech})`,
-            `Hull ${Math.round(p.hull)} / Shields ${Math.round(p.shields)}`,
+            `Hull ${Math.round(p.hull)}/${p.maxHull}  Shields ${Math.round(p.shields)}/${p.maxShields}`,
             `Prices  Food ${prices.food.buy}/${prices.food.sell}  Ore ${prices.ore.buy}/${prices.ore.sell}  Tech ${prices.tech.buy}/${prices.tech.sell}`
         ].join('\n'));
     }
@@ -388,7 +446,7 @@ export default class GameScene extends Phaser.Scene {
         if (!this.dockingUI) return;
         this.dockingUI.overlay.destroy();
         this.dockingUI.title.destroy();
-        this.dockingUI.subtitle.destroy();
+        this.dockingUI.tabs.forEach((t) => t.destroy());
         this.dockingUI.status.destroy();
         this.dockingUI.buttons.forEach((b) => b.destroy());
         this.dockingUI = null;
@@ -406,6 +464,7 @@ export default class GameScene extends Phaser.Scene {
                     proj.destroy();
                     if (result === 'disabled') {
                         this.player.credits += npc.bounty;
+                        this.player.kills += 1;
                         this.showToast(`${npc.type} disabled! +${npc.bounty}c`, 2200);
                         this.spawnExplosion(npc.getX(), npc.getY());
                         if (npc.type === 'fighter') {
@@ -648,17 +707,17 @@ export default class GameScene extends Phaser.Scene {
         this.projectiles = [];
         this.enemyProjectiles = [];
 
-        const savedCredits = this.player.credits;
-        const savedCargo = { ...this.player.cargo };
+        const snapshot = this.player.getSnapshot();
+        // Respawn keeps upgrades/credits/cargo/kills; refill hull & shields
+        snapshot.shields = undefined;
+        snapshot.hull = undefined;
 
         this.player.destroy();
-        this.player = new Player(this, this.worldSize / 2 - 800, this.worldSize / 2);
-        this.player.credits = savedCredits;
-        this.player.cargo = savedCargo;
+        this.player = new Player(this, this.worldSize / 2 - 800, this.worldSize / 2, snapshot);
         this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
         this.gameOver = false;
         this.dockButton.setText('DOCK');
-        this.showToast('Respawned. Credits and cargo retained.');
+        this.showToast('Respawned. Upgrades and cargo retained.');
     }
 
     update(time, delta) {
@@ -694,12 +753,14 @@ export default class GameScene extends Phaser.Scene {
         }
 
         const p = this.player;
+        const u = p.upgrades;
         const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
         this.hudText.setText([
-            `Credits: ${p.credits}`,
+            `Credits: ${p.credits}   Kills: ${p.kills}`,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Speed: ${Math.round(p.getSpeed())}`,
+            `Speed: ${Math.round(p.getSpeed())}   Rate: ${p.fireRate}ms`,
+            `Upgrades E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
             foe ? `Foe T${foe.tier}: ${foe.hits}/${foe.maxHits} hits [${foe.mode}]` : `Next foe tier: ${this.enemyTier}`,
             'A/D turn · W/S thrust · J/K strafe · Space fire',
             this.isDocked ? 'DOCKED [E undock]' : (inDockingRange ? 'In docking range [E]' : '')

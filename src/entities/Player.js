@@ -1,7 +1,40 @@
 import Phaser from 'phaser';
 
+const UPGRADE_DEFS = {
+    engines: {
+        label: 'Engines',
+        maxLevel: 5,
+        costs: [200, 400, 700, 1100, 1600],
+        describe: (level) => `Thrust +${level * 15}%`
+    },
+    shields: {
+        label: 'Shields',
+        maxLevel: 5,
+        costs: [180, 360, 650, 1000, 1500],
+        describe: (level) => `Max shields +${level * 20}, regen +${level * 2}`
+    },
+    hull: {
+        label: 'Hull',
+        maxLevel: 5,
+        costs: [180, 360, 650, 1000, 1500],
+        describe: (level) => `Max hull +${level * 20}`
+    },
+    weapons: {
+        label: 'Weapons',
+        maxLevel: 5,
+        costs: [220, 450, 800, 1200, 1800],
+        describe: (level) => `Extra hit chance / fire rate +${level * 8}%`
+    },
+    cargo: {
+        label: 'Cargo Hold',
+        maxLevel: 5,
+        costs: [150, 300, 550, 850, 1300],
+        describe: (level) => `Capacity +${level * 8}`
+    }
+};
+
 export default class Player {
-    constructor(scene, x, y) {
+    constructor(scene, x, y, saved = null) {
         this.scene = scene;
 
         this.sprite = scene.add.graphics();
@@ -13,36 +46,131 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Mild drag = you settle into a fight instead of coasting past forever
+        // Mild drag = settle into fights instead of coasting past
         this.body.setDrag(40);
         this.body.setMaxVelocity(260);
         this.body.setCollideWorldBounds(true);
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        // High turn authority for tactical circling
         this.maxRotationSpeed = 7.2;
         this.rotationAccel = 0.85;
         this.rotationDrag = 0.78;
-        // Hard turns bleed speed (naval / sailing feel)
         this.turnBleed = 0.55;
 
-        // Strong accel to a low top speed — responsive, not fast
-        this.mainThrust = 380;
-        this.reverseThrust = 420; // reverse is your brake
-        this.lateralThrust = 360;
+        // Naval-tactical base stats (upgrades scale from these)
+        this.baseMainThrust = 380;
+        this.baseReverseThrust = 420;
+        this.baseLateralThrust = 360;
+        this.baseMaxVelocity = 260;
+        this.baseMaxShields = 100;
+        this.baseMaxHull = 100;
+        this.baseShieldRegen = 10;
+        this.baseWeaponDamage = 1; // hit-based combat
+        this.baseFireRate = 180;
+        this.baseCargoCapacity = 20;
 
-        this.maxShields = 100;
-        this.shields = 100;
-        this.maxHull = 100;
-        this.hull = 100;
-        this.shieldRegen = 10;
         this.shieldRegenDelay = 2200;
         this.lastHitTime = 0;
 
-        this.credits = 500;
-        this.cargo = { food: 0, ore: 0, tech: 0 };
-        this.cargoCapacity = 20;
+        this.credits = saved?.credits ?? 500;
+        this.cargo = saved?.cargo
+            ? { ...saved.cargo }
+            : { food: 0, ore: 0, tech: 0 };
+        this.upgrades = saved?.upgrades
+            ? { ...saved.upgrades }
+            : { engines: 0, shields: 0, hull: 0, weapons: 0, cargo: 0 };
+        this.kills = saved?.kills ?? 0;
+
+        this.applyUpgrades(false);
+        this.shields = saved?.shields ?? this.maxShields;
+        this.hull = saved?.hull ?? this.maxHull;
+    }
+
+    static getUpgradeDefs() {
+        return UPGRADE_DEFS;
+    }
+
+    applyUpgrades(refill = false) {
+        const e = this.upgrades.engines;
+        const s = this.upgrades.shields;
+        const h = this.upgrades.hull;
+        const w = this.upgrades.weapons;
+        const c = this.upgrades.cargo;
+
+        this.mainThrust = this.baseMainThrust * (1 + e * 0.15);
+        this.reverseThrust = this.baseReverseThrust * (1 + e * 0.12);
+        this.lateralThrust = this.baseLateralThrust * (1 + e * 0.12);
+        this.body.setMaxVelocity(this.baseMaxVelocity * (1 + e * 0.08));
+
+        this.maxShields = this.baseMaxShields + s * 20;
+        this.shieldRegen = this.baseShieldRegen + s * 2;
+        this.maxHull = this.baseMaxHull + h * 20;
+        this.weaponDamage = this.baseWeaponDamage; // still 1 hit; upgrades mainly affect fire rate
+        this.fireRate = Math.max(90, Math.round(this.baseFireRate * (1 - w * 0.08)));
+        this.cargoCapacity = this.baseCargoCapacity + c * 8;
+
+        if (refill) {
+            this.shields = this.maxShields;
+            this.hull = this.maxHull;
+        } else {
+            this.shields = Math.min(this.shields ?? this.maxShields, this.maxShields);
+            this.hull = Math.min(this.hull ?? this.maxHull, this.maxHull);
+        }
+    }
+
+    getUpgradeLevel(key) {
+        return this.upgrades[key] ?? 0;
+    }
+
+    getUpgradeCost(key) {
+        const def = UPGRADE_DEFS[key];
+        if (!def) return null;
+        const level = this.getUpgradeLevel(key);
+        if (level >= def.maxLevel) return null;
+        return def.costs[level];
+    }
+
+    canAffordUpgrade(key) {
+        const cost = this.getUpgradeCost(key);
+        return cost !== null && this.credits >= cost;
+    }
+
+    buyUpgrade(key) {
+        const def = UPGRADE_DEFS[key];
+        if (!def) return { ok: false, message: 'Unknown upgrade.' };
+
+        const level = this.getUpgradeLevel(key);
+        if (level >= def.maxLevel) {
+            return { ok: false, message: `${def.label} already maxed.` };
+        }
+
+        const cost = def.costs[level];
+        if (this.credits < cost) {
+            return { ok: false, message: 'Not enough credits.' };
+        }
+
+        this.credits -= cost;
+        this.upgrades[key] = level + 1;
+        this.applyUpgrades(false);
+        if (key === 'shields') this.shields = Math.min(this.maxShields, this.shields + 20);
+        if (key === 'hull') this.hull = Math.min(this.maxHull, this.hull + 20);
+
+        return {
+            ok: true,
+            message: `${def.label} → Lv ${this.upgrades[key]} (−${cost}c)`
+        };
+    }
+
+    getSnapshot() {
+        return {
+            credits: this.credits,
+            cargo: { ...this.cargo },
+            upgrades: { ...this.upgrades },
+            kills: this.kills,
+            shields: this.shields,
+            hull: this.hull
+        };
     }
 
     drawShip() {
@@ -83,7 +211,6 @@ export default class Player {
         this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
 
-        // Naval bleed: turning hard bleeds forward speed so you don't overshoot
         const turnAmount = Math.min(1, Math.abs(this.rotationSpeed) / this.maxRotationSpeed);
         if (turnAmount > 0.15) {
             const bleed = 1 - turnAmount * this.turnBleed * dt * 3.2;
@@ -116,7 +243,6 @@ export default class Player {
         const shipRightX = Math.cos(this.rotation);
         const shipRightY = Math.sin(this.rotation);
 
-        // Prefer thrusting along facing — sideways drift is for orbiting, not racing
         let thrustMagnitude = 0;
         if (forwardInput > 0) thrustMagnitude = forwardInput * this.mainThrust;
         else if (forwardInput < 0) thrustMagnitude = forwardInput * this.reverseThrust;

@@ -32,16 +32,20 @@ export default class GameScene extends Phaser.Scene {
         this.projectiles = [];
         this.enemyProjectiles = [];
         this.lastFireTime = 0;
-        this.fireRate = 220;
+        this.fireRate = 180;
         this.isDocked = false;
         this.dockingUI = null;
         this.gameOver = false;
         this.statusMessage = '';
         this.statusMessageUntil = 0;
+        this.enemyTier = 1;
+        this.pendingSpawn = null;
+        this.edgeMarkers = [];
 
         this.setupTouchControls();
         this.createHUD();
         this.createDockButton();
+        this.createEdgeMarkers();
 
         this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,SPACE');
         this.dockKey = this.keys.E;
@@ -55,8 +59,8 @@ export default class GameScene extends Phaser.Scene {
         const c = this.worldSize / 2;
         this.npcs.push(new NPCShip(this, c + 300, c + 500, 'trader'));
         this.npcs.push(new NPCShip(this, c - 500, c + 300, 'trader'));
-        this.npcs.push(new NPCShip(this, c + 800, c - 600, 'fighter'));
-        this.npcs.push(new NPCShip(this, c - 900, c - 200, 'fighter'));
+        // One starter fighter to duel
+        this.npcs.push(new NPCShip(this, c + 800, c - 600, 'fighter', { tier: 1 }));
     }
 
     createStarField(worldSize) {
@@ -205,8 +209,8 @@ export default class GameScene extends Phaser.Scene {
             this.player.getX(),
             this.player.getY(),
             this.player.getRotation(),
-            560,
-            { damage: 14, fromPlayer: true }
+            680,
+            { damage: 1, fromPlayer: true, lifetime: 1400 }
         );
         this.projectiles.push(projectile);
     }
@@ -217,8 +221,8 @@ export default class GameScene extends Phaser.Scene {
             npc.getX(),
             npc.getY(),
             npc.getRotation(),
-            420,
-            { damage: 10, fromPlayer: false, lifetime: 1600 }
+            480 + npc.tier * 20,
+            { damage: npc.shotDamage, fromPlayer: false, lifetime: 1500 }
         );
         this.enemyProjectiles.push(projectile);
     }
@@ -372,23 +376,23 @@ export default class GameScene extends Phaser.Scene {
     }
 
     handleCombat() {
-        // Player shots vs NPCs
         this.projectiles = this.projectiles.filter((proj) => {
             if (!proj.update()) return false;
             for (const npc of this.npcs) {
-                if (!npc.alive) continue;
+                if (!npc.isCombatTarget()) continue;
                 const dist = Phaser.Math.Distance.Between(proj.getX(), proj.getY(), npc.getX(), npc.getY());
-                if (dist < 24) {
-                    const hitX = npc.getX();
-                    const hitY = npc.getY();
-                    const bounty = npc.bounty;
-                    const type = npc.type;
-                    const destroyed = npc.takeDamage(proj.damage);
+                if (dist < 26) {
+                    const result = npc.takeDamage(1);
                     proj.destroy();
-                    if (destroyed) {
-                        this.player.credits += bounty;
-                        this.showToast(`Destroyed ${type}! +${bounty}c`);
-                        this.spawnExplosion(hitX, hitY);
+                    if (result === 'disabled') {
+                        this.player.credits += npc.bounty;
+                        this.showToast(`${npc.type} disabled! +${npc.bounty}c`, 2200);
+                        this.spawnExplosion(npc.getX(), npc.getY());
+                        if (npc.type === 'fighter') {
+                            this.queueTougherFighter(npc.tier);
+                        }
+                    } else if (result === 'critical') {
+                        this.showToast('Enemy critical — they\'re running!', 1600);
                     }
                     return false;
                 }
@@ -396,7 +400,6 @@ export default class GameScene extends Phaser.Scene {
             return true;
         });
 
-        // Enemy shots vs player
         this.enemyProjectiles = this.enemyProjectiles.filter((proj) => {
             if (!proj.update()) return false;
             const dist = Phaser.Math.Distance.Between(
@@ -406,11 +409,22 @@ export default class GameScene extends Phaser.Scene {
             if (dist < 26) {
                 const dead = this.player.takeDamage(proj.damage);
                 proj.destroy();
-                this.cameras.main.shake(80, 0.004);
+                this.cameras.main.shake(70, 0.0035);
                 if (dead) this.triggerGameOver();
                 return false;
             }
             return true;
+        });
+    }
+
+    spawnHitSpark(x, y) {
+        const spark = this.add.circle(x, y, 4, 0xffffff, 0.95).setDepth(130);
+        this.tweens.add({
+            targets: spark,
+            scale: 2.2,
+            alpha: 0,
+            duration: 140,
+            onComplete: () => spark.destroy()
         });
     }
 
@@ -423,6 +437,178 @@ export default class GameScene extends Phaser.Scene {
             duration: 280,
             onComplete: () => burst.destroy()
         });
+    }
+
+    queueTougherFighter(defeatedTier) {
+        this.enemyTier = Math.max(this.enemyTier, defeatedTier + 1);
+        this.pendingSpawn = {
+            tier: this.enemyTier,
+            at: Date.now() + 2200
+        };
+        this.showToast(`Hostile signal inbound — Tier ${this.enemyTier}`, 2400);
+    }
+
+    maybeRespawnNPCs() {
+        // Keep a couple traders around
+        const traders = this.npcs.filter((n) => n.alive && n.type === 'trader' && !n.disabled);
+        if (traders.length < 2) {
+            const c = this.worldSize / 2;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 700 + Math.random() * 1000;
+            this.npcs.push(new NPCShip(
+                this,
+                c + Math.cos(angle) * dist,
+                c + Math.sin(angle) * dist,
+                'trader'
+            ));
+        }
+
+        // Spawn next tougher fighter after defeat delay
+        if (this.pendingSpawn && Date.now() >= this.pendingSpawn.at) {
+            const activeFighters = this.npcs.filter((n) => n.isCombatTarget() && n.type === 'fighter');
+            if (activeFighters.length === 0) {
+                this.spawnFighterNearPlayer(this.pendingSpawn.tier);
+            }
+            this.pendingSpawn = null;
+        }
+
+        // Clean long-dead wrecks eventually (keep briefly as disabled hulks)
+        this.npcs = this.npcs.filter((n) => n.alive);
+    }
+
+    spawnFighterNearPlayer(tier) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 550 + Math.random() * 250;
+        const x = Phaser.Math.Clamp(this.player.getX() + Math.cos(angle) * dist, 300, this.worldSize - 300);
+        const y = Phaser.Math.Clamp(this.player.getY() + Math.sin(angle) * dist, 300, this.worldSize - 300);
+        const foe = new NPCShip(this, x, y, 'fighter', { tier });
+        this.npcs.push(foe);
+        this.showToast(`Tier ${tier} fighter engaging!`, 2200);
+    }
+
+    createEdgeMarkers() {
+        this.markerLayer = this.add.graphics().setScrollFactor(0).setDepth(1800);
+    }
+
+    isOnScreen(worldX, worldY, pad = 40) {
+        const cam = this.cameras.main;
+        return (
+            worldX > cam.worldView.x - pad &&
+            worldX < cam.worldView.x + cam.worldView.width + pad &&
+            worldY > cam.worldView.y - pad &&
+            worldY < cam.worldView.y + cam.worldView.height + pad
+        );
+    }
+
+    projectToEdge(worldX, worldY) {
+        const cam = this.cameras.main;
+        const cx = this.scale.width / 2;
+        const cy = this.scale.height / 2;
+        const sx = (worldX - cam.worldView.x) / cam.zoom;
+        const sy = (worldY - cam.worldView.y) / cam.zoom;
+        const dx = sx - cx;
+        const dy = sy - cy;
+        const angle = Math.atan2(dy, dx);
+
+        const margin = 28;
+        const hw = this.scale.width / 2 - margin;
+        const hh = this.scale.height / 2 - margin;
+        const tan = Math.tan(angle);
+        let ex;
+        let ey;
+
+        if (Math.abs(dx) * hh > Math.abs(dy) * hw) {
+            ex = dx > 0 ? hw : -hw;
+            ey = ex * tan;
+            if (ey > hh) ey = hh;
+            if (ey < -hh) ey = -hh;
+        } else {
+            ey = dy > 0 ? hh : -hh;
+            ex = ey / (tan || 0.0001);
+            if (ex > hw) ex = hw;
+            if (ex < -hw) ex = -hw;
+        }
+
+        return { x: cx + ex, y: cy + ey, angle };
+    }
+
+    drawEdgeMarker(g, x, y, angle, color, size = 10, label = null) {
+        const tipX = x + Math.cos(angle) * size;
+        const tipY = y + Math.sin(angle) * size;
+        const leftX = x + Math.cos(angle + 2.5) * size * 0.7;
+        const leftY = y + Math.sin(angle + 2.5) * size * 0.7;
+        const rightX = x + Math.cos(angle - 2.5) * size * 0.7;
+        const rightY = y + Math.sin(angle - 2.5) * size * 0.7;
+
+        g.fillStyle(color, 0.95);
+        g.fillTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
+        g.lineStyle(1, 0xffffff, 0.35);
+        g.strokeTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
+
+        if (label) {
+            // Labels handled separately via text pool for clarity
+        }
+    }
+
+    updateEdgeMarkers() {
+        const g = this.markerLayer;
+        g.clear();
+
+        if (!this.markerLabels) {
+            this.markerLabels = {
+                planet: this.add.text(0, 0, 'PLANET', { fontSize: '10px', fill: '#88bbff' }).setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0),
+                station: this.add.text(0, 0, 'STATION', { fontSize: '10px', fill: '#9dffb0' }).setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0)
+            };
+            this.shipMarkerLabels = [];
+        }
+
+        const targets = [
+            { x: this.planet.x, y: this.planet.y, color: 0x66aaff, size: 12, key: 'planet' },
+            { x: this.station.getX(), y: this.station.getY(), color: 0x44ff88, size: 11, key: 'station' }
+        ];
+
+        for (const t of targets) {
+            const label = this.markerLabels[t.key];
+            if (this.isOnScreen(t.x, t.y, 60)) {
+                label.setAlpha(0);
+                continue;
+            }
+            const edge = this.projectToEdge(t.x, t.y);
+            this.drawEdgeMarker(g, edge.x, edge.y, edge.angle, t.color, t.size);
+            label.setPosition(edge.x - Math.cos(edge.angle) * 18, edge.y - Math.sin(edge.angle) * 18);
+            label.setAlpha(0.9);
+        }
+
+        // Ship markers
+        let labelIdx = 0;
+        for (const npc of this.npcs) {
+            if (!npc.alive) continue;
+            if (this.isOnScreen(npc.getX(), npc.getY(), 50)) continue;
+
+            const color = npc.disabled ? 0x888888 : (npc.type === 'fighter' ? 0xff5533 : 0x5588ff);
+            const edge = this.projectToEdge(npc.getX(), npc.getY());
+            this.drawEdgeMarker(g, edge.x, edge.y, edge.angle, color, npc.type === 'fighter' ? 10 : 8);
+
+            if (!this.shipMarkerLabels[labelIdx]) {
+                this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
+                    fontSize: '9px',
+                    fill: '#ffaa88'
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+            }
+            const lbl = this.shipMarkerLabels[labelIdx];
+            const text = npc.disabled
+                ? 'WRECK'
+                : (npc.type === 'fighter' ? `FOE T${npc.tier}` : 'TRADE');
+            lbl.setText(text);
+            lbl.setColor(npc.disabled ? '#aaaaaa' : (npc.type === 'fighter' ? '#ff8866' : '#88aaff'));
+            lbl.setPosition(edge.x - Math.cos(edge.angle) * 16, edge.y - Math.sin(edge.angle) * 16);
+            lbl.setAlpha(0.9);
+            labelIdx += 1;
+        }
+
+        for (let i = labelIdx; i < this.shipMarkerLabels.length; i++) {
+            this.shipMarkerLabels[i].setAlpha(0);
+        }
     }
 
     triggerGameOver() {
@@ -455,23 +641,6 @@ export default class GameScene extends Phaser.Scene {
         this.showToast('Respawned. Credits and cargo retained.');
     }
 
-    maybeRespawnNPCs() {
-        this.npcs = this.npcs.filter((n) => n.alive);
-        if (this.npcs.length < 3) {
-            const c = this.worldSize / 2;
-            const type = Math.random() > 0.45 ? 'fighter' : 'trader';
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 900 + Math.random() * 900;
-            this.npcs.push(new NPCShip(
-                this,
-                c + Math.cos(angle) * dist,
-                c + Math.sin(angle) * dist,
-                type
-            ));
-            this.showToast(`Incoming ${type}...`);
-        }
-    }
-
     update(time, delta) {
         if (!this.player) return;
 
@@ -485,6 +654,7 @@ export default class GameScene extends Phaser.Scene {
 
         if (!this.gameOver) this.handleCombat();
         this.maybeRespawnNPCs();
+        this.updateEdgeMarkers();
 
         if (inDockingRange && !this.isDocked) {
             this.dockButton.setAlpha(1);
@@ -501,12 +671,13 @@ export default class GameScene extends Phaser.Scene {
         }
 
         const p = this.player;
+        const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
         this.hudText.setText([
             `Credits: ${p.credits}`,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Cargo: ${p.getCargoUsed()}/${p.cargoCapacity}`,
             `Speed: ${Math.round(p.getSpeed())}`,
+            foe ? `Foe T${foe.tier}: ${foe.hits}/${foe.maxHits} hits [${foe.mode}]` : `Next foe tier: ${this.enemyTier}`,
             'A/D turn · W/S thrust · J/K strafe · Space fire',
             this.isDocked ? 'DOCKED [E undock]' : (inDockingRange ? 'In docking range [E]' : '')
         ].filter(Boolean).join('\n'));

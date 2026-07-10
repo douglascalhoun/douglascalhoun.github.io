@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ArticleList from './components/ArticleList';
 import * as api from './services/api';
 import {
   getStoryCounts,
   getUnreadStories,
   markManyRead,
+  markManyUnread,
   markRead,
+  markUnread,
   mergeStoriesIntoCache
 } from './services/cache';
 import { startAmbientPalette } from './services/ambient';
+
+const UNDO_MS = 8000;
 
 function App() {
   const [stories, setStories] = useState([]);
@@ -17,6 +21,8 @@ function App() {
   const [crawling, setCrawling] = useState(false);
   const [crawlNote, setCrawlNote] = useState('');
   const [error, setError] = useState(null);
+  const [undo, setUndo] = useState(null);
+  const undoTimer = useRef(null);
 
   useEffect(() => {
     refreshFromServer();
@@ -27,9 +33,34 @@ function App() {
     return stop;
   }, []);
 
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
   function syncFromCache() {
     setStories(getUnreadStories());
     setCounts(getStoryCounts());
+  }
+
+  function offerUndo({ ids, label }) {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ ids, label });
+    undoTimer.current = setTimeout(() => {
+      setUndo(null);
+      undoTimer.current = null;
+    }, UNDO_MS);
+  }
+
+  function handleUndo() {
+    if (!undo?.ids?.length) return;
+    if (undoTimer.current) {
+      clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+    }
+    if (undo.ids.length === 1) markUnread(undo.ids[0]);
+    else markManyUnread(undo.ids);
+    setUndo(null);
+    syncFromCache();
   }
 
   async function refreshFromServer() {
@@ -64,13 +95,24 @@ function App() {
   }
 
   function handleMarkRead(id) {
+    const story = stories.find((s) => s.id === id);
     markRead(id);
     syncFromCache();
+    offerUndo({
+      ids: [id],
+      label: story?.title ? `Marked read: ${story.title}` : 'Marked read'
+    });
   }
 
   function handleMarkAllRead() {
-    markManyRead(stories.map((s) => s.id));
+    const ids = stories.map((s) => s.id);
+    if (!ids.length) return;
+    markManyRead(ids);
     syncFromCache();
+    offerUndo({
+      ids,
+      label: `Cleared ${ids.length} ${ids.length === 1 ? 'story' : 'stories'}`
+    });
   }
 
   const progress = counts.total
@@ -138,6 +180,15 @@ function App() {
           <ArticleList articles={stories} onMarkRead={handleMarkRead} />
         )}
       </main>
+
+      {undo && (
+        <div className="undo-bar" role="status" aria-live="polite">
+          <p className="undo-label">{undo.label}</p>
+          <button type="button" className="btn undo-btn" onClick={handleUndo}>
+            Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -28,9 +28,23 @@ export function markRead(id) {
   return ids;
 }
 
+export function markUnread(id) {
+  const ids = getReadIds();
+  ids.delete(id);
+  saveJson(READ_KEY, [...ids]);
+  return ids;
+}
+
 export function markManyRead(idList) {
   const ids = getReadIds();
   idList.forEach((id) => ids.add(id));
+  saveJson(READ_KEY, [...ids]);
+  return ids;
+}
+
+export function markManyUnread(idList) {
+  const ids = getReadIds();
+  idList.forEach((id) => ids.delete(id));
   saveJson(READ_KEY, [...ids]);
   return ids;
 }

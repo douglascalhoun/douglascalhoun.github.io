@@ -1,32 +1,25 @@
-// Database helper utilities for standard Postgres (DATABASE_URL)
-import pg from 'pg';
+// Database helper — Neon serverless Pool (pg-compatible, Netlify-friendly)
+import { Pool } from '@neondatabase/serverless';
 
-const { Client } = pg;
-let dbClient = null;
+let pool = null;
 
-export async function getDatabase() {
-  if (dbClient) {
-    return dbClient;
-  }
+function getPool() {
+  if (pool) return pool;
 
   const connectionString = Netlify.env.get('DATABASE_URL');
   if (!connectionString) {
     throw new Error('DATABASE_URL environment variable not set. Please configure a Postgres database connection.');
   }
 
-  const client = new Client({
-    connectionString,
-    ssl: connectionString.includes('sslmode=require') || connectionString.includes('neon.tech')
-      ? { rejectUnauthorized: false }
-      : undefined
-  });
-  await client.connect();
+  pool = new Pool({ connectionString });
+  return pool;
+}
 
-  dbClient = {
-    query: async (text, params) => client.query(text, params)
+export async function getDatabase() {
+  const p = getPool();
+  return {
+    query: async (text, params) => p.query(text, params)
   };
-
-  return dbClient;
 }
 
 export async function getActiveFeeds(db) {
@@ -91,7 +84,8 @@ export async function getRecentArticles(db, limit = 50, offset = 0) {
     `SELECT a.*, f.name as feed_name, f.category as feed_category
      FROM articles a
      JOIN feeds f ON a.feed_id = f.id
-     ORDER BY a.pub_date DESC
+     WHERE COALESCE(a.is_relevant, true) = true
+     ORDER BY COALESCE(a.relevance_score, 0) DESC, a.pub_date DESC
      LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
@@ -140,7 +134,7 @@ export async function insertSubscription(db, subscription) {
       subscription.excludedKeywords || [],
       subscription.categories || [],
       subscription.countries || [],
-      subscription.maxNotificationsPerHour || 20
+      subscription.maxNotificationsPerHour || 12
     ]
   );
   return result.rows[0];

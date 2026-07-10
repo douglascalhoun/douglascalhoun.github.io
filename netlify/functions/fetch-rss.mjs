@@ -62,6 +62,7 @@ async function fetchFeed(feed) {
       const scored = scoreArticle(draft, feed);
       articles.push({
         ...draft,
+        imageUrl: null,
         relevanceScore: scored.score,
         isRelevant: scored.keep,
         topics: scored.topics,

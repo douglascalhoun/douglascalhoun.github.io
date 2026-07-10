@@ -102,7 +102,7 @@ export default async (req) => {
       ${select}
       ${from}
       ${whereSql}
-      ORDER BY COALESCE(a.relevance_score, 0) DESC, a.pub_date DESC
+      ORDER BY a.pub_date DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
     const queryParams = [...params, limit, offset];

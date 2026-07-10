@@ -1,36 +1,24 @@
 import React from 'react';
 import ArticleCard from './ArticleCard';
 
-function ArticleList({ articles, onToggleRead, onToggleFavorite, hasMore, onLoadMore, loadingMore }) {
-  if (!articles || articles.length === 0) {
+function ArticleList({ articles, onMarkRead }) {
+  if (!articles.length) {
     return (
-      <div className="empty-state">
-        <p>No articles found. Try another search or filter.</p>
+      <div className="empty">
+        No unread stories. Crawl sources to check for new items.
       </div>
     );
   }
 
   return (
-    <div className="article-list">
-      {articles.map(article => (
+    <div className="story-list">
+      {articles.map((article) => (
         <ArticleCard
           key={article.id}
           article={article}
-          onToggleRead={onToggleRead}
-          onToggleFavorite={onToggleFavorite}
+          onMarkRead={onMarkRead}
         />
       ))}
-      {hasMore && (
-        <div className="load-more">
-          <button
-            className="btn btn-primary"
-            onClick={onLoadMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? 'Loading…' : 'Load more'}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

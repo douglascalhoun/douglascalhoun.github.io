@@ -1,46 +1,21 @@
-# Worldwire Editorial Policy
+# Worldwire
 
-## Positioning
-Worldwire is not a general news firehose. It surfaces **high-impact technology progress** first—especially AI and VR/software—plus only the most consequential geopolitics and business moves.
+Unread feed of serious English-language news and tech reporting.
 
-## Source mix
-### Core (always on)
-- AI labs & analysis: OpenAI, Google AI, DeepMind, MIT Tech Review, Verge AI, VentureBeat AI
-- Broad tech signal: Ars Technica, TechCrunch, Wired, IEEE Spectrum, Hacker News
-- VR/spatial: UploadVR, Road to VR
+## What it does
+1. Crawls respected newsrooms (FT, NYT, WSJ, WaPo, Economist, BBC, plus tech press)
+2. Drops celebrity gossip and incremental political noise
+3. Caches stories in your browser
+4. Shows only stories you have not marked read
 
-### Selective
-- Business with tech gravity: Bloomberg Technology (when available)
-- Geopolitics: BBC World only (heavily filtered)
+## Not included
+No images, search, filters, favorites, or push-notification UI.
 
-### Retired from default
-CNN, NPR homepage, NYT homepage/world flood, WaPo, Al Jazeera all-feed, Guardian world flood, SCMP, Japan Times, Spiegel, El País, Reuters (broken), AP via rsshub
+## Local development
+```bash
+npm install
+npm run dev:rss
+```
 
-## Filtering model
-Each article gets a relevance score at ingest:
-
-| Signal | Effect |
-|---|---|
-| AI / VR / breakthrough tech terms | Strong boost |
-| First-order conflict / landmark events | Boost |
-| Hard pop-culture / celebrity / sports fluff | Hard reject |
-| Incremental politics ("says", "live updates", "reacts") | Strong demote |
-| World/business without tech or major-event signal | Demote |
-
-### Thresholds
-- **Feed keep:** score ≥ 12
-- **Push notify:** score ≥ 28
-- Default max pushes/hour: **12**
-
-## Intent examples
-Keep:
-- "OpenAI releases new multimodal model"
-- "Meta ships major Quest OS update for spatial apps"
-- "US launches strikes on Iran" (initial major event)
-- "Nvidia unveils next-gen AI GPU architecture"
-
-Drop:
-- Celebrity divorces / awards chatter
-- "Minister responds to criticism over..."
-- Live blogs / minute-by-minute war updates
-- Polling minutiae and campaign fundraising
+## Production
+https://rss-news-aggregator.netlify.app

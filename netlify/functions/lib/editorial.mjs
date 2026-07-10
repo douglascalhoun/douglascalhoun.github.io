@@ -45,6 +45,7 @@ export const RETIRE_NAME_PATTERNS = [
   'Road to VR',
   'Hacker News',
   'VentureBeat',
+  'The Verge AI',
   'CNN',
   'Al Jazeera',
   'Der Spiegel',

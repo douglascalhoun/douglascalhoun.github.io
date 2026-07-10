@@ -43,12 +43,12 @@ export default class GameScene extends Phaser.Scene {
         this.createHUD();
         this.createDockButton();
 
-        this.cursors = this.input.keyboard.createCursorKeys();
-        this.dockKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-        this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,SPACE');
+        this.dockKey = this.keys.E;
+        this.fireKey = this.keys.SPACE;
 
         this.scale.on('resize', this.onResize, this);
-        this.showToast('Fly to Outpost Alpha. Fighters will attack.');
+        this.showToast('WASD turn/thrust · J/K strafe · Space fire · E dock');
     }
 
     spawnNPCs() {
@@ -476,7 +476,7 @@ export default class GameScene extends Phaser.Scene {
         if (!this.player) return;
 
         if (!this.gameOver && !this.isDocked) {
-            this.player.update(delta, this.leftJoystick, this.rightJoystick);
+            this.player.update(delta, this.leftJoystick, this.rightJoystick, this.keys);
             if (this.fireKey.isDown) this.fireWeapon();
         }
 
@@ -507,7 +507,8 @@ export default class GameScene extends Phaser.Scene {
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
             `Cargo: ${p.getCargoUsed()}/${p.cargoCapacity}`,
             `Speed: ${Math.round(p.getSpeed())}`,
-            this.isDocked ? 'DOCKED' : (inDockingRange ? 'In docking range [D]' : '')
+            'A/D turn · W/S thrust · J/K strafe · Space fire',
+            this.isDocked ? 'DOCKED [E undock]' : (inDockingRange ? 'In docking range [E]' : '')
         ].filter(Boolean).join('\n'));
     }
 

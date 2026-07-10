@@ -60,13 +60,20 @@ export default class Player {
         this.sprite.strokeTriangle(0, -22, -14, 16, 14, 16);
     }
 
-    update(delta, leftJoystick, rightJoystick) {
+    update(delta, leftJoystick, rightJoystick, keys = null) {
         const dt = delta / 1000;
 
-        if (leftJoystick.isActive()) {
-            const force = leftJoystick.getForce();
-            const angle = leftJoystick.getAngle();
-            const rotInput = Math.cos(angle) * force;
+        // Rotation: A/D keyboard or left joystick
+        let rotInput = 0;
+        if (keys) {
+            if (keys.A.isDown) rotInput -= 1;
+            if (keys.D.isDown) rotInput += 1;
+        }
+        if (leftJoystick && leftJoystick.isActive()) {
+            rotInput += Math.cos(leftJoystick.getAngle()) * leftJoystick.getForce();
+        }
+
+        if (Math.abs(rotInput) > 0.01) {
             this.rotationSpeed += rotInput * this.rotationAccel;
             this.rotationSpeed = Phaser.Math.Clamp(
                 this.rotationSpeed,
@@ -81,28 +88,44 @@ export default class Player {
         this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
 
-        if (rightJoystick.isActive()) {
+        // Thrust: W/S forward/back, J/K strafe, or right joystick
+        let forwardInput = 0; // +1 forward, -1 reverse
+        let lateralInput = 0; // +1 right, -1 left
+
+        if (keys) {
+            if (keys.W.isDown) forwardInput += 1;
+            if (keys.S.isDown) forwardInput -= 1;
+            if (keys.K.isDown) lateralInput += 1;
+            if (keys.J.isDown) lateralInput -= 1;
+        }
+
+        if (rightJoystick && rightJoystick.isActive()) {
             const force = rightJoystick.getForce();
             const angle = rightJoystick.getAngle();
+            // Joystick: up = forward (negative sin in screen space), left/right = strafe
+            forwardInput += -Math.sin(angle) * force;
+            lateralInput += Math.cos(angle) * force;
+        }
 
-            const forwardComponent = Math.sin(angle) * force;
-            const lateralComponent = Math.cos(angle) * force;
+        forwardInput = Phaser.Math.Clamp(forwardInput, -1, 1);
+        lateralInput = Phaser.Math.Clamp(lateralInput, -1, 1);
 
-            const shipForwardX = Math.sin(this.rotation);
-            const shipForwardY = -Math.cos(this.rotation);
-            const shipRightX = Math.cos(this.rotation);
-            const shipRightY = Math.sin(this.rotation);
+        const shipForwardX = Math.sin(this.rotation);
+        const shipForwardY = -Math.cos(this.rotation);
+        const shipRightX = Math.cos(this.rotation);
+        const shipRightY = Math.sin(this.rotation);
 
-            let thrustMagnitude;
-            if (forwardComponent < 0) {
-                thrustMagnitude = Math.abs(forwardComponent) * this.mainThrust;
-            } else {
-                thrustMagnitude = -forwardComponent * this.reverseThrust;
-            }
+        let thrustMagnitude = 0;
+        if (forwardInput > 0) {
+            thrustMagnitude = forwardInput * this.mainThrust;
+        } else if (forwardInput < 0) {
+            thrustMagnitude = forwardInput * this.reverseThrust;
+        }
 
+        if (Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01) {
             this.body.setAcceleration(
-                shipForwardX * thrustMagnitude + shipRightX * lateralComponent * this.lateralThrust,
-                shipForwardY * thrustMagnitude + shipRightY * lateralComponent * this.lateralThrust
+                shipForwardX * thrustMagnitude + shipRightX * lateralInput * this.lateralThrust,
+                shipForwardY * thrustMagnitude + shipRightY * lateralInput * this.lateralThrust
             );
         } else {
             this.body.setAcceleration(0, 0);

@@ -246,10 +246,12 @@ export default class GameScene extends Phaser.Scene {
         this.isDocked = true;
         this.player.body.setVelocity(0, 0);
         this.player.body.setAcceleration(0, 0);
+        this.clearAllProjectiles();
+        this.freezeNPCs();
         this.showStationUI();
         this.dockButton.setText('UNDOCK');
         this.dockButton.setAlpha(1);
-        this.showToast(`Docked at ${this.station.getName()}`);
+        this.showToast(`Docked at ${this.station.getName()} — combat paused`);
     }
 
     undock() {
@@ -257,6 +259,24 @@ export default class GameScene extends Phaser.Scene {
         this.hideStationUI();
         this.dockButton.setText('DOCK');
         this.showToast('Undocked. Safe travels.');
+    }
+
+    clearAllProjectiles() {
+        this.projectiles.forEach((p) => p.destroy());
+        this.enemyProjectiles.forEach((p) => p.destroy());
+        this.projectiles = [];
+        this.enemyProjectiles = [];
+    }
+
+    freezeNPCs() {
+        this.npcs.forEach((npc) => {
+            if (!npc.alive || !npc.body) return;
+            npc.body.setVelocity(0, 0);
+            npc.body.setAcceleration(0, 0);
+            if (npc.mode === 'attack' || npc.mode === 'flee') {
+                npc.mode = 'patrol';
+            }
+        });
     }
 
     showStationUI() {
@@ -650,10 +670,13 @@ export default class GameScene extends Phaser.Scene {
         }
 
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
-        this.npcs.forEach((npc) => npc.update(time, delta, this.player));
 
-        if (!this.gameOver) this.handleCombat();
-        this.maybeRespawnNPCs();
+        if (!this.isDocked) {
+            this.npcs.forEach((npc) => npc.update(time, delta, this.player));
+            if (!this.gameOver) this.handleCombat();
+            this.maybeRespawnNPCs();
+        }
+
         this.updateEdgeMarkers();
 
         if (inDockingRange && !this.isDocked) {

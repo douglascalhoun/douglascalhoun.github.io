@@ -20,7 +20,7 @@ function ArticleCard({ article, onToggleRead, onToggleFavorite }) {
   }
 
   return (
-    <article className={`article-card ${isRead ? 'is-read' : 'is-unread'}`}>
+    <article className={`article-card ${article.image_url ? 'has-image' : ''} ${isRead ? 'is-read' : 'is-unread'}`}>
       {article.image_url && (
         <div className="article-image">
           <img src={article.image_url} alt="" loading="lazy" />

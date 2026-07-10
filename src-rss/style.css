@@ -287,6 +287,24 @@ body {
   font-size: 0.65rem;
 }
 
+.article-impact {
+  background: rgba(196, 92, 38, 0.14);
+  color: var(--accent);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.article-topic {
+  background: rgba(15, 92, 76, 0.1);
+  color: var(--sea);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
 .article-title {
   font-family: var(--font-display);
   font-size: clamp(1.05rem, 2vw, 1.35rem);

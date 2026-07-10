@@ -35,6 +35,12 @@ function ArticleCard({ article, onToggleRead, onToggleFavorite }) {
           )}
           <span className="article-date">{formattedDate}</span>
           {!isRead && <span className="article-unread-dot" title="Unread">●</span>}
+          {typeof article.relevance_score === 'number' && article.relevance_score >= 28 && (
+            <span className="article-impact" title={`Impact score ${article.relevance_score}`}>Impact</span>
+          )}
+          {Array.isArray(article.topics) && article.topics.slice(0, 2).map((topic) => (
+            <span key={topic} className="article-topic">{topic}</span>
+          ))}
         </div>
         <h2 className="article-title">
           <a

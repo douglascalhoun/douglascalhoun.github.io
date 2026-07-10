@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS feeds (
     language TEXT DEFAULT 'en',
     active BOOLEAN DEFAULT true,
     fetch_interval_minutes INTEGER DEFAULT 30,
+    priority INTEGER DEFAULT 5,
     last_fetched_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -31,6 +32,10 @@ CREATE TABLE IF NOT EXISTS articles (
     image_url TEXT,
     content TEXT,
     notified BOOLEAN DEFAULT false,
+    relevance_score INTEGER DEFAULT 0,
+    is_relevant BOOLEAN DEFAULT true,
+    topics TEXT[] DEFAULT '{}',
+    filter_reasons TEXT[] DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -1,9 +1,19 @@
-// Apply Phase 5 schema migrations and fix broken feeds
+// Editorial migration: relevance scoring columns + tech-first feed roster
 import { getDatabase } from './lib/db.mjs';
+import { EDITORIAL_FEEDS, scoreArticle } from './lib/editorial.mjs';
 
 const MIGRATION_SQL = `
 ALTER TABLE subscriptions
-  ADD COLUMN IF NOT EXISTS max_notifications_per_hour INTEGER DEFAULT 20;
+  ADD COLUMN IF NOT EXISTS max_notifications_per_hour INTEGER DEFAULT 12;
+
+ALTER TABLE articles
+  ADD COLUMN IF NOT EXISTS relevance_score INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS is_relevant BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS topics TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS filter_reasons TEXT[] DEFAULT '{}';
+
+ALTER TABLE feeds
+  ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 5;
 
 CREATE TABLE IF NOT EXISTS user_article_state (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -22,9 +32,31 @@ CREATE INDEX IF NOT EXISTS idx_user_article_state_favorite
   ON user_article_state(user_id, is_favorite)
   WHERE is_favorite = true;
 
+CREATE INDEX IF NOT EXISTS idx_articles_relevant_pub
+  ON articles(pub_date DESC)
+  WHERE is_relevant = true;
+
+CREATE INDEX IF NOT EXISTS idx_articles_relevance_score
+  ON articles(relevance_score DESC);
+
 CREATE INDEX IF NOT EXISTS idx_notification_log_sent_at
   ON notification_log(subscription_id, sent_at DESC);
 `;
+
+const RETIRE_URL_PATTERNS = [
+  '%cnn.com%',
+  '%npr.org%',
+  '%nytimes.com%',
+  '%washingtonpost.com%',
+  '%aljazeera.com%',
+  '%theguardian.com%',
+  '%spiegel.de%',
+  '%elpais.com%',
+  '%scmp.com%',
+  '%japantimes%',
+  '%reuters.com%',
+  '%rsshub.app%'
+];
 
 export default async (req) => {
   const headers = {
@@ -41,45 +73,91 @@ export default async (req) => {
     const db = await getDatabase();
     await db.query(MIGRATION_SQL);
 
-    // Replace broken Reuters feed with NYT World
-    const reuters = await db.query(
-      `SELECT id FROM feeds WHERE url ILIKE '%reuters%' OR name ILIKE '%reuters%'`
-    );
-
-    if (reuters.rows.length > 0) {
-      await db.query(
-        `UPDATE feeds
-         SET name = $1, url = $2, category = 'world', country = 'US', active = true
-         WHERE id = $3`,
-        [
-          'NYT World',
-          'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
-          reuters.rows[0].id
-        ]
+    // Retire broad general-news feeds that flood incremental politics
+    let retired = 0;
+    for (const pattern of RETIRE_URL_PATTERNS) {
+      const result = await db.query(
+        `UPDATE feeds SET active = false WHERE url ILIKE $1 AND active = true RETURNING id`,
+        [pattern]
       );
-    } else {
-      await db.query(
-        `INSERT INTO feeds (name, url, category, country, language)
-         VALUES ($1, $2, 'world', 'US', 'en')
-         ON CONFLICT (url) DO NOTHING`,
-        ['NYT World', 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml']
-      );
+      retired += result.rowCount || 0;
     }
 
-    const feeds = await db.query('SELECT COUNT(*) as count FROM feeds WHERE active = true');
-    const articles = await db.query('SELECT COUNT(*) as count FROM articles');
+    // Upsert editorial roster
+    let upserted = 0;
+    for (const feed of EDITORIAL_FEEDS) {
+      // Skip known-flaky sources
+      if (feed.url.includes('rsshub.app') || feed.url.includes('meta.com/blog')) continue;
+      if (feed.url.includes('ft.com') || feed.url.includes('dj.com')) continue; // often blocked/paywalled
+
+      await db.query(
+        `INSERT INTO feeds (name, url, category, country, language, active, priority)
+         VALUES ($1, $2, $3, $4, 'en', true, $5)
+         ON CONFLICT (url) DO UPDATE SET
+           name = EXCLUDED.name,
+           category = EXCLUDED.category,
+           country = EXCLUDED.country,
+           active = true,
+           priority = EXCLUDED.priority`,
+        [feed.name, feed.url, feed.category, feed.country, feed.priority]
+      );
+      upserted++;
+    }
+
+    // Keep BBC world as the selective geopolitics source
+    await db.query(
+      `UPDATE feeds SET active = true, category = 'world', priority = 5
+       WHERE url = 'https://feeds.bbci.co.uk/news/world/rss.xml'`
+    );
+
+    // Re-score recent articles with new editorial model
+    const recent = await db.query(
+      `SELECT a.id, a.title, a.description, a.categories, f.category, f.priority
+       FROM articles a
+       JOIN feeds f ON f.id = a.feed_id
+       ORDER BY a.pub_date DESC NULLS LAST
+       LIMIT 1500`
+    );
+
+    let rescored = 0;
+    let kept = 0;
+    for (const row of recent.rows) {
+      const result = scoreArticle(row, { category: row.category, priority: row.priority });
+      await db.query(
+        `UPDATE articles
+         SET relevance_score = $1,
+             is_relevant = $2,
+             topics = $3,
+             filter_reasons = $4
+         WHERE id = $5`,
+        [result.score, result.keep, result.topics, result.reasons, row.id]
+      );
+      rescored++;
+      if (result.keep) kept++;
+    }
+
+    const feeds = await db.query(
+      `SELECT name, category, active, priority FROM feeds ORDER BY active DESC, priority DESC NULLS LAST, name`
+    );
+    const relevantCount = await db.query(
+      `SELECT COUNT(*) as count FROM articles WHERE is_relevant = true`
+    );
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Phase 5 migration applied',
-        activeFeeds: parseInt(feeds.rows[0].count),
-        articleCount: parseInt(articles.rows[0].count)
+        message: 'Editorial migration applied',
+        retiredFeeds: retired,
+        upsertedFeeds: upserted,
+        rescoredArticles: rescored,
+        relevantKept: kept,
+        relevantTotal: parseInt(relevantCount.rows[0].count),
+        feeds: feeds.rows
       }),
       { status: 200, headers }
     );
   } catch (error) {
-    console.error('Migration error:', error);
+    console.error('Editorial migration error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers }

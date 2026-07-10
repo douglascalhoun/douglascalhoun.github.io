@@ -6,7 +6,7 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
     excludedKeywords: preferences.excludedKeywords || [],
     categories: preferences.categories || [],
     countries: preferences.countries || [],
-    maxNotificationsPerHour: preferences.maxNotificationsPerHour || 20
+    maxNotificationsPerHour: preferences.maxNotificationsPerHour || 12
   });
 
   const [keywordInput, setKeywordInput] = useState('');
@@ -102,7 +102,7 @@ function SettingsPanel({ preferences, onUpdate, onClose, categories, feeds }) {
 
         <section className="settings-section">
           <h3>Exclude Keywords</h3>
-          <p className="help-text">Never notify for articles containing these keywords</p>
+          <p className="help-text">Never notify for articles containing these keywords. Defaults already block celebrity/live-update noise.</p>
           <div className="keyword-input">
             <input
               type="text"

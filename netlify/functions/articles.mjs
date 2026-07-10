@@ -29,6 +29,9 @@ export default async (req) => {
     const favoritesOnly = url.searchParams.get('favorites') === 'true';
     const unreadOnly = url.searchParams.get('unread') === 'true';
     const userId = url.searchParams.get('userId');
+    const includeFiltered = url.searchParams.get('includeFiltered') === 'true';
+    const minScore = parseInt(url.searchParams.get('minScore') || '12');
+    const topic = url.searchParams.get('topic');
 
     const db = await getDatabase();
     const params = [];
@@ -59,9 +62,21 @@ export default async (req) => {
       `;
     }
 
+    // Default: only editorial-relevant articles
+    if (!includeFiltered && !favoritesOnly) {
+      where.push(`COALESCE(a.is_relevant, true) = true`);
+      where.push(`COALESCE(a.relevance_score, 0) >= $${params.length + 1}`);
+      params.push(Number.isFinite(minScore) ? minScore : 12);
+    }
+
     if (category) {
       where.push(`f.category = $${params.length + 1}`);
       params.push(category);
+    }
+
+    if (topic) {
+      where.push(`$${params.length + 1} = ANY(COALESCE(a.topics, '{}'))`);
+      params.push(topic);
     }
 
     if (q) {
@@ -87,7 +102,7 @@ export default async (req) => {
       ${select}
       ${from}
       ${whereSql}
-      ORDER BY a.pub_date DESC
+      ORDER BY COALESCE(a.relevance_score, 0) DESC, a.pub_date DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
     const queryParams = [...params, limit, offset];

@@ -10,6 +10,7 @@ import {
   getUserId
 } from './services/notifications';
 import * as api from './services/api';
+import { DEFAULT_EXCLUDED_KEYWORDS, CATEGORY_LABELS } from './editorialDefaults';
 
 function App() {
   const [articles, setArticles] = useState([]);
@@ -32,12 +33,19 @@ function App() {
     try {
       return JSON.parse(localStorage.getItem('rssPreferences') || 'null') || {
         keywords: [],
-        excludedKeywords: [],
+        excludedKeywords: DEFAULT_EXCLUDED_KEYWORDS,
         categories: [],
-        countries: []
+        countries: [],
+        maxNotificationsPerHour: 12
       };
     } catch {
-      return { keywords: [], excludedKeywords: [], categories: [], countries: [] };
+      return {
+        keywords: [],
+        excludedKeywords: DEFAULT_EXCLUDED_KEYWORDS,
+        categories: [],
+        countries: [],
+        maxNotificationsPerHour: 12
+      };
     }
   });
 
@@ -166,7 +174,7 @@ function App() {
         <div className="header-content">
           <div className="brand-block">
             <h1>Worldwire</h1>
-            <p className="brand-tagline">Global headlines, filtered for you</p>
+            <p className="brand-tagline">High-impact tech first. Signal over noise.</p>
           </div>
           <div className="header-actions">
             <button
@@ -250,7 +258,7 @@ function App() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search headlines and blurbs…"
+            placeholder="Search AI, VR, chips, breakthroughs…"
             aria-label="Search articles"
           />
           <button type="submit" className="btn btn-primary">Search</button>
@@ -276,7 +284,7 @@ function App() {
                 className={`category-tab ${selectedCategory === category ? 'active' : ''}`}
                 onClick={() => setSelectedCategory(category)}
               >
-                {category.charAt(0).toUpperCase() + category.slice(1)}
+                {CATEGORY_LABELS[category] || (category.charAt(0).toUpperCase() + category.slice(1))}
               </button>
             ))}
           </div>
@@ -299,8 +307,8 @@ function App() {
 
         <div className="results-meta">
           {pagination.total > 0
-            ? `${pagination.total.toLocaleString()} articles`
-            : 'No matching articles'}
+            ? `${pagination.total.toLocaleString()} high-signal stories`
+            : 'No matching stories'}
           {activeSearch ? ` · “${activeSearch}”` : ''}
         </div>
 

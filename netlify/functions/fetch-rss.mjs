@@ -1,11 +1,12 @@
-// Scheduled function to fetch RSS feeds
+// Scheduled function to fetch RSS feeds with editorial scoring
 import Parser from 'rss-parser';
-import { 
-  getDatabase, 
-  getActiveFeeds, 
-  updateFeedLastFetched, 
-  insertArticle 
+import {
+  getDatabase,
+  getActiveFeeds,
+  updateFeedLastFetched,
+  insertArticle
 } from './lib/db.mjs';
+import { scoreArticle } from './lib/editorial.mjs';
 
 const parser = new Parser({
   customFields: {
@@ -14,29 +15,38 @@ const parser = new Parser({
       ['media:thumbnail', 'mediaThumbnail'],
       ['content:encoded', 'contentEncoded']
     ]
-  }
+  },
+  timeout: 15000
 });
+
+function extractImage(item) {
+  if (item.enclosure?.url) return item.enclosure.url;
+  if (item.mediaContent?.$?.url) return item.mediaContent.$.url;
+  if (item.mediaThumbnail?.$?.url) return item.mediaThumbnail.$.url;
+  if (item['media:thumbnail']?.$?.url) return item['media:thumbnail'].$.url;
+  return null;
+}
+
+function normalizeCategories(categories) {
+  if (!Array.isArray(categories)) return [];
+  return categories
+    .map((c) => {
+      if (typeof c === 'string') return c;
+      if (c && typeof c === 'object' && c._) return String(c._);
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+}
 
 async function fetchFeed(feed) {
   try {
     console.log(`Fetching feed: ${feed.name} (${feed.url})`);
     const feedData = await parser.parseURL(feed.url);
-    
+
     const articles = [];
-    for (const item of feedData.items) {
-      // Extract image URL from various possible sources
-      let imageUrl = null;
-      if (item.enclosure?.url) {
-        imageUrl = item.enclosure.url;
-      } else if (item.mediaContent?.$ ?.url) {
-        imageUrl = item.mediaContent.$.url;
-      } else if (item.mediaThumbnail?.$ ?.url) {
-        imageUrl = item.mediaThumbnail.$.url;
-      } else if (item['media:thumbnail']?.$ ?.url) {
-        imageUrl = item['media:thumbnail'].$.url;
-      }
-      
-      articles.push({
+    for (const item of feedData.items || []) {
+      const draft = {
         feedId: feed.id,
         title: item.title || 'Untitled',
         description: item.contentSnippet || item.summary || '',
@@ -44,12 +54,21 @@ async function fetchFeed(feed) {
         pubDate: item.pubDate ? new Date(item.pubDate) : new Date(),
         guid: item.guid || item.link || `${feed.id}-${item.title}-${Date.now()}`,
         author: item.creator || item.author || null,
-        categories: item.categories || [],
-        imageUrl: imageUrl,
+        categories: normalizeCategories(item.categories),
+        imageUrl: extractImage(item),
         content: item.contentEncoded || item.content || null
+      };
+
+      const scored = scoreArticle(draft, feed);
+      articles.push({
+        ...draft,
+        relevanceScore: scored.score,
+        isRelevant: scored.keep,
+        topics: scored.topics,
+        filterReasons: scored.reasons
       });
     }
-    
+
     return { success: true, articles, feedName: feed.name };
   } catch (error) {
     console.error(`Error fetching feed ${feed.name}:`, error);
@@ -64,45 +83,48 @@ export default async (req) => {
     successfulFeeds: 0,
     failedFeeds: 0,
     newArticles: 0,
+    relevantNew: 0,
+    filteredOut: 0,
     errors: []
   };
-  
+
   try {
     const db = await getDatabase();
     const feeds = await getActiveFeeds(db);
     results.totalFeeds = feeds.length;
-    
+
     console.log(`Fetching ${feeds.length} active feeds...`);
-    
-    // Fetch all feeds in parallel (with some concurrency control)
+
     const batchSize = 5;
     for (let i = 0; i < feeds.length; i += batchSize) {
       const batch = feeds.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(feed => fetchFeed(feed))
-      );
-      
-      // Process results
+      const batchResults = await Promise.all(batch.map((feed) => fetchFeed(feed)));
+
       for (let j = 0; j < batchResults.length; j++) {
         const result = batchResults[j];
         const feed = batch[j];
-        
+
         if (result.success) {
           results.successfulFeeds++;
-          
-          // Insert articles
           let newCount = 0;
+          let relevantCount = 0;
+
           for (const article of result.articles) {
+            if (!article.isRelevant) {
+              results.filteredOut++;
+            }
             const inserted = await insertArticle(db, article);
             if (inserted) {
               newCount++;
               results.newArticles++;
+              if (article.isRelevant) {
+                relevantCount++;
+                results.relevantNew++;
+              }
             }
           }
-          
-          console.log(`${feed.name}: ${newCount} new articles`);
-          
-          // Update last fetched timestamp
+
+          console.log(`${feed.name}: ${newCount} new (${relevantCount} relevant)`);
           await updateFeedLastFetched(db, feed.id);
         } else {
           results.failedFeeds++;
@@ -113,11 +135,10 @@ export default async (req) => {
         }
       }
     }
-    
+
     const duration = Date.now() - startTime;
     console.log(`RSS fetch completed in ${duration}ms`);
-    console.log(`Results: ${results.successfulFeeds}/${results.totalFeeds} feeds, ${results.newArticles} new articles`);
-    
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -145,7 +166,6 @@ export default async (req) => {
   }
 };
 
-// Run every 30 minutes
 export const config = {
-  schedule: "*/30 * * * *"
+  schedule: '*/30 * * * *'
 };

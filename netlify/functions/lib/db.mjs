@@ -31,7 +31,9 @@ export async function getDatabase() {
 
 export async function getActiveFeeds(db) {
   const result = await db.query(
-    'SELECT * FROM feeds WHERE active = true ORDER BY name'
+    `SELECT * FROM feeds
+     WHERE active = true
+     ORDER BY COALESCE(priority, 5) DESC, name`
   );
   return result.rows;
 }
@@ -55,8 +57,9 @@ export async function insertArticle(db, article) {
   try {
     const result = await db.query(
       `INSERT INTO articles 
-       (feed_id, title, description, link, pub_date, guid, author, categories, image_url, content)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       (feed_id, title, description, link, pub_date, guid, author, categories, image_url, content,
+        relevance_score, is_relevant, topics, filter_reasons)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (guid) DO NOTHING
        RETURNING id`,
       [
@@ -69,7 +72,11 @@ export async function insertArticle(db, article) {
         article.author || null,
         article.categories || [],
         article.imageUrl || null,
-        article.content || null
+        article.content || null,
+        article.relevanceScore ?? 0,
+        article.isRelevant !== false,
+        article.topics || [],
+        article.filterReasons || []
       ]
     );
     return result.rows[0];
@@ -93,11 +100,13 @@ export async function getRecentArticles(db, limit = 50, offset = 0) {
 
 export async function getUnnotifiedArticles(db) {
   const result = await db.query(
-    `SELECT a.*, f.name as feed_name, f.category as feed_category, f.country as feed_country
+    `SELECT a.*, f.name as feed_name, f.category as feed_category, f.country as feed_country, f.priority as feed_priority
      FROM articles a
      JOIN feeds f ON a.feed_id = f.id
      WHERE a.notified = false
-     ORDER BY a.pub_date DESC
+       AND COALESCE(a.is_relevant, true) = true
+       AND COALESCE(a.relevance_score, 0) >= 28
+     ORDER BY a.relevance_score DESC, a.pub_date DESC
      LIMIT 100`
   );
   return result.rows;

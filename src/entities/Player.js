@@ -185,13 +185,16 @@ export default class Player {
         this.sprite.strokeTriangle(0, -22, -14, 16, 14, 16);
     }
 
-    update(delta, leftJoystick, rightJoystick, keys = null) {
+    update(delta, leftJoystick, rightJoystick, keys = null, pad = null) {
         const dt = delta / 1000;
 
         let rotInput = 0;
         if (keys) {
             if (keys.A.isDown) rotInput -= 1;
             if (keys.D.isDown) rotInput += 1;
+        }
+        if (pad && Math.abs(pad.rot) > 0.01) {
+            rotInput += pad.rot;
         }
         if (leftJoystick && leftJoystick.isActive()) {
             rotInput += Math.cos(leftJoystick.getAngle()) * leftJoystick.getForce();
@@ -200,7 +203,7 @@ export default class Player {
         if (Math.abs(rotInput) > 0.01) {
             this.rotationSpeed = Phaser.Math.Linear(
                 this.rotationSpeed,
-                rotInput * this.maxRotationSpeed,
+                Phaser.Math.Clamp(rotInput, -1, 1) * this.maxRotationSpeed,
                 Math.min(1, this.rotationAccel * 10 * dt)
             );
         } else {
@@ -226,6 +229,11 @@ export default class Player {
             if (keys.S.isDown) forwardInput -= 1;
             if (keys.K.isDown) lateralInput += 1;
             if (keys.J.isDown) lateralInput -= 1;
+        }
+
+        if (pad) {
+            if (Math.abs(pad.forward) > 0.01) forwardInput += pad.forward;
+            if (Math.abs(pad.lateral) > 0.01) lateralInput += pad.lateral;
         }
 
         if (rightJoystick && rightJoystick.isActive()) {

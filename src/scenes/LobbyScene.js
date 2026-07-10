@@ -63,7 +63,12 @@ export default class LobbyScene extends Phaser.Scene {
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        this.add.text(cx, this.scale.height - 36, 'WASD thrust/turn · J/K strafe · Space fire · H hyperspace · E dock · M map', {
+        this.add.text(cx, this.scale.height - 48, 'Keyboard · Xbox controller · Touch (phones)', {
+            fontSize: '12px',
+            fill: '#88aa99'
+        }).setOrigin(0.5);
+
+        this.add.text(cx, this.scale.height - 28, 'WASD/JK/Space/E/H/M  ·  LS/RS + A fire, X dock, Y hyper, B map', {
             fontSize: '11px',
             fill: '#667788'
         }).setOrigin(0.5);

@@ -132,10 +132,11 @@ const IMPORTANCE_SIGNALS = [
   'autonomous vehicle', 'self-driving', 'data center',
   // markets / institutions
   'federal reserve', 'central bank', 'interest rate', 'inflation',
-  'recession', 'gdp ', 'treasury', 'bond market', 'stock market',
-  'oil prices', 'opec', 'trade war', 'tariff', 'sanctions',
-  'antitrust', 'merger', 'acquisition', 'acquires',
+  'recession', 'gdp ', 'us treasury', 'treasury yield', 'treasury bond',
+  'bond market', 'stock market', 'oil prices', 'opec', 'trade war',
+  'tariff', 'sanctions', 'antitrust', 'merger', 'acquisition', 'acquires',
   'bankruptcy', 'bailout', 'sovereign default', 'debt ceiling',
+  'shareholder revolt', 'hostile takeover',
   // major geopolitics
   'nato', 'united nations', 'security council', 'nuclear weapon',
   'nuclear war', 'invasion', 'declares war', 'ceasefire',

@@ -51,11 +51,12 @@ const HARD_EXCLUDE = [
   // sports minutiae
   'box score', 'fantasy football', 'injury report', 'transfer rumor',
   'nba draft', 'nfl week', 'premier league', 'fifa', 'red card',
-  'world cup squad', 'champions league',
+  'world cup squad', 'champions league', 'doom', 'video game', 'expansion pack',
   // lifestyle / consumer fluff
   'horoscope', 'zodiac', 'best sneakers', 'outfit of the day',
   'recipe of the day', 'what to wear', 'dating tips',
   'should you be switching', 'should you switch',
+  'which macbook', 'which iphone', 'which laptop', 'my honest advice',
   'tips for', 'how to save money on',
   // meta / filler journalism
   'ask me anything', 'i’m filling in', "i'm filling in",
@@ -82,7 +83,8 @@ const INCREMENTAL_POLITICS = [
   'diplomatic spat', 'war of words', 'tit-for-tat',
   'sources say', 'anonymous officials',
   'expected to announce', 'may announce', 'could announce',
-  'latest on the', 'overnight briefing', 'morning briefing'
+  'latest on the', 'overnight briefing', 'morning briefing',
+  'appears to pause', 'and, life inside', 'roundup:'
 ];
 
 /** Low-signal incident / random-event patterns */

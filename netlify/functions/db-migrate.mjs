@@ -88,7 +88,7 @@ export default async (req) => {
        FROM articles a
        JOIN feeds f ON f.id = a.feed_id
        ORDER BY a.pub_date DESC NULLS LAST
-       LIMIT 2000`
+       LIMIT 250`
     );
 
     let rescored = 0;

@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 
 export default class Station {
-    constructor(scene, x, y, name = 'Station Alpha') {
+    constructor(scene, x, y, name = 'Station Alpha', prices = null) {
         this.scene = scene;
         this.x = x;
         this.y = y;
         this.name = name;
         this.dockingRadius = 220;
 
-        this.prices = {
+        this.prices = prices || {
             food: { buy: 12, sell: 8 },
             ore: { buy: 22, sell: 15 },
             tech: { buy: 45, sell: 30 }
@@ -67,15 +67,13 @@ export default class Station {
         return inDockingRange;
     }
 
-    getX() {
-        return this.x;
+    destroy() {
+        this.container?.destroy();
+        this.dockingZone?.destroy();
+        this.label?.destroy();
     }
 
-    getY() {
-        return this.y;
-    }
-
-    getName() {
-        return this.name;
-    }
+    getX() { return this.x; }
+    getY() { return this.y; }
+    getName() { return this.name; }
 }

@@ -22,14 +22,8 @@ export const EDITORIAL_FEEDS = [
   { name: 'Washington Post Business', url: 'https://feeds.washingtonpost.com/rss/business', category: 'business', country: 'US', priority: 6 },
   { name: 'BBC World News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', category: 'world', country: 'UK', priority: 7 },
   { name: 'BBC Business', url: 'https://feeds.bbci.co.uk/news/business/rss.xml', category: 'business', country: 'UK', priority: 6 },
-  { name: 'The Guardian World', url: 'https://www.theguardian.com/world/rss', category: 'world', country: 'UK', priority: 6 },
-  { name: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml', category: 'world', country: 'US', priority: 6 },
   { name: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/', category: 'tech', country: 'US', priority: 9 },
   { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', category: 'tech', country: 'US', priority: 8 },
-  { name: 'Wired', url: 'https://www.wired.com/feed/rss', category: 'tech', country: 'US', priority: 8 },
-  { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', category: 'tech', country: 'US', priority: 7 },
-  { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', category: 'tech', country: 'US', priority: 7 },
-  { name: 'IEEE Spectrum', url: 'https://spectrum.ieee.org/rss/fulltext', category: 'tech', country: 'US', priority: 8 },
   { name: 'Bloomberg Technology', url: 'https://feeds.bloomberg.com/technology/news.rss', category: 'tech', country: 'US', priority: 7 }
 ];
 
@@ -37,7 +31,9 @@ export const RETIRE_NAME_PATTERNS = [
   'OpenAI Blog', 'Google AI Blog', 'DeepMind Blog', 'Meta Quest Blog',
   'UploadVR', 'Road to VR', 'Hacker News', 'VentureBeat', 'The Verge AI',
   'CNN', 'Al Jazeera', 'Der Spiegel', 'El País',
-  'South China Morning Post', 'The Japan Times'
+  'South China Morning Post', 'The Japan Times',
+  'The Guardian World', 'NPR News', 'Wired', 'The Verge',
+  'TechCrunch', 'IEEE Spectrum'
 ];
 
 /** Always drop — celebrity, sports, lifestyle, consumer gadget fluff */

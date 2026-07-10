@@ -110,6 +110,15 @@ export default async (req) => {
        WHERE url = 'https://feeds.bbci.co.uk/news/world/rss.xml'`
     );
 
+    // Retire leftover non-roster sources that may have been added earlier
+    await db.query(
+      `UPDATE feeds SET active = false
+       WHERE name IN ('The Economist', 'FT Technology', 'WSJ Tech', 'AP Top News', 'Meta Quest Blog')
+          OR url ILIKE '%economist.com%'
+          OR url ILIKE '%ft.com%'
+          OR url ILIKE '%dj.com%'`
+    );
+
     // Re-score recent articles with new editorial model
     const recent = await db.query(
       `SELECT a.id, a.title, a.description, a.categories, f.category, f.priority, f.active

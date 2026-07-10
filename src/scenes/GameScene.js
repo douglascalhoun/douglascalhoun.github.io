@@ -4,105 +4,251 @@ import Station from '../entities/Station.js';
 import NPCShip from '../entities/NPCShip.js';
 import Projectile from '../entities/Projectile.js';
 import VirtualJoystick from '../utils/VirtualJoystick.js';
+import RemotePlayer from '../entities/RemotePlayer.js';
+import { getSystem, linkedSystems, pickMission, SYSTEMS } from '../data/galaxy.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
     }
 
+    init(data = {}) {
+        this.mode = data.mode || 'solo';
+        this.roomCode = data.roomCode || null;
+        this.mp = data.mp || null;
+        this.pilotName = data.pilotName || 'Pilot';
+    }
+
     create() {
-        const worldSize = 10000;
-        this.worldSize = worldSize;
-        this.physics.world.setBounds(0, 0, worldSize, worldSize);
+        this.worldSize = 10000;
+        this.center = this.worldSize / 2;
+        this.physics.world.setBounds(0, 0, this.worldSize, this.worldSize);
 
-        this.createStarField(worldSize);
-        this.createPlanet(worldSize / 2, worldSize / 2, 300);
-        this.createSystemBoundary(worldSize / 2, worldSize / 2, worldSize * 0.45);
+        this.currentSystemId = 'sol';
+        this.activeMission = null;
+        this.offeredMission = null;
+        this.remotePlayer = null;
+        this.lastNetSend = 0;
+        this.mapOpen = false;
+        this.hyperspaceOpen = false;
+        this.visitedSystems = new Set(['sol']);
 
-        this.station = new Station(this, worldSize / 2 + 600, worldSize / 2 - 400, 'Outpost Alpha');
-
+        this.worldGraphics = [];
         this.npcs = [];
-        this.spawnNPCs();
-
-        this.player = new Player(this, worldSize / 2 - 800, worldSize / 2);
-        this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
-        this.cameras.main.setBounds(0, 0, worldSize, worldSize);
-        this.cameras.main.setZoom(1);
-
         this.projectiles = [];
         this.enemyProjectiles = [];
+        this.remoteProjectiles = [];
         this.lastFireTime = 0;
-        this.fireRate = 180;
         this.isDocked = false;
         this.dockingUI = null;
+        this.stationTab = 'trade';
         this.gameOver = false;
         this.statusMessage = '';
         this.statusMessageUntil = 0;
         this.enemyTier = 1;
         this.pendingSpawn = null;
-        this.edgeMarkers = [];
+        this.hyperspaceUI = null;
+        this.mapUI = null;
+
+        this.player = new Player(this, this.center - 800, this.center);
+        this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
+        this.cameras.main.setBounds(0, 0, this.worldSize, this.worldSize);
+        this.cameras.main.setZoom(1);
 
         this.setupTouchControls();
         this.createHUD();
-        this.createDockButton();
+        this.createActionButtons();
         this.createEdgeMarkers();
 
-        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,SPACE');
+        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,SPACE,H,M');
         this.dockKey = this.keys.E;
         this.fireKey = this.keys.SPACE;
+        this.hyperspaceKey = this.keys.H;
+        this.mapKey = this.keys.M;
 
         this.scale.on('resize', this.onResize, this);
-        this.showToast('WASD turn/thrust · J/K strafe · Space fire · E dock');
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
+
+        this.setupMultiplayer();
+        this.loadSystem('sol');
+        this.sendNet({
+            type: 'hello',
+            name: this.pilotName,
+            systemId: this.currentSystemId,
+            x: this.player.getX(),
+            y: this.player.getY(),
+            rotation: this.player.getRotation(),
+            shields: this.player.shields,
+            hull: this.player.hull
+        });
+
+        const systemName = getSystem(this.currentSystemId).name;
+        const room = this.isMultiplayer() ? ` · Room ${this.roomCode}` : '';
+        this.showToast(`${systemName}${room} · WASD/J/K fly · Space fire · E dock · H hyperspace · M map`, 5200);
     }
 
-    spawnNPCs() {
+    setupMultiplayer() {
+        if (!this.mp) return;
+
+        this.mp.onData = (data) => this.handleNetMessage(data);
+        this.mp.onPeer = () => {
+            this.showToast('Friend connected.', 2200);
+            this.sendNet({
+                type: 'hello',
+                name: this.pilotName,
+                systemId: this.currentSystemId,
+                x: this.player.getX(),
+                y: this.player.getY(),
+                rotation: this.player.getRotation(),
+                shields: this.player.shields,
+                hull: this.player.hull
+            });
+        };
+        this.mp.onClose = () => {
+            this.showToast('Friend disconnected.', 2600);
+            if (this.remotePlayer) this.remotePlayer.setInSystem(false);
+        };
+    }
+
+    isMultiplayer() {
+        return this.mode !== 'solo' && this.mp;
+    }
+
+    sendNet(data) {
+        if (!this.mp) return;
+        this.mp.send(data);
+    }
+
+    loadSystem(systemId) {
+        const system = getSystem(systemId);
+        const center = this.worldSize / 2;
+
+        this.hideStationUI();
+        this.hideHyperspaceMenu();
+        this.clearWorldObjects();
+
+        this.currentSystemId = system.id;
+        this.visitedSystems.add(system.id);
+        this.enemyTier = Math.max(1, system.danger || 1);
+        this.pendingSpawn = null;
+        this.physics.world.setBounds(0, 0, this.worldSize, this.worldSize);
+
+        this.createStarField(this.worldSize, system.color);
+        this.createPlanet(center, center, system.planet);
+        this.createSystemBoundary(center, center, this.worldSize * 0.45, system.color);
+
+        this.station = new Station(
+            this,
+            center + system.station.dx,
+            center + system.station.dy,
+            system.station.name,
+            system.prices
+        );
+
+        this.spawnNPCs(system.danger);
+        this.placePlayerAtSpawn();
+
+        if (this.remotePlayer) {
+            this.remotePlayer.setInSystem(this.remotePlayer.systemId === this.currentSystemId);
+        }
+
+        this.showToast(`Entered ${system.name} — ${system.blurb}`, 3200);
+        this.sendNet({ type: 'system', systemId: this.currentSystemId, name: this.pilotName });
+    }
+
+    clearWorldObjects() {
+        this.worldGraphics.forEach((obj) => obj?.destroy());
+        this.worldGraphics = [];
+
+        if (this.station) {
+            this.station.destroy();
+            this.station = null;
+        }
+
+        this.npcs.forEach((npc) => npc.destroy());
+        this.npcs = [];
+        this.clearAllProjectiles();
+    }
+
+    placePlayerAtSpawn() {
+        if (!this.player) return;
+        this.player.container.setPosition(this.center - 800, this.center);
+        this.player.rotation = 0;
+        this.player.rotationSpeed = 0;
+        this.player.container.setRotation(0);
+        this.player.body.setVelocity(0, 0);
+        this.player.body.setAcceleration(0, 0);
+    }
+
+    spawnNPCs(danger = 1) {
         const c = this.worldSize / 2;
         this.npcs.push(new NPCShip(this, c + 300, c + 500, 'trader'));
         this.npcs.push(new NPCShip(this, c - 500, c + 300, 'trader'));
-        // One starter fighter to duel
-        this.npcs.push(new NPCShip(this, c + 800, c - 600, 'fighter', { tier: 1 }));
+
+        const fighterCount = Phaser.Math.Clamp(Math.ceil(danger), 1, 4);
+        for (let i = 0; i < fighterCount; i++) {
+            const angle = (i / fighterCount) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.3, 0.3);
+            const dist = 700 + i * 240 + danger * 90;
+            this.npcs.push(new NPCShip(
+                this,
+                c + Math.cos(angle) * dist,
+                c + Math.sin(angle) * dist,
+                'fighter',
+                { tier: Math.max(1, danger) }
+            ));
+        }
     }
 
-    createStarField(worldSize) {
+    createStarField(worldSize, color = 0xffffff) {
         const stars = this.add.graphics();
         stars.setDepth(-100);
-        for (let i = 0; i < 140; i++) {
+        for (let i = 0; i < 160; i++) {
             const x = Phaser.Math.Between(0, worldSize);
             const y = Phaser.Math.Between(0, worldSize);
-            const size = Phaser.Math.FloatBetween(0.7, 1.6);
-            const alpha = Phaser.Math.FloatBetween(0.35, 0.75);
-            stars.fillStyle(0xffffff, alpha);
+            const size = Phaser.Math.FloatBetween(0.7, 1.8);
+            const alpha = Phaser.Math.FloatBetween(0.35, 0.8);
+            stars.fillStyle(i % 9 === 0 ? color : 0xffffff, alpha);
             stars.fillCircle(x, y, size);
         }
         stars.setScrollFactor(0.04);
+        this.worldGraphics.push(stars);
+        this.starfield = stars;
+        return stars;
     }
 
-    createPlanet(x, y, radius) {
+    createPlanet(x, y, planetDef) {
+        const radius = planetDef.radius || 280;
+        const color = planetDef.color || 0x3366cc;
         const planet = this.add.graphics();
-        planet.fillStyle(0x4488ff, 0.2);
-        planet.fillCircle(x, y, radius + 20);
-        planet.fillStyle(0x3366cc, 1);
+        planet.fillStyle(color, 0.2);
+        planet.fillCircle(x, y, radius + 22);
+        planet.fillStyle(color, 1);
         planet.fillCircle(x, y, radius);
-        planet.fillStyle(0x5599ff, 0.4);
-        planet.fillCircle(x - radius * 0.3, y - radius * 0.3, radius * 0.6);
-        planet.lineStyle(3, 0x88bbff, 0.3);
+        planet.fillStyle(0xffffff, 0.18);
+        planet.fillCircle(x - radius * 0.3, y - radius * 0.3, radius * 0.55);
+        planet.lineStyle(3, 0xffffff, 0.28);
         planet.strokeCircle(x, y, radius);
         planet.setDepth(-50);
-        this.planet = { x, y, radius };
+        this.worldGraphics.push(planet);
+        this.planet = { x, y, radius, name: planetDef.name, color };
+        return planet;
     }
 
-    createSystemBoundary(centerX, centerY, radius) {
+    createSystemBoundary(centerX, centerY, radius, color = 0xff6600) {
         const boundary = this.add.graphics();
-        const segments = 60;
+        const segments = 72;
         for (let i = 0; i < segments; i++) {
             const startAngle = (i * 2 * Math.PI) / segments;
-            const endAngle = startAngle + Math.PI / segments * 0.6;
-            boundary.lineStyle(2, 0xff6600, 0.5);
+            const endAngle = startAngle + (Math.PI / segments) * 0.68;
+            boundary.lineStyle(2, color, 0.5);
             boundary.beginPath();
             boundary.arc(centerX, centerY, radius, startAngle, endAngle);
             boundary.strokePath();
         }
         boundary.setDepth(-40);
+        this.worldGraphics.push(boundary);
+        this.boundary = boundary;
+        return boundary;
     }
 
     setupTouchControls() {
@@ -155,12 +301,12 @@ export default class GameScene extends Phaser.Scene {
             fill: '#ffffff',
             backgroundColor: '#000000aa',
             padding: { x: 12, y: 8 }
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(2100).setAlpha(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(3100).setAlpha(0);
     }
 
-    createDockButton() {
+    createActionButtons() {
         this.dockButton = this.add.text(
-            this.scale.width / 2,
+            this.scale.width / 2 - 68,
             this.scale.height - 48,
             'DOCK',
             {
@@ -172,6 +318,20 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1500).setAlpha(0).setInteractive();
 
         this.dockButton.on('pointerdown', () => this.attemptDocking());
+
+        this.hyperspaceButton = this.add.text(
+            this.scale.width / 2 + 72,
+            this.scale.height - 48,
+            'HYPER',
+            {
+                fontSize: '18px',
+                fill: '#99eeff',
+                backgroundColor: '#06364d',
+                padding: { x: 18, y: 10 }
+            }
+        ).setOrigin(0.5).setScrollFactor(0).setDepth(1500).setAlpha(0).setInteractive();
+
+        this.hyperspaceButton.on('pointerdown', () => this.attemptHyperspace());
 
         this.fireButton = this.add.circle(
             this.scale.width / 2,
@@ -201,7 +361,8 @@ export default class GameScene extends Phaser.Scene {
     fireWeapon() {
         if (this.gameOver || this.isDocked) return;
         const now = Date.now();
-        if (now - this.lastFireTime < this.fireRate) return;
+        const rate = this.player.fireRate;
+        if (now - this.lastFireTime < rate) return;
         this.lastFireTime = now;
 
         const projectile = new Projectile(
@@ -213,6 +374,32 @@ export default class GameScene extends Phaser.Scene {
             { damage: 1, fromPlayer: true, lifetime: 1500 }
         );
         this.projectiles.push(projectile);
+        this.sendNet({
+            type: 'fire',
+            name: this.pilotName,
+            x: this.player.getX(),
+            y: this.player.getY(),
+            rotation: this.player.getRotation(),
+            systemId: this.currentSystemId
+        });
+    }
+
+    spawnRemoteProjectile(data) {
+        if (data.systemId && data.systemId !== this.currentSystemId) return;
+        const projectile = new Projectile(
+            this,
+            data.x,
+            data.y,
+            data.rotation,
+            520,
+            { damage: 0, fromPlayer: false, lifetime: 1200 }
+        );
+        projectile.sprite.clear();
+        projectile.sprite.fillStyle(0x33ddff, 1);
+        projectile.sprite.fillCircle(0, 0, 4);
+        projectile.sprite.lineStyle(1, 0xffffff, 0.8);
+        projectile.sprite.strokeCircle(0, 0, 4);
+        this.remoteProjectiles.push(projectile);
     }
 
     spawnEnemyProjectile(npc) {
@@ -228,7 +415,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     attemptDocking() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.station) return;
         if (this.isDocked) {
             this.undock();
             return;
@@ -248,6 +435,7 @@ export default class GameScene extends Phaser.Scene {
         this.player.body.setAcceleration(0, 0);
         this.clearAllProjectiles();
         this.freezeNPCs();
+        this.checkMissionDockCompletion();
         this.showStationUI();
         this.dockButton.setText('UNDOCK');
         this.dockButton.setAlpha(1);
@@ -264,8 +452,10 @@ export default class GameScene extends Phaser.Scene {
     clearAllProjectiles() {
         this.projectiles.forEach((p) => p.destroy());
         this.enemyProjectiles.forEach((p) => p.destroy());
+        this.remoteProjectiles.forEach((p) => p.destroy());
         this.projectiles = [];
         this.enemyProjectiles = [];
+        this.remoteProjectiles = [];
     }
 
     freezeNPCs() {
@@ -281,53 +471,194 @@ export default class GameScene extends Phaser.Scene {
 
     showStationUI() {
         if (this.dockingUI) return;
+        this.stationTab = 'trade';
         const cx = this.scale.width / 2;
         const cy = this.scale.height / 2;
+        const panelW = Math.min(500, this.scale.width * 0.92);
+        const panelH = Math.min(560, this.scale.height * 0.84);
 
-        const overlay = this.add.rectangle(cx, cy, Math.min(420, this.scale.width * 0.9), Math.min(460, this.scale.height * 0.78), 0x06140c, 0.96)
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x06140c, 0.96)
             .setStrokeStyle(2, 0x33aa66)
             .setScrollFactor(0)
             .setDepth(2500);
 
-        const title = this.add.text(cx, cy - overlay.height / 2 + 28, this.station.getName(), {
-            fontSize: '22px',
+        const title = this.add.text(cx, cy - panelH / 2 + 24, this.station.getName(), {
+            fontSize: '20px',
             fill: '#9dffb0'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
 
-        const subtitle = this.add.text(cx, cy - overlay.height / 2 + 58, 'Trade & Repair', {
-            fontSize: '14px',
-            fill: '#88aa99'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
+        const tabY = cy - panelH / 2 + 60;
+        const tradeTab = this.makeStationButton(cx - 140, tabY, 'Trade', () => {
+            this.stationTab = 'trade';
+            this.rebuildStationBody();
+        });
+        const upgradeTab = this.makeStationButton(cx, tabY, 'Upgrades', () => {
+            this.stationTab = 'upgrades';
+            this.rebuildStationBody();
+        });
+        const missionTab = this.makeStationButton(cx + 140, tabY, 'Missions', () => {
+            this.stationTab = 'missions';
+            this.rebuildStationBody();
+        });
 
-        this.stationStatus = this.add.text(cx, cy - overlay.height / 2 + 90, '', {
-            fontSize: '13px',
+        this.stationStatus = this.add.text(cx, cy - panelH / 2 + 100, '', {
+            fontSize: '12px',
             fill: '#d8ffe8',
-            align: 'center'
+            align: 'center',
+            wordWrap: { width: panelW - 38 }
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
 
-        const buttons = [];
-        const goods = [
-            { key: 'food', label: 'Food' },
-            { key: 'ore', label: 'Ore' },
-            { key: 'tech', label: 'Tech' }
-        ];
+        this.dockingUI = {
+            overlay,
+            title,
+            tabs: [tradeTab, upgradeTab, missionTab],
+            buttons: [],
+            status: this.stationStatus,
+            panelW,
+            panelH,
+            cx,
+            cy
+        };
+        this.rebuildStationBody();
+    }
 
-        goods.forEach((good, index) => {
-            const y = cy - 40 + index * 58;
-            const buy = this.makeStationButton(cx - 90, y, `Buy ${good.label}`, () => this.buyGood(good.key));
-            const sell = this.makeStationButton(cx + 90, y, `Sell ${good.label}`, () => this.sellGood(good.key));
-            buttons.push(buy, sell);
-        });
+    clearStationBodyButtons() {
+        if (!this.dockingUI) return;
+        this.dockingUI.buttons.forEach((b) => b.destroy());
+        this.dockingUI.buttons = [];
+    }
 
-        const repairBtn = this.makeStationButton(cx, cy + 150, 'Repair Ship', () => {
-            const result = this.player.repair(2);
-            this.showToast(result.message);
-            this.refreshStationStatus();
-        });
-        buttons.push(repairBtn);
+    rebuildStationBody() {
+        if (!this.dockingUI) return;
+        this.clearStationBodyButtons();
+        const { cx, cy, panelH } = this.dockingUI;
+        const buttons = this.dockingUI.buttons;
 
-        this.dockingUI = { overlay, title, subtitle, buttons, status: this.stationStatus };
+        if (this.stationTab === 'trade') {
+            const goods = [
+                { key: 'food', label: 'Food' },
+                { key: 'ore', label: 'Ore' },
+                { key: 'tech', label: 'Tech' }
+            ];
+            goods.forEach((good, index) => {
+                const y = cy - 24 + index * 52;
+                buttons.push(this.makeStationButton(cx - 105, y, `Buy ${good.label}`, () => this.buyGood(good.key)));
+                buttons.push(this.makeStationButton(cx + 105, y, `Sell ${good.label}`, () => this.sellGood(good.key)));
+            });
+            buttons.push(this.makeStationButton(cx, cy + panelH / 2 - 48, 'Repair Ship', () => {
+                const result = this.player.repair(2);
+                this.showToast(result.message);
+                this.refreshStationStatus();
+            }));
+        } else if (this.stationTab === 'upgrades') {
+            const defs = Player.getUpgradeDefs();
+            Object.keys(defs).forEach((key, index) => {
+                const def = defs[key];
+                const level = this.player.getUpgradeLevel(key);
+                const cost = this.player.getUpgradeCost(key);
+                const y = cy - 58 + index * 48;
+                const label = cost === null
+                    ? `${def.label} Lv${level} MAX`
+                    : `${def.label} Lv${level} → ${level + 1} (${cost}c)`;
+                buttons.push(this.makeStationButton(cx, y, label, () => this.buyUpgrade(key)));
+            });
+        } else {
+            this.buildMissionTab();
+        }
+
         this.refreshStationStatus();
+    }
+
+    buildMissionTab() {
+        const { cx, cy, panelH } = this.dockingUI;
+        const buttons = this.dockingUI.buttons;
+
+        if (!this.activeMission) {
+            if (!this.offeredMission || this.offeredMission.from !== this.currentSystemId) {
+                this.offeredMission = pickMission(this.currentSystemId);
+            }
+            buttons.push(this.makeStationButton(cx, cy + 86, 'Accept Mission', () => this.acceptMission()));
+            buttons.push(this.makeStationButton(cx, cy + 136, 'New Offer', () => {
+                this.offeredMission = pickMission(this.currentSystemId);
+                this.rebuildStationBody();
+            }));
+        } else {
+            buttons.push(this.makeStationButton(cx, cy + panelH / 2 - 48, 'Abandon Mission', () => {
+                const title = this.activeMission.title;
+                this.activeMission = null;
+                this.showToast(`${title} abandoned.`);
+                this.rebuildStationBody();
+            }));
+        }
+    }
+
+    acceptMission() {
+        if (!this.offeredMission) return;
+        this.activeMission = { ...this.offeredMission, active: true, progress: this.offeredMission.progress || 0 };
+        this.offeredMission = null;
+        this.showToast(`Accepted: ${this.activeMission.title}`, 2400);
+        this.rebuildStationBody();
+    }
+
+    completeMission(message = null) {
+        if (!this.activeMission) return;
+        const mission = this.activeMission;
+        this.player.credits += mission.reward || 0;
+        this.activeMission = null;
+        this.offeredMission = null;
+        this.showToast(message || `${mission.title} complete! +${mission.reward}c`, 3200);
+        if (this.dockingUI) this.rebuildStationBody();
+    }
+
+    checkMissionDockCompletion() {
+        if (!this.activeMission) return;
+        const mission = this.activeMission;
+        if (mission.type === 'scout' && mission.dest === this.currentSystemId) {
+            this.completeMission(`Scout report delivered! +${mission.reward}c`);
+            return;
+        }
+
+        if (mission.type === 'haul' && mission.dest === this.currentSystemId) {
+            const carried = this.player.cargo[mission.good] || 0;
+            if (carried >= mission.amount) {
+                this.player.cargo[mission.good] -= mission.amount;
+                this.completeMission(`Delivered ${mission.amount} ${mission.good}. +${mission.reward}c`);
+            } else {
+                this.showToast(`Need ${mission.amount} ${mission.good}; carrying ${carried}.`, 2800);
+            }
+        }
+    }
+
+    recordBountyKill(npc) {
+        if (!this.activeMission || this.activeMission.type !== 'bounty' || npc.type !== 'fighter') return;
+        this.activeMission.progress = (this.activeMission.progress || 0) + 1;
+        const target = this.activeMission.count || 1;
+        if (this.activeMission.progress >= target) {
+            this.completeMission(`Bounty complete! +${this.activeMission.reward}c`);
+        } else {
+            this.showToast(`Bounty progress ${this.activeMission.progress}/${target}`, 1800);
+        }
+    }
+
+    formatMission(mission) {
+        if (!mission) return '';
+        const dest = mission.destName || (mission.dest ? getSystem(mission.dest).name : '');
+        const desc = (mission.desc || '')
+            .replace('{dest}', dest)
+            .replace('{count}', String(mission.count || 0));
+        if (mission.type === 'haul') {
+            return `${mission.title}\n${desc}\nCargo: ${mission.amount} ${mission.good} · Reward: ${mission.reward}c`;
+        }
+        if (mission.type === 'bounty') {
+            return `${mission.title}\n${desc}\nProgress: ${mission.progress || 0}/${mission.count} · Reward: ${mission.reward}c`;
+        }
+        return `${mission.title}\n${desc}\nDestination: ${dest} · Reward: ${mission.reward}c`;
+    }
+
+    buyUpgrade(key) {
+        const result = this.player.buyUpgrade(key);
+        this.showToast(result.message);
+        this.rebuildStationBody();
     }
 
     makeStationButton(x, y, label, onClick) {
@@ -348,10 +679,30 @@ export default class GameScene extends Phaser.Scene {
         if (!this.stationStatus) return;
         const p = this.player;
         const prices = this.station.prices;
+        const u = p.upgrades;
+
+        if (this.stationTab === 'upgrades') {
+            this.stationStatus.setText([
+                `Credits: ${p.credits}   Kills: ${p.kills}`,
+                `E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
+                `Rate ${p.fireRate}ms  Cap ${p.cargoCapacity}  MaxSpd ${Math.round(p.body.maxVelocityX)}`
+            ].join('\n'));
+            return;
+        }
+
+        if (this.stationTab === 'missions') {
+            const mission = this.activeMission || this.offeredMission;
+            this.stationStatus.setText(mission
+                ? this.formatMission(mission)
+                : 'No mission data available.'
+            );
+            return;
+        }
+
         this.stationStatus.setText([
             `Credits: ${p.credits}`,
             `Cargo: ${p.getCargoUsed()}/${p.cargoCapacity}  (F:${p.cargo.food} O:${p.cargo.ore} T:${p.cargo.tech})`,
-            `Hull ${Math.round(p.hull)} / Shields ${Math.round(p.shields)}`,
+            `Hull ${Math.round(p.hull)}/${p.maxHull}  Shields ${Math.round(p.shields)}/${p.maxShields}`,
             `Prices  Food ${prices.food.buy}/${prices.food.sell}  Ore ${prices.ore.buy}/${prices.ore.sell}  Tech ${prices.tech.buy}/${prices.tech.sell}`
         ].join('\n'));
     }
@@ -388,11 +739,207 @@ export default class GameScene extends Phaser.Scene {
         if (!this.dockingUI) return;
         this.dockingUI.overlay.destroy();
         this.dockingUI.title.destroy();
-        this.dockingUI.subtitle.destroy();
+        this.dockingUI.tabs.forEach((t) => t.destroy());
         this.dockingUI.status.destroy();
         this.dockingUI.buttons.forEach((b) => b.destroy());
         this.dockingUI = null;
         this.stationStatus = null;
+    }
+
+    isNearHyperspaceEdge() {
+        const dist = Phaser.Math.Distance.Between(
+            this.player.getX(),
+            this.player.getY(),
+            this.center,
+            this.center
+        );
+        return dist > this.worldSize * 0.45 * 0.92;
+    }
+
+    attemptHyperspace() {
+        if (this.gameOver || this.isDocked) return;
+        if (!this.isNearHyperspaceEdge()) {
+            this.showToast('Reach the orange system edge to enter hyperspace.', 2200);
+            return;
+        }
+        this.openHyperspaceMenu();
+    }
+
+    openHyperspaceMenu() {
+        if (this.hyperspaceOpen) {
+            this.hideHyperspaceMenu();
+            return;
+        }
+
+        const destinations = linkedSystems(this.currentSystemId);
+        if (destinations.length === 0) {
+            this.showToast('No hyperspace lanes from here.', 2200);
+            return;
+        }
+
+        this.hyperspaceOpen = true;
+        const cx = this.scale.width / 2;
+        const cy = this.scale.height / 2;
+        const panelW = Math.min(420, this.scale.width * 0.9);
+        const panelH = 150 + destinations.length * 46;
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x03131f, 0.96)
+            .setStrokeStyle(2, 0x33ddff)
+            .setScrollFactor(0)
+            .setDepth(2700);
+        const title = this.add.text(cx, cy - panelH / 2 + 28, 'HYPERSPACE LANES', {
+            fontSize: '18px',
+            fill: '#99eeff'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2701);
+        const hint = this.add.text(cx, cy - panelH / 2 + 56, getSystem(this.currentSystemId).name, {
+            fontSize: '12px',
+            fill: '#c8f8ff'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2701);
+
+        const items = [overlay, title, hint];
+        destinations.forEach((dest, index) => {
+            const btn = this.makeOverlayButton(cx, cy - panelH / 2 + 98 + index * 46, `${dest.name}  (${dest.blurb})`, () => this.jumpTo(dest.id), 2702);
+            items.push(btn);
+        });
+        items.push(this.makeOverlayButton(cx, cy + panelH / 2 - 28, 'Cancel', () => this.hideHyperspaceMenu(), 2702));
+
+        this.hyperspaceUI = { items };
+    }
+
+    hideHyperspaceMenu() {
+        if (!this.hyperspaceUI) {
+            this.hyperspaceOpen = false;
+            return;
+        }
+        this.hyperspaceUI.items.forEach((item) => item.destroy());
+        this.hyperspaceUI = null;
+        this.hyperspaceOpen = false;
+    }
+
+    jumpTo(systemId) {
+        const linked = linkedSystems(this.currentSystemId).some((sys) => sys.id === systemId);
+        if (!linked) {
+            this.showToast('No direct hyperspace lane.', 2000);
+            return;
+        }
+
+        this.hideHyperspaceMenu();
+        this.hideGalaxyMap();
+        this.showToast(`Entering hyperspace to ${getSystem(systemId).name}...`, 1200);
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.time.delayedCall(220, () => {
+            this.loadSystem(systemId);
+            this.visitedSystems.add(systemId);
+            this.sendNet({ type: 'hyperspace', systemId, name: this.pilotName });
+            this.cameras.main.fadeIn(260, 0, 0, 0);
+        });
+    }
+
+    toggleGalaxyMap() {
+        if (this.mapOpen) this.hideGalaxyMap();
+        else this.showGalaxyMap();
+    }
+
+    showGalaxyMap() {
+        this.hideGalaxyMap();
+        this.mapOpen = true;
+
+        const cx = this.scale.width / 2;
+        const cy = this.scale.height / 2;
+        const panelW = Math.min(680, this.scale.width * 0.94);
+        const panelH = Math.min(560, this.scale.height * 0.88);
+        const scale = Math.min(1.2, Math.max(0.75, panelW / 620));
+        const items = [];
+
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x020711, 0.97)
+            .setStrokeStyle(2, 0x6688ff)
+            .setScrollFactor(0)
+            .setDepth(2800);
+        items.push(overlay);
+
+        const title = this.add.text(cx, cy - panelH / 2 + 28, 'GALAXY MAP', {
+            fontSize: '20px',
+            fill: '#ccd8ff'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2801);
+        items.push(title);
+
+        const graph = this.add.graphics().setScrollFactor(0).setDepth(2801);
+        const originX = cx;
+        const originY = cy - 26;
+        const plotted = {};
+
+        Object.values(SYSTEMS).forEach((sys) => {
+            plotted[sys.id] = {
+                x: originX + sys.mapX * scale,
+                y: originY + sys.mapY * scale
+            };
+        });
+
+        const drawnLinks = new Set();
+        Object.values(SYSTEMS).forEach((sys) => {
+            sys.links.forEach((destId) => {
+                const key = [sys.id, destId].sort().join(':');
+                if (drawnLinks.has(key) || !plotted[destId]) return;
+                drawnLinks.add(key);
+                graph.lineStyle(2, 0x4466aa, 0.65);
+                graph.lineBetween(plotted[sys.id].x, plotted[sys.id].y, plotted[destId].x, plotted[destId].y);
+            });
+        });
+
+        Object.values(SYSTEMS).forEach((sys) => {
+            const p = plotted[sys.id];
+            const current = sys.id === this.currentSystemId;
+            const visited = this.visitedSystems.has(sys.id);
+            graph.fillStyle(sys.color, current ? 1 : (visited ? 0.85 : 0.35));
+            graph.fillCircle(p.x, p.y, current ? 10 : 7);
+            graph.lineStyle(current ? 3 : 1, current ? 0xffdd66 : 0xffffff, visited ? 0.8 : 0.3);
+            graph.strokeCircle(p.x, p.y, current ? 16 : 11);
+
+            const label = this.add.text(p.x, p.y + 18, sys.name, {
+                fontSize: '11px',
+                fill: current ? '#ffdd66' : (visited ? '#ffffff' : '#778099')
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2802);
+            items.push(label);
+        });
+        items.push(graph);
+
+        const links = linkedSystems(this.currentSystemId).map((sys) => sys.name).join(' · ');
+        items.push(this.add.text(cx, cy + panelH / 2 - 76, `Current: ${getSystem(this.currentSystemId).name}`, {
+            fontSize: '14px',
+            fill: '#ffdd66'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2802));
+        items.push(this.add.text(cx, cy + panelH / 2 - 50, `Linked: ${links || 'none'}`, {
+            fontSize: '12px',
+            fill: '#c8d8ff',
+            wordWrap: { width: panelW - 40 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2802));
+        items.push(this.makeOverlayButton(cx, cy + panelH / 2 - 22, 'Close [M]', () => this.hideGalaxyMap(), 2802));
+
+        this.mapUI = { items };
+    }
+
+    hideGalaxyMap() {
+        if (!this.mapUI) {
+            this.mapOpen = false;
+            return;
+        }
+        this.mapUI.items.forEach((item) => item.destroy());
+        this.mapUI = null;
+        this.mapOpen = false;
+    }
+
+    makeOverlayButton(x, y, label, onClick, depth = 2700) {
+        const btn = this.add.text(x, y, label, {
+            fontSize: '13px',
+            fill: '#ffffff',
+            backgroundColor: '#163454',
+            padding: { x: 12, y: 8 },
+            align: 'center',
+            wordWrap: { width: Math.min(460, this.scale.width * 0.78) }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(depth).setInteractive({ useHandCursor: true });
+        btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#24527c' }));
+        btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#163454' }));
+        btn.on('pointerdown', onClick);
+        return btn;
     }
 
     handleCombat() {
@@ -406,8 +953,10 @@ export default class GameScene extends Phaser.Scene {
                     proj.destroy();
                     if (result === 'disabled') {
                         this.player.credits += npc.bounty;
+                        this.player.kills += 1;
                         this.showToast(`${npc.type} disabled! +${npc.bounty}c`, 2200);
                         this.spawnExplosion(npc.getX(), npc.getY());
+                        this.recordBountyKill(npc);
                         if (npc.type === 'fighter') {
                             this.queueTougherFighter(npc.tier);
                         }
@@ -435,6 +984,8 @@ export default class GameScene extends Phaser.Scene {
             }
             return true;
         });
+
+        this.remoteProjectiles = this.remoteProjectiles.filter((proj) => proj.update());
     }
 
     spawnHitSpark(x, y) {
@@ -469,7 +1020,6 @@ export default class GameScene extends Phaser.Scene {
     }
 
     maybeRespawnNPCs() {
-        // Keep a couple traders around
         const traders = this.npcs.filter((n) => n.alive && n.type === 'trader' && !n.disabled);
         if (traders.length < 2) {
             const c = this.worldSize / 2;
@@ -483,7 +1033,6 @@ export default class GameScene extends Phaser.Scene {
             ));
         }
 
-        // Spawn next tougher fighter after defeat delay
         if (this.pendingSpawn && Date.now() >= this.pendingSpawn.at) {
             const activeFighters = this.npcs.filter((n) => n.isCombatTarget() && n.type === 'fighter');
             if (activeFighters.length === 0) {
@@ -492,7 +1041,6 @@ export default class GameScene extends Phaser.Scene {
             this.pendingSpawn = null;
         }
 
-        // Clean long-dead wrecks eventually (keep briefly as disabled hulks)
         this.npcs = this.npcs.filter((n) => n.alive);
     }
 
@@ -552,7 +1100,7 @@ export default class GameScene extends Phaser.Scene {
         return { x: cx + ex, y: cy + ey, angle };
     }
 
-    drawEdgeMarker(g, x, y, angle, color, size = 10, label = null) {
+    drawEdgeMarker(g, x, y, angle, color, size = 10) {
         const tipX = x + Math.cos(angle) * size;
         const tipY = y + Math.sin(angle) * size;
         const leftX = x + Math.cos(angle + 2.5) * size * 0.7;
@@ -564,10 +1112,6 @@ export default class GameScene extends Phaser.Scene {
         g.fillTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
         g.lineStyle(1, 0xffffff, 0.35);
         g.strokeTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
-
-        if (label) {
-            // Labels handled separately via text pool for clarity
-        }
     }
 
     updateEdgeMarkers() {
@@ -582,10 +1126,9 @@ export default class GameScene extends Phaser.Scene {
             this.shipMarkerLabels = [];
         }
 
-        const targets = [
-            { x: this.planet.x, y: this.planet.y, color: 0x66aaff, size: 12, key: 'planet' },
-            { x: this.station.getX(), y: this.station.getY(), color: 0x44ff88, size: 11, key: 'station' }
-        ];
+        const targets = [];
+        if (this.planet) targets.push({ x: this.planet.x, y: this.planet.y, color: 0x66aaff, size: 12, key: 'planet' });
+        if (this.station) targets.push({ x: this.station.getX(), y: this.station.getY(), color: 0x44ff88, size: 11, key: 'station' });
 
         for (const t of targets) {
             const label = this.markerLabels[t.key];
@@ -599,36 +1142,111 @@ export default class GameScene extends Phaser.Scene {
             label.setAlpha(0.9);
         }
 
-        // Ship markers
         let labelIdx = 0;
         for (const npc of this.npcs) {
             if (!npc.alive) continue;
             if (this.isOnScreen(npc.getX(), npc.getY(), 50)) continue;
-
             const color = npc.disabled ? 0x888888 : (npc.type === 'fighter' ? 0xff5533 : 0x5588ff);
-            const edge = this.projectToEdge(npc.getX(), npc.getY());
-            this.drawEdgeMarker(g, edge.x, edge.y, edge.angle, color, npc.type === 'fighter' ? 10 : 8);
+            const text = npc.disabled ? 'WRECK' : (npc.type === 'fighter' ? `FOE T${npc.tier}` : 'TRADE');
+            labelIdx = this.drawShipMarker(labelIdx, npc.getX(), npc.getY(), color, npc.type === 'fighter' ? 10 : 8, text, npc.disabled ? '#aaaaaa' : (npc.type === 'fighter' ? '#ff8866' : '#88aaff'));
+        }
 
-            if (!this.shipMarkerLabels[labelIdx]) {
-                this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
-                    fontSize: '9px',
-                    fill: '#ffaa88'
-                }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
-            }
-            const lbl = this.shipMarkerLabels[labelIdx];
-            const text = npc.disabled
-                ? 'WRECK'
-                : (npc.type === 'fighter' ? `FOE T${npc.tier}` : 'TRADE');
-            lbl.setText(text);
-            lbl.setColor(npc.disabled ? '#aaaaaa' : (npc.type === 'fighter' ? '#ff8866' : '#88aaff'));
-            lbl.setPosition(edge.x - Math.cos(edge.angle) * 16, edge.y - Math.sin(edge.angle) * 16);
-            lbl.setAlpha(0.9);
-            labelIdx += 1;
+        if (this.remotePlayer && this.remotePlayer.visibleInSystem && !this.isOnScreen(this.remotePlayer.x, this.remotePlayer.y, 50)) {
+            labelIdx = this.drawShipMarker(labelIdx, this.remotePlayer.x, this.remotePlayer.y, 0x33ddff, 10, 'FRIEND', '#99eeff');
         }
 
         for (let i = labelIdx; i < this.shipMarkerLabels.length; i++) {
             this.shipMarkerLabels[i].setAlpha(0);
         }
+    }
+
+    drawShipMarker(labelIdx, x, y, color, size, text, textColor) {
+        const edge = this.projectToEdge(x, y);
+        this.drawEdgeMarker(this.markerLayer, edge.x, edge.y, edge.angle, color, size);
+
+        if (!this.shipMarkerLabels[labelIdx]) {
+            this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
+                fontSize: '9px',
+                fill: textColor
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+        }
+        const lbl = this.shipMarkerLabels[labelIdx];
+        lbl.setText(text);
+        lbl.setColor(textColor);
+        lbl.setPosition(edge.x - Math.cos(edge.angle) * 16, edge.y - Math.sin(edge.angle) * 16);
+        lbl.setAlpha(0.9);
+        return labelIdx + 1;
+    }
+
+    handleNetMessage(raw) {
+        let data = raw;
+        if (typeof raw === 'string') {
+            try {
+                data = JSON.parse(raw);
+            } catch (_) {
+                return;
+            }
+        }
+        if (!data || typeof data !== 'object') return;
+
+        if (data.type === 'hello' || data.type === 'state') {
+            this.ensureRemotePlayer(data);
+            this.remotePlayer.applyState({
+                name: data.name,
+                x: data.x ?? this.remotePlayer.x,
+                y: data.y ?? this.remotePlayer.y,
+                rotation: data.rotation ?? this.remotePlayer.rotation,
+                systemId: data.systemId || this.remotePlayer.systemId,
+                shields: data.shields,
+                hull: data.hull
+            });
+            return;
+        }
+
+        if (data.type === 'fire') {
+            this.ensureRemotePlayer(data);
+            this.spawnRemoteProjectile(data);
+            return;
+        }
+
+        if (data.type === 'hyperspace' || data.type === 'system') {
+            this.ensureRemotePlayer(data);
+            const systemId = data.systemId || this.remotePlayer.systemId;
+            this.remotePlayer.systemId = systemId;
+            this.remotePlayer.setInSystem(systemId === this.currentSystemId);
+            const name = data.name || this.remotePlayer.name || 'Friend';
+            this.showToast(`${name} jumped to ${getSystem(systemId).name}`, 2200);
+        }
+    }
+
+    ensureRemotePlayer(data = {}) {
+        if (this.remotePlayer) return;
+        this.remotePlayer = new RemotePlayer(this, {
+            name: data.name || 'Friend',
+            systemId: data.systemId || this.currentSystemId,
+            x: data.x ?? this.center + 100,
+            y: data.y ?? this.center,
+            rotation: data.rotation || 0,
+            shields: data.shields,
+            hull: data.hull
+        });
+        this.remotePlayer.setInSystem(this.remotePlayer.systemId === this.currentSystemId);
+    }
+
+    sendState(time) {
+        if (!this.mp || !this.player) return;
+        if (time - this.lastNetSend < 80) return;
+        this.lastNetSend = time;
+        this.sendNet({
+            type: 'state',
+            name: this.pilotName,
+            x: this.player.getX(),
+            y: this.player.getY(),
+            rotation: this.player.getRotation(),
+            systemId: this.currentSystemId,
+            shields: this.player.shields,
+            hull: this.player.hull
+        });
     }
 
     triggerGameOver() {
@@ -642,29 +1260,26 @@ export default class GameScene extends Phaser.Scene {
 
     respawnPlayer() {
         this.hideStationUI();
+        this.hideHyperspaceMenu();
         this.isDocked = false;
-        this.projectiles.forEach((p) => p.destroy());
-        this.enemyProjectiles.forEach((p) => p.destroy());
-        this.projectiles = [];
-        this.enemyProjectiles = [];
+        this.clearAllProjectiles();
 
-        const savedCredits = this.player.credits;
-        const savedCargo = { ...this.player.cargo };
+        const snapshot = this.player.getSnapshot();
+        snapshot.shields = undefined;
+        snapshot.hull = undefined;
 
         this.player.destroy();
-        this.player = new Player(this, this.worldSize / 2 - 800, this.worldSize / 2);
-        this.player.credits = savedCredits;
-        this.player.cargo = savedCargo;
+        this.player = new Player(this, this.worldSize / 2 - 800, this.worldSize / 2, snapshot);
         this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
         this.gameOver = false;
         this.dockButton.setText('DOCK');
-        this.showToast('Respawned. Credits and cargo retained.');
+        this.showToast('Respawned. Upgrades and cargo retained.');
     }
 
     update(time, delta) {
-        if (!this.player) return;
+        if (!this.player || !this.station) return;
 
-        if (!this.gameOver && !this.isDocked) {
+        if (!this.gameOver && !this.isDocked && !this.mapOpen && !this.hyperspaceOpen) {
             this.player.update(delta, this.leftJoystick, this.rightJoystick, this.keys);
             if (this.fireKey.isDown) this.fireWeapon();
         }
@@ -677,32 +1292,67 @@ export default class GameScene extends Phaser.Scene {
             this.maybeRespawnNPCs();
         }
 
+        if (this.remotePlayer) this.remotePlayer.update(delta);
         this.updateEdgeMarkers();
-
-        if (inDockingRange && !this.isDocked) {
-            this.dockButton.setAlpha(1);
-        } else if (!this.isDocked) {
-            this.dockButton.setAlpha(0);
-        }
+        this.updateActionButtonVisibility(inDockingRange);
+        this.sendState(time);
 
         if (Phaser.Input.Keyboard.JustDown(this.dockKey)) {
             this.attemptDocking();
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.hyperspaceKey)) {
+            this.attemptHyperspace();
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.mapKey)) {
+            this.toggleGalaxyMap();
         }
 
         if (this.toastText.alpha > 0 && Date.now() > this.statusMessageUntil) {
             this.toastText.setAlpha(0);
         }
 
+        this.updateHUD(inDockingRange);
+    }
+
+    updateActionButtonVisibility(inDockingRange) {
+        if (inDockingRange || this.isDocked) {
+            this.dockButton.setAlpha(1);
+        } else {
+            this.dockButton.setAlpha(0);
+        }
+
+        if (this.isNearHyperspaceEdge() && !this.isDocked && !this.gameOver) {
+            this.hyperspaceButton.setAlpha(1);
+        } else {
+            this.hyperspaceButton.setAlpha(0);
+        }
+    }
+
+    updateHUD(inDockingRange) {
         const p = this.player;
+        const u = p.upgrades;
         const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
+        const system = getSystem(this.currentSystemId);
+        const mission = this.activeMission
+            ? `Mission: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
+            : 'Mission: none';
+        const friend = this.remotePlayer
+            ? `Friend: ${this.remotePlayer.name} @ ${getSystem(this.remotePlayer.systemId).name}`
+            : (this.isMultiplayer() ? 'Friend: waiting...' : '');
+        const room = this.isMultiplayer() ? `Room: ${this.roomCode}` : '';
+
         this.hudText.setText([
-            `Credits: ${p.credits}`,
+            `${system.name}   Credits: ${p.credits}   Kills: ${p.kills}`,
+            room,
+            friend,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Speed: ${Math.round(p.getSpeed())}`,
+            `Speed: ${Math.round(p.getSpeed())}   Rate: ${p.fireRate}ms`,
+            `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Upgrades E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
+            mission,
             foe ? `Foe T${foe.tier}: ${foe.hits}/${foe.maxHits} hits [${foe.mode}]` : `Next foe tier: ${this.enemyTier}`,
-            'A/D turn · W/S thrust · J/K strafe · Space fire',
-            this.isDocked ? 'DOCKED [E undock]' : (inDockingRange ? 'In docking range [E]' : '')
+            'A/D turn · W/S thrust · J/K strafe · Space fire · H hyper · M map',
+            this.isDocked ? 'DOCKED [E undock]' : (inDockingRange ? 'In docking range [E]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H]' : ''))
         ].filter(Boolean).join('\n'));
     }
 
@@ -720,9 +1370,26 @@ export default class GameScene extends Phaser.Scene {
             this.rightJoystick.setPosition(width - margin - joystickRadius, height - bottomMargin - joystickRadius);
             this.rightLabel.setPosition(width - margin - joystickRadius, height - bottomMargin - joystickRadius - 70);
         }
-        if (this.dockButton) this.dockButton.setPosition(width / 2, height - 48);
+        if (this.dockButton) this.dockButton.setPosition(width / 2 - 68, height - 48);
+        if (this.hyperspaceButton) this.hyperspaceButton.setPosition(width / 2 + 72, height - 48);
         if (this.fireButton) this.fireButton.setPosition(width / 2, height - 140);
         if (this.fireLabel) this.fireLabel.setPosition(width / 2, height - 140);
         if (this.toastText) this.toastText.setPosition(width / 2, 70);
+
+        if (this.mapOpen) this.showGalaxyMap();
+        if (this.hyperspaceOpen) {
+            this.hideHyperspaceMenu();
+            this.openHyperspaceMenu();
+        }
+    }
+
+    shutdown() {
+        this.scale.off('resize', this.onResize, this);
+        this.hideStationUI();
+        this.hideHyperspaceMenu();
+        this.hideGalaxyMap();
+        this.clearWorldObjects();
+        this.remotePlayer?.destroy();
+        this.remotePlayer = null;
     }
 }

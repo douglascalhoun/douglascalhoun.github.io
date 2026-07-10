@@ -1,35 +1,26 @@
 # Space Nova
 
-A simplified browser-based remake of Escape Velocity Nova.
+A simplified Escape Velocity Nova remake with **co-op multiplayer**.
 
-## Live
+## Play together
 
-https://douglascalhoun.github.io/
+1. Open the live site
+2. One player taps **HOST CO-OP ROOM** and shares the room code (e.g. `NOVA7K2Q`)
+3. Friend taps **JOIN ROOM** and enters that code
+4. Fly the same galaxy together
 
-## Phase 3 Status
+## Features
 
-- Dual-thumb flight controls (turn + thrust)
-- Momentum physics, planet, system boundary
-- Space station docking
-- Combat: player weapons, fighter NPCs that shoot back
-- Shields / hull with regen and station repair
-- Credits, cargo, and station buy/sell trading
-- Respawn on destruction (credits kept)
+- Dual-stick / WASD flight with naval-style turn bleed
+- 6 star systems + hyperspace (H) + galaxy map (M)
+- Stations: trade, repair, upgrades, missions
+- Combat with damaged/fleeing/disabled enemies
+- Co-op multiplayer via PeerJS (see each other fly & shoot)
 
 ## Controls
 
-### Laptop / keyboard
-- **A / D**: turn left / right
-- **W / S**: thrust forward / reverse
-- **J / K**: strafe left / right
-- **Space**: fire
-- **E**: dock / undock near station
-
-### Mobile / touch
-- **Left joystick**: turn
-- **Right joystick**: thrust
-- **FIRE** button: shoot
-- **DOCK** button: dock / undock near station
+- **A/D** turn · **W/S** thrust · **J/K** strafe · **Space** fire
+- **E** dock · **H** hyperspace · **M** galaxy map
 
 ## Dev
 

@@ -4,8 +4,9 @@
   "description": "Simplified Escape Velocity Nova remake",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite index.source.html",
     "build": "vite build",
+    "build:pages": "vite build && node scripts/sync-pages.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {
@@ -13,6 +14,7 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
+    "peerjs": "^1.5.5",
     "phaser": "^3.80.1"
   }
 }

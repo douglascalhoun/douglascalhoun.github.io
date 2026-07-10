@@ -209,8 +209,8 @@ export default class GameScene extends Phaser.Scene {
             this.player.getX(),
             this.player.getY(),
             this.player.getRotation(),
-            680,
-            { damage: 1, fromPlayer: true, lifetime: 1400 }
+            520,
+            { damage: 1, fromPlayer: true, lifetime: 1500 }
         );
         this.projectiles.push(projectile);
     }
@@ -221,7 +221,7 @@ export default class GameScene extends Phaser.Scene {
             npc.getX(),
             npc.getY(),
             npc.getRotation(),
-            480 + npc.tier * 20,
+            360 + npc.tier * 15,
             { damage: npc.shotDamage, fromPlayer: false, lifetime: 1500 }
         );
         this.enemyProjectiles.push(projectile);

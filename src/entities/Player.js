@@ -13,20 +13,24 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        this.body.setDrag(0);
-        this.body.setMaxVelocity(520);
+        // Mild drag = you settle into a fight instead of coasting past forever
+        this.body.setDrag(40);
+        this.body.setMaxVelocity(260);
         this.body.setCollideWorldBounds(true);
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        // Snappy fighter turn response
-        this.maxRotationSpeed = 5.5;
-        this.rotationAccel = 0.55;
-        this.rotationDrag = 0.82;
+        // High turn authority for tactical circling
+        this.maxRotationSpeed = 7.2;
+        this.rotationAccel = 0.85;
+        this.rotationDrag = 0.78;
+        // Hard turns bleed speed (naval / sailing feel)
+        this.turnBleed = 0.55;
 
-        this.mainThrust = 420;
-        this.reverseThrust = 260;
-        this.lateralThrust = 340;
+        // Strong accel to a low top speed — responsive, not fast
+        this.mainThrust = 380;
+        this.reverseThrust = 420; // reverse is your brake
+        this.lateralThrust = 360;
 
         this.maxShields = 100;
         this.shields = 100;
@@ -66,11 +70,10 @@ export default class Player {
         }
 
         if (Math.abs(rotInput) > 0.01) {
-            // Near-instant turn toward input for fighter feel
             this.rotationSpeed = Phaser.Math.Linear(
                 this.rotationSpeed,
                 rotInput * this.maxRotationSpeed,
-                Math.min(1, this.rotationAccel * 8 * dt)
+                Math.min(1, this.rotationAccel * 10 * dt)
             );
         } else {
             this.rotationSpeed *= Math.pow(this.rotationDrag, dt * 60);
@@ -79,6 +82,14 @@ export default class Player {
 
         this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
+
+        // Naval bleed: turning hard bleeds forward speed so you don't overshoot
+        const turnAmount = Math.min(1, Math.abs(this.rotationSpeed) / this.maxRotationSpeed);
+        if (turnAmount > 0.15) {
+            const bleed = 1 - turnAmount * this.turnBleed * dt * 3.2;
+            this.body.velocity.x *= bleed;
+            this.body.velocity.y *= bleed;
+        }
 
         let forwardInput = 0;
         let lateralInput = 0;
@@ -105,6 +116,7 @@ export default class Player {
         const shipRightX = Math.cos(this.rotation);
         const shipRightY = Math.sin(this.rotation);
 
+        // Prefer thrusting along facing — sideways drift is for orbiting, not racing
         let thrustMagnitude = 0;
         if (forwardInput > 0) thrustMagnitude = forwardInput * this.mainThrust;
         else if (forwardInput < 0) thrustMagnitude = forwardInput * this.reverseThrust;

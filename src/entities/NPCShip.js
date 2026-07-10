@@ -20,15 +20,15 @@ export default class NPCShip {
         this.hitDamage = 1;
 
         this.speed = type === 'trader'
-            ? 70
-            : 150 + (this.tier - 1) * 18;
-        this.fleeSpeed = this.speed * 1.35;
+            ? 55
+            : 95 + (this.tier - 1) * 10;
+        this.fleeSpeed = this.speed * 1.25;
         this.bounty = type === 'trader'
             ? 75
             : 120 + this.tier * 40;
-        this.aggroRange = type === 'fighter' ? 1100 + this.tier * 80 : 0;
-        this.fireRange = 480;
-        this.idealRange = 260;
+        this.aggroRange = type === 'fighter' ? 900 + this.tier * 60 : 0;
+        this.fireRange = 420;
+        this.idealRange = 220;
         this.fireRate = Math.max(420, 780 - this.tier * 40);
         this.shotDamage = 8 + this.tier * 2;
         this.lastFireTime = 0;

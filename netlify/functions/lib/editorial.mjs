@@ -177,10 +177,7 @@ const STRONG_TECH = [
 ];
 
 function normalizeText(article) {
-  const cats = Array.isArray(article.categories)
-    ? article.categories.map((c) => (typeof c === 'string' ? c : c?._ || '')).join(' ')
-    : '';
-  return `${article.title || ''} ${article.description || ''} ${cats}`.toLowerCase();
+  return `${article.title || ''} ${article.description || ''}`.toLowerCase();
 }
 
 function includesAny(text, phrases) {
@@ -277,6 +274,18 @@ export function scoreArticle(article, feed = {}) {
     }
   }
 
+  // Pure shareholder / stake-sale stories without systemic stakes
+  if (
+    /\b(shareholder|shareholding|stake in|buys? \d+%|largest investor)\b/.test(text) &&
+    strongTechHits.length === 0 &&
+    !includesAny(text, [
+      'antitrust', 'sanctions', 'federal reserve', 'trade war',
+      'hostile takeover', 'bankruptcy', 'bailout',
+    ]).length
+  ) {
+    return reject(-34, 'shareholder_noise');
+  }
+
   // Tech: still drop soft/non-news unless it has a real tech signal
   if (category === 'tech' && techHits.length === 0 && importanceHits.length === 0) {
     if (!/\b(security|privacy|antitrust|regulation|outage|breach|lawsuit)\b/.test(text)) {
@@ -317,7 +326,7 @@ export function scoreArticle(article, feed = {}) {
   const hasSignal = techHits.length > 0 || importanceHits.length > 0;
   const keep = score >= 20 && hasSignal && (
     strongTechHits.length > 0 ||
-    importanceHits.length >= 1 && !incidentHits.length ||
+    (importanceHits.length >= 1 && !incidentHits.length) ||
     importanceHits.length >= 2 ||
     (category === 'tech' && techHits.length > 0)
   );

@@ -1,3 +1,5 @@
+import { cleanText } from './text';
+
 const READ_KEY = 'worldwire_read_ids';
 const CACHE_KEY = 'worldwire_story_cache';
 
@@ -35,7 +37,12 @@ export function markManyRead(idList) {
 
 export function getCachedStories() {
   const cache = loadJson(CACHE_KEY, { stories: [], updatedAt: null });
-  return Array.isArray(cache.stories) ? cache.stories : [];
+  const stories = Array.isArray(cache.stories) ? cache.stories : [];
+  return stories.map((story) => ({
+    ...story,
+    title: cleanText(story?.title || ''),
+    description: cleanText(story?.description || ''),
+  }));
 }
 
 export function mergeStoriesIntoCache(incoming) {
@@ -47,8 +54,8 @@ export function mergeStoriesIntoCache(incoming) {
     if (!story?.id) continue;
     byId.set(story.id, {
       id: story.id,
-      title: story.title,
-      description: story.description || '',
+      title: cleanText(story.title),
+      description: cleanText(story.description || ''),
       link: story.link,
       pub_date: story.pub_date,
       feed_name: story.feed_name,

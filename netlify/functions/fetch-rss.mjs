@@ -7,6 +7,7 @@ import {
   insertArticle
 } from './lib/db.mjs';
 import { scoreArticle } from './lib/editorial.mjs';
+import { cleanText } from './lib/text.mjs';
 
 const parser = new Parser({
   customFields: {
@@ -48,8 +49,8 @@ async function fetchFeed(feed) {
     for (const item of feedData.items || []) {
       const draft = {
         feedId: feed.id,
-        title: item.title || 'Untitled',
-        description: item.contentSnippet || item.summary || '',
+        title: cleanText(item.title) || 'Untitled',
+        description: cleanText(item.contentSnippet || item.summary || ''),
         link: item.link || '',
         pubDate: item.pubDate ? new Date(item.pubDate) : new Date(),
         guid: item.guid || item.link || `${feed.id}-${item.title}-${Date.now()}`,

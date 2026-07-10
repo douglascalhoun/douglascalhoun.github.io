@@ -1,5 +1,6 @@
 // API endpoint for articles with search, filters, and user state
 import { getDatabase } from './lib/db.mjs';
+import { cleanText } from './lib/text.mjs';
 
 export default async (req) => {
   const headers = {
@@ -116,9 +117,15 @@ export default async (req) => {
     const countResult = await db.query(countQuery, params);
     const total = parseInt(countResult.rows[0].total);
 
+    const articles = result.rows.map((row) => ({
+      ...row,
+      title: cleanText(row.title),
+      description: cleanText(row.description || ''),
+    }));
+
     return new Response(
       JSON.stringify({
-        articles: result.rows,
+        articles,
         pagination: {
           limit,
           offset,

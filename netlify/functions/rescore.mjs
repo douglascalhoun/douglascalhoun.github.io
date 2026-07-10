@@ -1,6 +1,7 @@
 // Fast batch rescore for editorial filter updates
 import { getDatabase } from './lib/db.mjs';
 import { scoreArticle } from './lib/editorial.mjs';
+import { cleanText } from './lib/text.mjs';
 
 export default async (req) => {
   const headers = {
@@ -30,17 +31,26 @@ export default async (req) => {
 
     let kept = 0;
     let dropped = 0;
+    let cleaned = 0;
     for (const row of recent.rows) {
-      const result = scoreArticle(row, { category: row.category, priority: row.priority });
+      const title = cleanText(row.title);
+      const description = cleanText(row.description || '');
+      if (title !== (row.title || '') || description !== (row.description || '')) {
+        cleaned += 1;
+      }
+      const cleanedRow = { ...row, title, description };
+      const result = scoreArticle(cleanedRow, { category: row.category, priority: row.priority });
       const keep = row.active ? result.keep : false;
       await db.query(
         `UPDATE articles
-         SET relevance_score = $1,
-             is_relevant = $2,
-             topics = $3,
-             filter_reasons = $4
-         WHERE id = $5`,
-        [result.score, keep, result.topics, result.reasons, row.id]
+         SET title = $1,
+             description = $2,
+             relevance_score = $3,
+             is_relevant = $4,
+             topics = $5,
+             filter_reasons = $6
+         WHERE id = $7`,
+        [title, description, result.score, keep, result.topics, result.reasons, row.id]
       );
       if (keep) kept += 1;
       else dropped += 1;
@@ -58,6 +68,7 @@ export default async (req) => {
         processed: recent.rows.length,
         kept,
         dropped,
+        cleaned,
         relevantTotal: parseInt(relevantTotal.rows[0].count),
         hasMore: recent.rows.length === limit
       }),

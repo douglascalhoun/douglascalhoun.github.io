@@ -4,6 +4,7 @@ import Station from '../entities/Station.js';
 import NPCShip from '../entities/NPCShip.js';
 import Projectile from '../entities/Projectile.js';
 import VirtualJoystick from '../utils/VirtualJoystick.js';
+import GamepadControls from '../utils/GamepadControls.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
 import { getSystem, linkedSystems, pickMission, SYSTEMS } from '../data/galaxy.js';
 
@@ -56,6 +57,7 @@ export default class GameScene extends Phaser.Scene {
         this.cameras.main.setZoom(1);
 
         this.setupTouchControls();
+        this.gamepad = new GamepadControls(this);
         this.createHUD();
         this.createActionButtons();
         this.createEdgeMarkers();
@@ -84,7 +86,7 @@ export default class GameScene extends Phaser.Scene {
 
         const systemName = getSystem(this.currentSystemId).name;
         const room = this.isMultiplayer() ? ` · Room ${this.roomCode}` : '';
-        this.showToast(`${systemName}${room} · WASD/J/K fly · Space fire · E dock · H hyperspace · M map`, 5200);
+        this.showToast(`${systemName}${room} · Keyboard or Xbox pad · E/X dock · H/Y jump · M/B map`, 5200);
     }
 
     setupMultiplayer() {
@@ -252,6 +254,16 @@ export default class GameScene extends Phaser.Scene {
     }
 
     setupTouchControls() {
+        this.touchEnabled = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        this.leftJoystick = null;
+        this.rightJoystick = null;
+        this.leftLabel = null;
+        this.rightLabel = null;
+
+        // Keep touch optional — only show virtual sticks on actual touch devices
+        // so laptop keyboard / Xbox pad users aren't fighting on-screen controls.
+        if (!this.touchEnabled) return;
+
         const margin = 20;
         const joystickRadius = 50;
         const bottomMargin = 30;
@@ -349,6 +361,11 @@ export default class GameScene extends Phaser.Scene {
             'FIRE',
             { fontSize: '12px', fill: '#ffffff' }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1501);
+
+        if (!this.touchEnabled) {
+            this.fireButton.setVisible(false).disableInteractive();
+            this.fireLabel.setVisible(false);
+        }
     }
 
     showToast(message, duration = 2800) {
@@ -1279,9 +1296,11 @@ export default class GameScene extends Phaser.Scene {
     update(time, delta) {
         if (!this.player || !this.station) return;
 
+        const pad = this.gamepad ? this.gamepad.poll() : null;
+
         if (!this.gameOver && !this.isDocked && !this.mapOpen && !this.hyperspaceOpen) {
-            this.player.update(delta, this.leftJoystick, this.rightJoystick, this.keys);
-            if (this.fireKey.isDown) this.fireWeapon();
+            this.player.update(delta, this.leftJoystick, this.rightJoystick, this.keys, pad);
+            if (this.fireKey.isDown || (pad && pad.fire)) this.fireWeapon();
         }
 
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
@@ -1297,13 +1316,13 @@ export default class GameScene extends Phaser.Scene {
         this.updateActionButtonVisibility(inDockingRange);
         this.sendState(time);
 
-        if (Phaser.Input.Keyboard.JustDown(this.dockKey)) {
+        if (Phaser.Input.Keyboard.JustDown(this.dockKey) || (pad && this.gamepad.just.dock)) {
             this.attemptDocking();
         }
-        if (Phaser.Input.Keyboard.JustDown(this.hyperspaceKey)) {
+        if (Phaser.Input.Keyboard.JustDown(this.hyperspaceKey) || (pad && this.gamepad.just.hyperspace)) {
             this.attemptHyperspace();
         }
-        if (Phaser.Input.Keyboard.JustDown(this.mapKey)) {
+        if (Phaser.Input.Keyboard.JustDown(this.mapKey) || (pad && this.gamepad.just.map)) {
             this.toggleGalaxyMap();
         }
 
@@ -1311,7 +1330,7 @@ export default class GameScene extends Phaser.Scene {
             this.toastText.setAlpha(0);
         }
 
-        this.updateHUD(inDockingRange);
+        this.updateHUD(inDockingRange, pad);
     }
 
     updateActionButtonVisibility(inDockingRange) {
@@ -1328,7 +1347,7 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    updateHUD(inDockingRange) {
+    updateHUD(inDockingRange, pad = null) {
         const p = this.player;
         const u = p.upgrades;
         const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
@@ -1340,19 +1359,21 @@ export default class GameScene extends Phaser.Scene {
             ? `Friend: ${this.remotePlayer.name} @ ${getSystem(this.remotePlayer.systemId).name}`
             : (this.isMultiplayer() ? 'Friend: waiting...' : '');
         const room = this.isMultiplayer() ? `Room: ${this.roomCode}` : '';
+        const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
 
         this.hudText.setText([
             `${system.name}   Credits: ${p.credits}   Kills: ${p.kills}`,
             room,
             friend,
+            padStatus,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
             `Speed: ${Math.round(p.getSpeed())}   Rate: ${p.fireRate}ms`,
             `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Upgrades E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
             mission,
             foe ? `Foe T${foe.tier}: ${foe.hits}/${foe.maxHits} hits [${foe.mode}]` : `Next foe tier: ${this.enemyTier}`,
-            'A/D turn · W/S thrust · J/K strafe · Space fire · H hyper · M map',
-            this.isDocked ? 'DOCKED [E undock]' : (inDockingRange ? 'In docking range [E]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H]' : ''))
+            'KB: WASD/JK/Space/E/H/M   Xbox: LS fly · RS strafe · A/RT fire · X dock · Y hyper · B map',
+            this.isDocked ? 'DOCKED [E / X undock]' : (inDockingRange ? 'In docking range [E / X]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H / Y]' : ''))
         ].filter(Boolean).join('\n'));
     }
 
@@ -1364,11 +1385,11 @@ export default class GameScene extends Phaser.Scene {
 
         if (this.leftJoystick) {
             this.leftJoystick.setPosition(margin + joystickRadius, height - bottomMargin - joystickRadius);
-            this.leftLabel.setPosition(margin + joystickRadius, height - bottomMargin - joystickRadius - 70);
+            this.leftLabel?.setPosition(margin + joystickRadius, height - bottomMargin - joystickRadius - 70);
         }
         if (this.rightJoystick) {
             this.rightJoystick.setPosition(width - margin - joystickRadius, height - bottomMargin - joystickRadius);
-            this.rightLabel.setPosition(width - margin - joystickRadius, height - bottomMargin - joystickRadius - 70);
+            this.rightLabel?.setPosition(width - margin - joystickRadius, height - bottomMargin - joystickRadius - 70);
         }
         if (this.dockButton) this.dockButton.setPosition(width / 2 - 68, height - 48);
         if (this.hyperspaceButton) this.hyperspaceButton.setPosition(width / 2 + 72, height - 48);

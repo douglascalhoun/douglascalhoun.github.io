@@ -19,8 +19,20 @@ A simplified Escape Velocity Nova remake with **co-op multiplayer**.
 
 ## Controls
 
-- **A/D** turn · **W/S** thrust · **J/K** strafe · **Space** fire
-- **E** dock · **H** hyperspace · **M** galaxy map
+### Laptop keyboard
+- **A / D**: turn · **W / S**: thrust · **J / K**: strafe
+- **Space**: fire · **E**: dock · **H**: hyperspace · **M**: map
+
+### Xbox controller (Bluetooth OK)
+- **Left stick**: turn + thrust
+- **Right stick**: strafe
+- **A** or **RT**: fire
+- **X** or **LB**: dock
+- **Y**: hyperspace
+- **B** or **View**: galaxy map
+
+### Touch (iPhone / tablets only)
+Virtual joysticks appear automatically on touch devices.
 
 ## Dev
 

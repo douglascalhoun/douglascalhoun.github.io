@@ -12,6 +12,9 @@ const config = {
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
     backgroundColor: '#000000',
+    input: {
+        gamepad: true
+    },
     physics: {
         default: 'arcade',
         arcade: {
@@ -26,4 +29,8 @@ const game = new Phaser.Game(config);
 
 window.addEventListener('resize', () => {
     game.scale.resize(window.innerWidth, window.innerHeight);
+});
+
+window.addEventListener('gamepadconnected', (e) => {
+    console.log('Gamepad connected', e.gamepad?.id);
 });

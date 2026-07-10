@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ArticleList from './components/ArticleList';
 import * as api from './services/api';
 import {
+  getStoryCounts,
   getUnreadStories,
   markManyRead,
   markRead,
@@ -11,9 +12,10 @@ import { startAmbientPalette } from './services/ambient';
 
 function App() {
   const [stories, setStories] = useState([]);
+  const [counts, setCounts] = useState({ total: 0, unread: 0, read: 0 });
   const [loading, setLoading] = useState(true);
   const [crawling, setCrawling] = useState(false);
-  const [status, setStatus] = useState('');
+  const [crawlNote, setCrawlNote] = useState('');
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -25,8 +27,9 @@ function App() {
     return stop;
   }, []);
 
-  function showUnreadFromCache() {
+  function syncFromCache() {
     setStories(getUnreadStories());
+    setCounts(getStoryCounts());
   }
 
   async function refreshFromServer() {
@@ -35,10 +38,9 @@ function App() {
       setError(null);
       const data = await api.fetchArticles({ limit: 150, offset: 0 });
       mergeStoriesIntoCache(data.articles || []);
-      showUnreadFromCache();
-      setStatus(`${getUnreadStories().length} unread`);
+      syncFromCache();
     } catch (err) {
-      showUnreadFromCache();
+      syncFromCache();
       setError(err.message);
     } finally {
       setLoading(false);
@@ -51,8 +53,8 @@ function App() {
       setError(null);
       const result = await api.triggerFetch();
       await refreshFromServer();
-      setStatus(
-        `Crawled ${result.successfulFeeds || 0}/${result.totalFeeds || 0} sources · ${getUnreadStories().length} unread`
+      setCrawlNote(
+        `Last crawl: ${result.successfulFeeds || 0}/${result.totalFeeds || 0} sources`
       );
     } catch (err) {
       setError(err.message);
@@ -63,15 +65,17 @@ function App() {
 
   function handleMarkRead(id) {
     markRead(id);
-    setStories((prev) => prev.filter((s) => s.id !== id));
-    setStatus(`${getUnreadStories().length} unread`);
+    syncFromCache();
   }
 
   function handleMarkAllRead() {
     markManyRead(stories.map((s) => s.id));
-    setStories([]);
-    setStatus('0 unread');
+    syncFromCache();
   }
+
+  const progress = counts.total
+    ? Math.round((counts.read / counts.total) * 100)
+    : 0;
 
   return (
     <div className="app">
@@ -94,15 +98,37 @@ function App() {
               onClick={handleMarkAllRead}
               disabled={!stories.length}
             >
-              Mark all read
+              Clear all
             </button>
           </div>
         </div>
       </header>
 
       <main className="main">
+        <div className="counts" aria-live="polite">
+          <div className="counts-row">
+            <span className="count-pill count-unread">
+              <strong>{counts.unread}</strong> to read
+            </span>
+            <span className="count-pill count-read">
+              <strong>{counts.read}</strong> read
+            </span>
+            <span className="count-total">{counts.total} cached</span>
+          </div>
+          <div
+            className="progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+            aria-label={`${progress}% read`}
+          >
+            <div className="progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
         <div className="status-row">
-          <span>{status}</span>
+          <span>{crawlNote}</span>
           {error && <span className="error">{error}</span>}
         </div>
 

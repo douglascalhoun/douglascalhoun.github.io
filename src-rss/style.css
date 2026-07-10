@@ -129,9 +129,17 @@ h1 {
 }
 
 .story {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
   padding: 1rem 0;
   border-bottom: 1px solid var(--line);
   transition: border-color 1.2s linear;
+}
+
+.story-body {
+  min-width: 0;
 }
 
 .story-meta {
@@ -140,6 +148,7 @@ h1 {
   color: var(--muted);
   font-size: 0.78rem;
   margin-bottom: 0.3rem;
+  padding-right: 0.25rem;
   transition: color 1.2s linear;
 }
 
@@ -172,7 +181,7 @@ h1 {
   color: var(--muted);
   font-size: 0.95rem;
   line-height: 1.5;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -180,20 +189,80 @@ h1 {
   transition: color 1.2s linear;
 }
 
-.btn-read {
-  border: none;
-  background: transparent;
-  color: var(--accent);
+.btn-dismiss {
+  order: 2;
+  align-self: start;
+  justify-self: end;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--btn-border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--panel) 80%, transparent);
+  color: var(--muted);
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  line-height: 1;
   cursor: pointer;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 1.2s linear;
+}
+
+.btn-dismiss:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.counts {
+  margin-bottom: 0.35rem;
+}
+
+.counts-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.55rem 0.85rem;
+  margin-bottom: 0.45rem;
+}
+
+.count-pill {
+  font-size: 0.9rem;
+  color: var(--ink);
   transition: color 1.2s linear;
 }
 
-.btn-read:hover {
-  text-decoration: underline;
+.count-pill strong {
+  font-weight: 650;
+}
+
+.count-unread strong {
+  color: var(--accent);
+}
+
+.count-read {
+  color: var(--muted);
+}
+
+.count-total {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.progress {
+  height: 4px;
+  width: 100%;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--line) 80%, transparent);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.25s ease, background-color 1.2s linear;
 }
 
 .empty {
@@ -229,7 +298,10 @@ h1 {
   .story-source,
   .story-title,
   .story-blurb,
-  .btn-read,
+  .btn-dismiss,
+  .counts,
+  .count-pill,
+  .progress-bar,
   .empty {
     transition: none !important;
   }

@@ -73,3 +73,19 @@ export function getUnreadStories() {
   const read = getReadIds();
   return getCachedStories().filter((s) => !read.has(s.id));
 }
+
+export function getStoryCounts() {
+  const cached = getCachedStories();
+  const read = getReadIds();
+  let unread = 0;
+  let readCount = 0;
+  for (const story of cached) {
+    if (read.has(story.id)) readCount += 1;
+    else unread += 1;
+  }
+  return {
+    total: cached.length,
+    unread,
+    read: readCount
+  };
+}

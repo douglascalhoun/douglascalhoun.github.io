@@ -7,6 +7,7 @@ import {
   markRead,
   mergeStoriesIntoCache
 } from './services/cache';
+import { startAmbientPalette } from './services/ambient';
 
 function App() {
   const [stories, setStories] = useState([]);
@@ -17,6 +18,11 @@ function App() {
 
   useEffect(() => {
     refreshFromServer();
+  }, []);
+
+  useEffect(() => {
+    const stop = startAmbientPalette({ periodMs: 96000 });
+    return stop;
   }, []);
 
   function showUnreadFromCache() {
@@ -32,7 +38,6 @@ function App() {
       showUnreadFromCache();
       setStatus(`${getUnreadStories().length} unread`);
     } catch (err) {
-      // Fall back to whatever is already cached locally
       showUnreadFromCache();
       setError(err.message);
     } finally {

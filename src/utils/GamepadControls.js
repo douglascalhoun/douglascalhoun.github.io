@@ -1,24 +1,32 @@
 import Phaser from 'phaser';
 
 /**
- * Lightweight gamepad poller — avoids navigator.getGamepads() every frame
- * until a pad has actually connected (Safari tax).
+ * Twin-stick gamepad:
+ * - Left stick  → move (forward/back + strafe) relative to aim
+ * - Right stick → aim
+ * - A / RT      → fire
+ * - LB / LS     → dodge boost
+ * - X           → dock
+ * - Y           → hyperspace
+ * - B           → map
  */
 export default class GamepadControls {
     constructor(scene) {
         this.scene = scene;
         this.deadzone = 0.22;
-        this.prev = { fire: false, dock: false, hyperspace: false, map: false };
-        this.just = { fire: false, dock: false, hyperspace: false, map: false };
+        this.prev = { fire: false, dock: false, hyperspace: false, map: false, boost: false };
+        this.just = { fire: false, dock: false, hyperspace: false, map: false, boost: false };
         this._hasSeenPad = false;
         this._empty = Object.freeze({
-            rot: 0,
             forward: 0,
             lateral: 0,
             fire: false,
             dock: false,
             hyperspace: false,
             map: false,
+            boost: false,
+            hasAim: false,
+            aimAngle: 0,
             connected: false
         });
 
@@ -77,17 +85,19 @@ export default class GamepadControls {
 
         const found = this._getPad();
         if (!found) {
-            this.just = { fire: false, dock: false, hyperspace: false, map: false };
+            this.just = { fire: false, dock: false, hyperspace: false, map: false, boost: false };
             return this._empty;
         }
 
         let lx = 0;
         let ly = 0;
         let rx = 0;
+        let ry = 0;
         let fire = false;
         let dock = false;
         let hyperspace = false;
         let map = false;
+        let boost = false;
 
         if (found.kind === 'phaser') {
             const pad = found.pad;
@@ -100,14 +110,17 @@ export default class GamepadControls {
             }
             if (pad.rightStick) {
                 rx = pad.rightStick.x;
+                ry = pad.rightStick.y;
             } else {
                 rx = pad.axes?.[2]?.getValue?.() ?? 0;
+                ry = pad.axes?.[3]?.getValue?.() ?? 0;
             }
 
             fire = !!(pad.A || pad.R2 || pad.buttons?.[0]?.pressed || pad.buttons?.[7]?.pressed);
-            dock = !!(pad.X || pad.L1 || pad.buttons?.[2]?.pressed || pad.buttons?.[4]?.pressed);
+            dock = !!(pad.X || pad.buttons?.[2]?.pressed);
             hyperspace = !!(pad.Y || pad.buttons?.[3]?.pressed);
             map = !!(pad.B || pad.buttons?.[1]?.pressed || pad.buttons?.[8]?.pressed);
+            boost = !!(pad.L1 || pad.L3 || pad.buttons?.[4]?.pressed || pad.buttons?.[10]?.pressed);
 
             if (pad.left) lx = -1;
             if (pad.right) lx = 1;
@@ -118,11 +131,13 @@ export default class GamepadControls {
             lx = pad.axes[0] || 0;
             ly = pad.axes[1] || 0;
             rx = pad.axes[2] || 0;
+            ry = pad.axes[3] || 0;
             const btn = (i) => !!(pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.5));
             fire = btn(0) || btn(7);
-            dock = btn(2) || btn(4);
+            dock = btn(2);
             hyperspace = btn(3);
             map = btn(1) || btn(8);
+            boost = btn(4) || btn(10);
             if (btn(14)) lx = -1;
             if (btn(15)) lx = 1;
             if (btn(12)) ly = -1;
@@ -132,26 +147,33 @@ export default class GamepadControls {
         lx = this._applyDeadzone(lx);
         ly = this._applyDeadzone(ly);
         rx = this._applyDeadzone(rx);
+        ry = this._applyDeadzone(ry);
+
+        const aimMag = Math.hypot(rx, ry);
+        const hasAim = aimMag > 0.35;
+        // Stick: 0=right in math; ship forward 0=up → aimAngle = atan2(rx, -ry)
+        const aimAngle = hasAim ? Math.atan2(rx, -ry) : 0;
 
         this.just = {
             fire: fire && !this.prev.fire,
             dock: dock && !this.prev.dock,
             hyperspace: hyperspace && !this.prev.hyperspace,
-            map: map && !this.prev.map
+            map: map && !this.prev.map,
+            boost: boost && !this.prev.boost
         };
-        this.prev.fire = fire;
-        this.prev.dock = dock;
-        this.prev.hyperspace = hyperspace;
-        this.prev.map = map;
+        this.prev = { fire, dock, hyperspace, map, boost };
 
         return {
-            rot: lx,
+            // Left stick: forward/back + strafe (dodge on X)
             forward: -ly,
-            lateral: rx,
+            lateral: lx,
             fire,
             dock,
             hyperspace,
             map,
+            boost,
+            hasAim,
+            aimAngle,
             connected: true
         };
     }

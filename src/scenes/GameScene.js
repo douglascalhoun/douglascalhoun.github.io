@@ -81,11 +81,28 @@ export default class GameScene extends Phaser.Scene {
         this.createActionButtons();
         this.createEdgeMarkers();
 
-        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,SPACE,H,M');
+        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,Q,R,SPACE,H,M,SHIFT,LEFT,RIGHT');
         this.dockKey = this.keys.E;
         this.fireKey = this.keys.SPACE;
         this.hyperspaceKey = this.keys.H;
         this.mapKey = this.keys.M;
+
+        // Mouse aim + click-to-fire (desktop dogfight scheme)
+        this._pointerFire = false;
+        if (!this.touchEnabled) {
+            this.input.on('pointerdown', (pointer) => {
+                if (!pointer.leftButtonDown()) return;
+                if (this.isDocked || this.mapOpen || this.hyperspaceOpen || this.gameOver) return;
+                const hits = this.input.hitTestPointer(pointer);
+                if (hits && hits.length > 0) return; // UI / joystick chrome
+                this._pointerFire = true;
+            });
+            this.input.on('pointerup', () => { this._pointerFire = false; });
+        }
+
+        // Aim reticle (world-space, follows mouse)
+        this.reticle = this.add.circle(0, 0, 6, 0x88ffcc, 0).setStrokeStyle(2, 0x88ffcc, 0.85).setDepth(120);
+        this.reticle.setVisible(!this.touchEnabled);
 
         this.scale.on('resize', this.onResize, this);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
@@ -104,7 +121,7 @@ export default class GameScene extends Phaser.Scene {
         });
 
         const room = this.isMultiplayer() ? ` · Room ${this.roomCode}` : '';
-        this.showToast(`DEFEND THE STATION!${room} · Clunky pea cannon · J/K strafe · Space fire`, 5600);
+        this.showToast(`DEFEND THE STATION!${room} · Mouse aim · WASD move/strafe · Shift dodge · Space/click fire`, 6000);
     }
 
     setupMultiplayer() {
@@ -489,14 +506,14 @@ export default class GameScene extends Phaser.Scene {
         this.leftLabel = this.add.text(
             margin + joystickRadius,
             this.scale.height - bottomMargin - joystickRadius - 70,
-            'TURN',
+            'MOVE',
             { fontSize: '12px', fill: '#777' }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
 
         this.rightLabel = this.add.text(
             this.scale.width - margin - joystickRadius,
             this.scale.height - bottomMargin - joystickRadius - 70,
-            'THRUST',
+            'AIM',
             { fontSize: '12px', fill: '#777' }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
     }
@@ -646,6 +663,8 @@ export default class GameScene extends Phaser.Scene {
         const count = opts.count || 1;
         const spread = opts.spread || 0;
         const baseAngle = npc.getRotation();
+        // Slow readable bolts — dodge windows matter more than bullet hell
+        const shotSpeed = Math.min(240, 160 + (npc.speed || 80) * 0.35);
         for (let i = 0; i < count; i++) {
             const t = count === 1 ? 0 : (i / (count - 1)) - 0.5;
             const projectile = new Projectile(
@@ -654,16 +673,48 @@ export default class GameScene extends Phaser.Scene {
                 npc.getY(),
                 baseAngle + t * spread * 2,
                 {
-                    speed: 300 + (npc.speed || 80) * 0.4,
+                    speed: shotSpeed,
                     damage: npc.shotDamage,
                     friendly: false,
-                    lifetime: 1500,
+                    lifetime: 2200,
                     color: npc.color || 0xff6644,
-                    radius: 3.5
+                    radius: 4
                 }
             );
             this.enemyProjectiles.push(projectile);
         }
+    }
+
+    /**
+     * Desktop: aim at mouse world position.
+     * Touch/pad aim handled inside Player via sticks.
+     */
+    getMouseAim() {
+        if (this.touchEnabled) {
+            if (this.reticle) this.reticle.setVisible(false);
+            return { hasAim: false, angle: 0 };
+        }
+        if (this.isDocked || this.mapOpen || this.hyperspaceOpen) {
+            if (this.reticle) this.reticle.setVisible(false);
+            return { hasAim: false, angle: 0 };
+        }
+
+        const pointer = this.input.activePointer;
+        if (!pointer || !this.player) {
+            return { hasAim: false, angle: 0 };
+        }
+
+        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        if (this.reticle) {
+            this.reticle.setVisible(true);
+            this.reticle.setPosition(world.x, world.y);
+        }
+
+        const dx = world.x - this.player.getX();
+        const dy = world.y - this.player.getY();
+        if (dx * dx + dy * dy < 16 * 16) return { hasAim: false, angle: 0 };
+
+        return { hasAim: true, angle: Math.atan2(dx, -dy) };
     }
 
     attemptDocking() {
@@ -1608,8 +1659,9 @@ export default class GameScene extends Phaser.Scene {
         const pad = this.gamepad ? this.gamepad.poll() : null;
 
         if (!this.gameOver && !this.isDocked && !this.mapOpen && !this.hyperspaceOpen) {
-            this.player.update(safeDelta, this.leftJoystick, this.rightJoystick, this.keys, pad);
-            if (this.fireKey.isDown || (pad && pad.fire)) this.fireWeapon();
+            const aim = this.getMouseAim();
+            this.player.update(safeDelta, this.leftJoystick, this.rightJoystick, this.keys, pad, aim);
+            if (this.fireKey.isDown || this._pointerFire || (pad && pad.fire)) this.fireWeapon();
         }
 
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
@@ -1701,7 +1753,8 @@ export default class GameScene extends Phaser.Scene {
             `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Upgrades E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
             mission,
             foe ? `Foe: ${foe.label || foe.type} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Sky clear' : 'Awaiting hostiles...'),
-            'KB: WASD turn/thrust · J right / K left · Space fire · E dock · H jump · M map',
+            `Dodge boost: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
+            'Mouse aim · WASD move/strafe · Shift dodge · Space/click fire · E dock',
             this.isDocked ? 'DOCKED [E / X undock]' : (inDockingRange ? 'In docking range [E / X]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H / Y]' : ''))
         ].filter(Boolean).join('\n');
 

@@ -46,33 +46,37 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Milder drag + velocity blending = smooth strafe without accel fighting drag
-        this.body.setDrag(28);
-        this.body.setMaxVelocity(220);
+        // Dogfight handling: snappy lateral, light drag, readable top speed
+        this.body.setDrag(18);
+        this.body.setMaxVelocity(280);
         this.body.setCollideWorldBounds(true);
         this.body.useDamping = false;
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        this.maxRotationSpeed = 3.0;
-        this.rotationAccel = 0.55;
-        this.rotationDrag = 0.82;
-        this.turnBleed = 0.35;
+        // Mouse/stick aim turns the nose — still has a little inertia so it isn't twitchy
+        this.maxRotationSpeed = 9.5;
+        this.aimTurnRate = 10.5;
+        this.keyboardTurnRate = 4.2;
 
-        // Response rate for velocity blending (higher = snappier, still smooth)
-        this.thrustLerp = 6.5;
-        this.strafeLerp = 8.0;
+        this.thrustLerp = 10;
+        this.strafeLerp = 14;
 
-        this.baseMainThrust = 280;
-        this.baseReverseThrust = 300;
-        this.baseLateralThrust = 260;
-        this.baseMaxVelocity = 220;
+        this.baseMainThrust = 320;
+        this.baseReverseThrust = 280;
+        this.baseLateralThrust = 340; // strafe should be the dodge verb
+        this.baseMaxVelocity = 280;
         this.baseMaxShields = 80;
         this.baseMaxHull = 80;
         this.baseShieldRegen = 6;
         this.baseWeaponDamage = 1;
         this.baseFireRate = 480;
         this.baseCargoCapacity = 20;
+
+        this.boostCooldownMs = 700;
+        this.boostImpulse = 420;
+        this.lastBoostTime = -9999;
+        this.boostUntil = 0;
 
         this.shieldRegenDelay = 2400;
         this.lastHitTime = 0;
@@ -216,41 +220,58 @@ export default class Player {
         };
     }
 
-    update(delta, leftJoystick, rightJoystick, keys = null, pad = null) {
+    /**
+     * Dogfight controls:
+     * - Aim with mouse / right stick / right virtual stick (nose follows aim)
+     * - WASD / left stick move relative to nose (A/D = strafe dodge)
+     * - Shift / pad boost = short lateral burst
+     */
+    update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
+        const now = this.scene.time.now;
 
-        let rotInput = 0;
-        if (keys) {
-            if (keys.A.isDown) rotInput -= 1;
-            if (keys.D.isDown) rotInput += 1;
-        }
-        if (pad && Math.abs(pad.rot) > 0.01) {
-            rotInput += pad.rot;
-        }
-        if (leftJoystick && leftJoystick.isActive()) {
-            rotInput += Math.cos(leftJoystick.getAngle()) * leftJoystick.getForce();
+        // --- Aim / turn ----------------------------------------------------
+        let desiredAngle = null;
+        if (aim && aim.hasAim) {
+            desiredAngle = aim.angle;
+        } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.25) {
+            // Virtual stick angle is screen math (0=right); convert to ship-forward (0=up)
+            desiredAngle = rightJoystick.getAngle() + Math.PI / 2;
+        } else if (pad && pad.hasAim) {
+            desiredAngle = pad.aimAngle;
         }
 
-        if (Math.abs(rotInput) > 0.01) {
-            const target = Phaser.Math.Clamp(rotInput, -1, 1) * this.maxRotationSpeed;
-            const t = 1 - Math.exp(-this.rotationAccel * 12 * dt);
-            this.rotationSpeed += (target - this.rotationSpeed) * t;
+        if (desiredAngle != null) {
+            this.rotation = Phaser.Math.Angle.RotateTo(
+                this.rotation,
+                desiredAngle,
+                this.aimTurnRate * dt
+            );
+            this.rotationSpeed = 0;
         } else {
-            this.rotationSpeed *= Math.exp(-4.2 * dt);
-            if (Math.abs(this.rotationSpeed) < 0.02) this.rotationSpeed = 0;
+            // Keyboard-only fallback when mouse/stick isn't aiming
+            let rotInput = 0;
+            if (keys?.Q?.isDown || keys?.LEFT?.isDown) rotInput -= 1;
+            if (keys?.R?.isDown || keys?.RIGHT?.isDown) rotInput += 1;
+            if (Math.abs(rotInput) > 0.01) {
+                this.rotation += rotInput * this.keyboardTurnRate * dt;
+            }
         }
-
-        this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
 
+        // --- Move (ship-relative) ------------------------------------------
         let forwardInput = 0;
         let lateralInput = 0;
 
         if (keys) {
             if (keys.W.isDown) forwardInput += 1;
             if (keys.S.isDown) forwardInput -= 1;
-            if (keys.J.isDown) lateralInput += 1;
-            if (keys.K.isDown) lateralInput -= 1;
+            // A/D are STRAFE now — the dodge verb
+            if (keys.A.isDown) lateralInput -= 1;
+            if (keys.D.isDown) lateralInput += 1;
+            // Keep J/K as aliases so old muscle memory still works
+            if (keys.J?.isDown) lateralInput += 1;
+            if (keys.K?.isDown) lateralInput -= 1;
         }
 
         if (pad) {
@@ -258,9 +279,11 @@ export default class Player {
             if (Math.abs(pad.lateral) > 0.01) lateralInput += pad.lateral;
         }
 
-        if (rightJoystick && rightJoystick.isActive()) {
-            const force = rightJoystick.getForce();
-            const angle = rightJoystick.getAngle();
+        // Left virtual stick = move relative to current facing
+        if (leftJoystick && leftJoystick.isActive()) {
+            const force = leftJoystick.getForce();
+            const angle = leftJoystick.getAngle();
+            // Stick up (−Y screen) = forward
             forwardInput += -Math.sin(angle) * force;
             lateralInput += Math.cos(angle) * force;
         }
@@ -273,43 +296,64 @@ export default class Player {
         const shipRightX = Math.cos(this.rotation);
         const shipRightY = Math.sin(this.rotation);
 
-        // Target velocity in ship space — blend into body velocity.
-        // Avoids Arcade accel vs drag fighting (felt like strafe stutter on Safari).
         let forwardSpeed = 0;
-        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.55;
+        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.62;
         else if (forwardInput < 0) forwardSpeed = forwardInput * this.reverseThrust * 0.55;
-        const lateralSpeed = lateralInput * this.lateralThrust * 0.55;
+        // Lateral gets more authority — ducking shots is the fantasy
+        const lateralSpeed = lateralInput * this.lateralThrust * 0.72;
 
         const thrusting = Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01;
         const targetVx = shipForwardX * forwardSpeed + shipRightX * lateralSpeed;
         const targetVy = shipForwardY * forwardSpeed + shipRightY * lateralSpeed;
 
-        // Clear Arcade acceleration — we own velocity
         this.body.setAcceleration(0, 0);
 
         if (thrusting) {
-            const lerpF = 1 - Math.exp(-(Math.abs(lateralInput) > 0.01 ? this.strafeLerp : this.thrustLerp) * dt);
+            const rate = Math.abs(lateralInput) > Math.abs(forwardInput) ? this.strafeLerp : this.thrustLerp;
+            const lerpF = 1 - Math.exp(-rate * dt);
             this.body.velocity.x += (targetVx - this.body.velocity.x) * lerpF;
             this.body.velocity.y += (targetVy - this.body.velocity.y) * lerpF;
         }
 
-        // Soft turn bleed (gentler than before so strafe doesn't hitch while turning)
-        const turnAmount = Math.min(1, Math.abs(this.rotationSpeed) / this.maxRotationSpeed);
-        if (turnAmount > 0.2 && !thrusting) {
-            const bleed = Math.exp(-this.turnBleed * turnAmount * dt * 2.5);
-            this.body.velocity.x *= bleed;
-            this.body.velocity.y *= bleed;
+        // --- Dodge boost (Shift / pad LB) ----------------------------------
+        const wantBoost = (keys && keys.SHIFT?.isDown) || (pad && pad.boost);
+        if (wantBoost && now - this.lastBoostTime > this.boostCooldownMs) {
+            let side = lateralInput !== 0 ? Math.sign(lateralInput) : this._lastDodgeSide || 1;
+            if (lateralInput === 0) this._lastDodgeSide = -side;
+            else this._lastDodgeSide = side;
+
+            this.body.velocity.x += shipRightX * side * this.boostImpulse;
+            this.body.velocity.y += shipRightY * side * this.boostImpulse;
+            // Keep a bit of forward momentum so boost feels like a jink, not a teleport
+            this.body.velocity.x += shipForwardX * forwardInput * 80;
+            this.body.velocity.y += shipForwardY * forwardInput * 80;
+
+            this.lastBoostTime = now;
+            this.boostUntil = now + 140;
+            if (this.scene.spawnHitSpark) {
+                this.scene.spawnHitSpark(this.getX(), this.getY());
+            }
         }
 
-        // Clamp speed manually for consistent feel
+        if (now < this.boostUntil) {
+            this.container.setAlpha(0.75);
+        } else if (this.container.alpha < 1 && this.container.alpha >= 0.7) {
+            this.container.setAlpha(1);
+        }
+
+        const maxSpd = now < this.boostUntil ? this.maxSpeed * 1.35 : this.maxSpeed;
         const spd = Math.hypot(this.body.velocity.x, this.body.velocity.y);
-        if (spd > this.maxSpeed) {
-            const s = this.maxSpeed / spd;
+        if (spd > maxSpd) {
+            const s = maxSpd / spd;
             this.body.velocity.x *= s;
             this.body.velocity.y *= s;
         }
 
         this.regenShields(delta);
+    }
+
+    canBoost() {
+        return this.scene.time.now - this.lastBoostTime > this.boostCooldownMs;
     }
 
     regenShields(delta) {

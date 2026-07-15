@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ArticleList from './components/ArticleList';
+import SourcesNav, { SourcesIndexPage } from './components/SourcesNav';
 import * as api from './services/api';
 import {
   getStoryCounts,
@@ -11,10 +12,24 @@ import {
   mergeStoriesIntoCache
 } from './services/cache';
 import { startAmbientPalette } from './services/ambient';
+import { usePathname, navigate } from './services/routing';
+import {
+  getSourceBySlug,
+  parseAppPath,
+  SOURCES
+} from './services/sources';
 
 const UNDO_MS = 8000;
+const LIVE_ORIGIN = 'https://rss-news-aggregator.netlify.app';
 
-function App() {
+function FeedView({
+  title,
+  tagline,
+  feedName = null,
+  source = null,
+  showSourceNav = true,
+  autoOpenComments = false
+}) {
   const [stories, setStories] = useState([]);
   const [counts, setCounts] = useState({ total: 0, unread: 0, read: 0 });
   const [loading, setLoading] = useState(true);
@@ -24,22 +39,9 @@ function App() {
   const [undo, setUndo] = useState(null);
   const undoTimer = useRef(null);
 
-  useEffect(() => {
-    refreshFromServer();
-  }, []);
-
-  useEffect(() => {
-    const stop = startAmbientPalette({ periodMs: 96000 });
-    return stop;
-  }, []);
-
-  useEffect(() => () => {
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-  }, []);
-
   function syncFromCache() {
-    setStories(getUnreadStories());
-    setCounts(getStoryCounts());
+    setStories(getUnreadStories({ feedName }));
+    setCounts(getStoryCounts({ feedName }));
   }
 
   function offerUndo({ ids, label }) {
@@ -67,8 +69,17 @@ function App() {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.fetchArticles({ limit: 150, offset: 0 });
+      const data = await api.fetchArticles({
+        limit: feedName ? 100 : 150,
+        offset: 0,
+        feed: feedName || undefined
+      });
       mergeStoriesIntoCache(data.articles || []);
+      // Also pull a broader set on source pages so cache stays useful for home
+      if (feedName) {
+        const all = await api.fetchArticles({ limit: 150, offset: 0 });
+        mergeStoriesIntoCache(all.articles || []);
+      }
       syncFromCache();
     } catch (err) {
       syncFromCache();
@@ -115,6 +126,15 @@ function App() {
     });
   }
 
+  useEffect(() => {
+    refreshFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedName]);
+
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
   const progress = counts.total
     ? Math.round((counts.read / counts.total) * 100)
     : 0;
@@ -124,8 +144,23 @@ function App() {
       <header className="header">
         <div className="header-inner">
           <div>
-            <h1>Worldwire</h1>
-            <p className="tagline">Unread stories from serious newsrooms</p>
+            {feedName && (
+              <button type="button" className="back-link" onClick={() => navigate('/')}>
+                ← All sources
+              </button>
+            )}
+            <h1>{title}</h1>
+            <p className="tagline">{tagline}</p>
+            {source?.comments && (
+              <p className="source-comments-note">
+                Public comments are harvested for this source — expand under each story, or they open automatically here.
+              </p>
+            )}
+            {source && !source.comments && (
+              <p className="source-comments-note muted">
+                This source does not expose a public comments feed.
+              </p>
+            )}
           </div>
           <div className="actions">
             <button type="button" className="btn" onClick={refreshFromServer} disabled={loading || crawling}>
@@ -147,6 +182,10 @@ function App() {
       </header>
 
       <main className="main">
+        {showSourceNav && (
+          <SourcesNav activeSlug={source?.slug || null} compact={!feedName} />
+        )}
+
         <div className="counts" aria-live="polite">
           <div className="counts-row">
             <span className="count-pill count-unread">
@@ -177,7 +216,17 @@ function App() {
         {loading ? (
           <div className="empty">Loading…</div>
         ) : (
-          <ArticleList articles={stories} onMarkRead={handleMarkRead} />
+          <ArticleList
+            articles={stories}
+            onMarkRead={handleMarkRead}
+            showSourceLink={!feedName}
+            autoOpenComments={autoOpenComments}
+            emptyMessage={
+              feedName
+                ? `No unread stories from ${feedName}.`
+                : 'No unread stories. Crawl sources to check for new items.'
+            }
+          />
         )}
       </main>
 
@@ -192,5 +241,82 @@ function App() {
     </div>
   );
 }
+
+function NotFoundPage() {
+  return (
+    <div className="app">
+      <main className="main">
+        <div className="empty">
+          <p>Page not found.</p>
+          <button type="button" className="btn" onClick={() => navigate('/')}>
+            Back to Worldwire
+          </button>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function App() {
+  const [pathname] = usePathname();
+  const route = parseAppPath(pathname);
+
+  useEffect(() => {
+    const stop = startAmbientPalette({ periodMs: 96000 });
+    return stop;
+  }, []);
+
+  useEffect(() => {
+    if (route.view === 'source') {
+      const source = getSourceBySlug(route.slug);
+      document.title = source ? `${source.name} · Worldwire` : 'Worldwire';
+    } else if (route.view === 'sources') {
+      document.title = 'Sources · Worldwire';
+    } else {
+      document.title = 'Worldwire';
+    }
+  }, [route]);
+
+  if (route.view === 'sources') {
+    return <SourcesIndexPage />;
+  }
+
+  if (route.view === 'source') {
+    const source = getSourceBySlug(route.slug);
+    if (!source) return <NotFoundPage />;
+    return (
+      <FeedView
+        title={source.name}
+        tagline={`Recent unread stories from ${source.name}`}
+        feedName={source.name}
+        source={source}
+        autoOpenComments={Boolean(source.comments)}
+      />
+    );
+  }
+
+  if (route.view === 'notfound') {
+    return <NotFoundPage />;
+  }
+
+  return (
+    <FeedView
+      title="Worldwire"
+      tagline="Unread stories from serious newsrooms"
+      showSourceNav
+      autoOpenComments={false}
+    />
+  );
+}
+
+// Exported for docs / link lists
+export const SOURCE_LINKS = SOURCES.map((s) => ({
+  name: s.name,
+  path: `/source/${s.slug}`,
+  url: `${LIVE_ORIGIN}/source/${s.slug}`,
+  comments: s.comments
+}));
+
+export const MAIN_LINK = LIVE_ORIGIN;
 
 export default App;

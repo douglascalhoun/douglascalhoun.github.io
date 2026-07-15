@@ -103,6 +103,162 @@ h1 {
   color: var(--muted);
 }
 
+.linkish {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.linkish:hover {
+  text-decoration: underline;
+}
+
+.back-link {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 0.35rem;
+  display: inline-block;
+}
+
+.back-link:hover {
+  color: var(--accent);
+}
+
+.source-comments-note {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--accent);
+  max-width: 36rem;
+  line-height: 1.4;
+}
+
+.source-comments-note.muted {
+  color: var(--muted);
+}
+
+.sources-nav {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0 0.85rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.sources-nav-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.55rem;
+  align-items: center;
+  margin-bottom: 0.55rem;
+  font-size: 0.82rem;
+}
+
+.sources-nav-sep {
+  color: var(--muted);
+}
+
+.sources-nav-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sources-nav-item {
+  border: 1px solid var(--btn-border);
+  background: color-mix(in oklab, var(--panel) 88%, transparent);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0.28rem 0.55rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sources-nav-item:hover,
+.sources-nav-item.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sources-badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.source-index-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0 2rem;
+}
+
+.source-index-item {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.source-index-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.source-index-name {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.source-index-link:hover .source-index-name {
+  color: var(--accent);
+}
+
+.source-index-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.source-index-url {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.comment-hide {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+}
+
+.comment-hide:hover {
+  color: var(--accent);
+}
+
 .main {
   max-width: 720px;
   margin: 0 auto;

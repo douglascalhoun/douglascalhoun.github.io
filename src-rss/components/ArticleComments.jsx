@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as api from '../services/api';
+import {
+  isCommentChainRead,
+  markCommentChainRead,
+  markCommentChainUnread
+} from '../services/cache';
 
 function formatCommentDate(value) {
   if (!value) return '';
@@ -11,9 +16,22 @@ function formatCommentDate(value) {
   });
 }
 
-function CommentItem({ comment, depth = 0 }) {
+function CommentItem({
+  comment,
+  articleId,
+  depth = 0,
+  hideReadChains = true,
+  onHideChain,
+  revision = 0
+}) {
+  const externalId = comment.externalId || comment.id;
+  const isRoot = depth === 0;
+  const hidden = isRoot && hideReadChains && isCommentChainRead(articleId, externalId);
+
+  if (hidden) return null;
+
   return (
-    <li className={`comment-item depth-${Math.min(depth, 4)}`}>
+    <li className={`comment-item depth-${Math.min(depth, 4)}`} data-rev={revision}>
       <div className="comment-head">
         <span className="comment-author">{comment.author}</span>
         {comment.authorLocation && (
@@ -26,6 +44,16 @@ function CommentItem({ comment, depth = 0 }) {
           <span className="comment-score">+{comment.score}</span>
         )}
         {comment.isEditorsPick && <span className="comment-pick">Editors’ pick</span>}
+        {isRoot && (
+          <button
+            type="button"
+            className="comment-hide"
+            onClick={() => onHideChain?.(externalId)}
+            title="Mark this comment chain as read and hide it"
+          >
+            Mark read
+          </button>
+        )}
       </div>
       <p className="comment-body">{comment.body}</p>
       {comment.permalink && (
@@ -44,7 +72,11 @@ function CommentItem({ comment, depth = 0 }) {
             <CommentItem
               key={reply.externalId || reply.id}
               comment={reply}
+              articleId={articleId}
               depth={depth + 1}
+              hideReadChains={hideReadChains}
+              onHideChain={onHideChain}
+              revision={revision}
             />
           ))}
         </ul>
@@ -60,17 +92,24 @@ function statusLabel(data) {
     return `${n} comment${n === 1 ? '' : 's'}`;
   }
   if (data.status === 'empty') return 'No comments yet';
-  if (data.status === 'unsupported') return 'Not available';
+  if (data.status === 'unsupported') return 'Not available from this source';
   if (data.status === 'closed') return 'Comments closed';
   if (data.status === 'paywalled') return 'Subscriber only';
   if (data.status === 'error') return 'Couldn’t load';
   return 'Comments';
 }
 
-function ArticleComments({ article }) {
-  const [open, setOpen] = useState(false);
+function ArticleComments({
+  article,
+  autoOpen = false,
+  defaultOpen = false
+}) {
+  const shouldStartOpen = Boolean(autoOpen || defaultOpen);
+  const [open, setOpen] = useState(shouldStartOpen);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [hiddenCount, setHiddenCount] = useState(0);
   const [data, setData] = useState(() => {
     if (article.comment_status) {
       return {
@@ -90,12 +129,40 @@ function ArticleComments({ article }) {
       setError(null);
       const result = await api.fetchArticleComments(article.id, { refresh });
       setData(result);
+      return result;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!shouldStartOpen) return undefined;
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) {
+        setOpen(true);
+        await load();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [article.id, shouldStartOpen]);
+
+  useEffect(() => {
+    if (!data?.comments) {
+      setHiddenCount(0);
+      return;
+    }
+    const roots = data.comments || [];
+    setHiddenCount(
+      roots.filter((c) => isCommentChainRead(article.id, c.externalId || c.id)).length
+    );
+  }, [data, article.id, revision]);
 
   async function handleToggle() {
     const next = !open;
@@ -105,10 +172,30 @@ function ArticleComments({ article }) {
     }
   }
 
+  function handleHideChain(externalId) {
+    markCommentChainRead(article.id, externalId);
+    setRevision((n) => n + 1);
+  }
+
+  function handleRestoreHidden() {
+    const roots = data?.comments || [];
+    for (const c of roots) {
+      markCommentChainUnread(article.id, c.externalId || c.id);
+    }
+    setRevision((n) => n + 1);
+  }
+
   const previewCount =
     data?.commentCount ??
     article.comment_count ??
     null;
+
+  const visibleRoots = useMemo(() => {
+    if (!Array.isArray(data?.comments)) return [];
+    return data.comments.filter(
+      (c) => !isCommentChainRead(article.id, c.externalId || c.id)
+    );
+  }, [data, article.id, revision]);
 
   return (
     <div className="story-comments">
@@ -156,21 +243,42 @@ function ArticleComments({ article }) {
                 >
                   Refresh
                 </button>
+                {hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    className="comments-refresh"
+                    onClick={handleRestoreHidden}
+                  >
+                    Show {hiddenCount} hidden
+                  </button>
+                )}
               </div>
 
               {data.message && data.status !== 'ok' && (
                 <p className="comments-note">{data.message}</p>
               )}
 
-              {data.status === 'ok' && Array.isArray(data.comments) && data.comments.length > 0 && (
+              {data.status === 'ok' && visibleRoots.length > 0 && (
                 <ul className="comment-list">
-                  {data.comments.map((comment) => (
+                  {visibleRoots.map((comment) => (
                     <CommentItem
                       key={comment.externalId || comment.id}
                       comment={comment}
+                      articleId={article.id}
+                      onHideChain={handleHideChain}
+                      revision={revision}
                     />
                   ))}
                 </ul>
+              )}
+
+              {data.status === 'ok'
+                && Array.isArray(data.comments)
+                && data.comments.length > 0
+                && visibleRoots.length === 0 && (
+                <p className="comments-note">
+                  All comment chains on this story are marked read.
+                </p>
               )}
             </>
           )}

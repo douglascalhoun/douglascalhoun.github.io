@@ -87,6 +87,13 @@ export default async (req) => {
       params.push(category);
     }
 
+    const feed = url.searchParams.get('feed')?.trim()
+      || url.searchParams.get('source')?.trim();
+    if (feed) {
+      where.push(`f.name = $${params.length + 1}`);
+      params.push(feed);
+    }
+
     if (topic) {
       where.push(`$${params.length + 1} = ANY(COALESCE(a.topics, '{}'))`);
       params.push(topic);

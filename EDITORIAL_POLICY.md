@@ -20,6 +20,12 @@ Other Worldwire sources are marked unsupported with a clear reason (BBC comments
 ## Not included
 No images, search, filters, favorites, or push-notification UI.
 
+## Links
+- Main (all sources): https://rss-news-aggregator.netlify.app/
+- Source index: https://rss-news-aggregator.netlify.app/sources
+- Per-source pages: https://rss-news-aggregator.netlify.app/source/<slug>
+  (e.g. `/source/ars-technica`, `/source/nyt-technology`)
+
 ## Local development
 ```bash
 npm install

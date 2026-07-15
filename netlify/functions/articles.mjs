@@ -1,6 +1,7 @@
 // API endpoint for articles with search, filters, and user state
 import { getDatabase } from './lib/db.mjs';
 import { cleanText } from './lib/text.mjs';
+import { ensureCommentsSchema } from './lib/comments/schema.mjs';
 
 export default async (req) => {
   const headers = {
@@ -35,15 +36,26 @@ export default async (req) => {
     const topic = url.searchParams.get('topic');
 
     const db = await getDatabase();
+    try {
+      await ensureCommentsSchema(db);
+    } catch (schemaErr) {
+      console.warn('comments schema ensure skipped:', schemaErr.message);
+    }
     const params = [];
     const where = [];
 
     let select = `
-      SELECT a.*, f.name as feed_name, f.category as feed_category, f.country as feed_country
+      SELECT a.*, f.name as feed_name, f.category as feed_category, f.country as feed_country,
+        acs.platform as comment_platform,
+        acs.status as comment_status,
+        acs.comment_count,
+        acs.source_thread_url as comment_thread_url,
+        acs.fetched_at as comments_fetched_at
     `;
     let from = `
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
+      LEFT JOIN article_comment_snapshots acs ON acs.article_id = a.id
     `;
 
     if (userId) {
@@ -73,6 +85,13 @@ export default async (req) => {
     if (category) {
       where.push(`f.category = $${params.length + 1}`);
       params.push(category);
+    }
+
+    const feed = url.searchParams.get('feed')?.trim()
+      || url.searchParams.get('source')?.trim();
+    if (feed) {
+      where.push(`f.name = $${params.length + 1}`);
+      params.push(feed);
     }
 
     if (topic) {

@@ -1,6 +1,7 @@
 import { cleanText } from './text';
 
 const READ_KEY = 'worldwire_read_ids';
+const COMMENT_READ_KEY = 'worldwire_comment_read_ids';
 const CACHE_KEY = 'worldwire_story_cache';
 
 function loadJson(key, fallback) {
@@ -49,6 +50,33 @@ export function markManyUnread(idList) {
   return ids;
 }
 
+function commentChainKey(articleId, externalId) {
+  return `${articleId}::${externalId}`;
+}
+
+export function getReadCommentIds() {
+  const ids = loadJson(COMMENT_READ_KEY, []);
+  return new Set(Array.isArray(ids) ? ids : []);
+}
+
+export function isCommentChainRead(articleId, externalId) {
+  return getReadCommentIds().has(commentChainKey(articleId, externalId));
+}
+
+export function markCommentChainRead(articleId, externalId) {
+  const ids = getReadCommentIds();
+  ids.add(commentChainKey(articleId, externalId));
+  saveJson(COMMENT_READ_KEY, [...ids]);
+  return ids;
+}
+
+export function markCommentChainUnread(articleId, externalId) {
+  const ids = getReadCommentIds();
+  ids.delete(commentChainKey(articleId, externalId));
+  saveJson(COMMENT_READ_KEY, [...ids]);
+  return ids;
+}
+
 export function getCachedStories() {
   const cache = loadJson(CACHE_KEY, { stories: [], updatedAt: null });
   const stories = Array.isArray(cache.stories) ? cache.stories : [];
@@ -74,7 +102,12 @@ export function mergeStoriesIntoCache(incoming) {
       pub_date: story.pub_date,
       feed_name: story.feed_name,
       feed_category: story.feed_category,
-      relevance_score: story.relevance_score
+      relevance_score: story.relevance_score,
+      comment_platform: story.comment_platform ?? null,
+      comment_status: story.comment_status ?? null,
+      comment_count: story.comment_count ?? null,
+      comment_thread_url: story.comment_thread_url ?? null,
+      comments_fetched_at: story.comments_fetched_at ?? null
     });
   }
 
@@ -84,19 +117,24 @@ export function mergeStoriesIntoCache(incoming) {
     return tb - ta;
   });
 
-  // Keep cache bounded
   const trimmed = stories.slice(0, 500);
   saveJson(CACHE_KEY, { stories: trimmed, updatedAt: new Date().toISOString() });
   return trimmed;
 }
 
-export function getUnreadStories() {
+export function getUnreadStories({ feedName = null } = {}) {
   const read = getReadIds();
-  return getCachedStories().filter((s) => !read.has(s.id));
+  return getCachedStories().filter((s) => {
+    if (read.has(s.id)) return false;
+    if (feedName && s.feed_name !== feedName) return false;
+    return true;
+  });
 }
 
-export function getStoryCounts() {
-  const cached = getCachedStories();
+export function getStoryCounts({ feedName = null } = {}) {
+  const cached = getCachedStories().filter((s) =>
+    (feedName ? s.feed_name === feedName : true)
+  );
   const read = getReadIds();
   let unread = 0;
   let readCount = 0;

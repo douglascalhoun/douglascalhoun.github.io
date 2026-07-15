@@ -1,4 +1,5 @@
 import React from 'react';
+import ArticleComments from './ArticleComments';
 
 function formatDate(value) {
   if (!value) return '';
@@ -35,6 +36,7 @@ function ArticleCard({ article, onMarkRead }) {
         {article.description && (
           <p className="story-blurb">{article.description}</p>
         )}
+        <ArticleComments article={article} />
       </div>
     </article>
   );

@@ -16,3 +16,14 @@ export async function triggerFetch() {
   }
   return response.json();
 }
+
+export async function fetchArticleComments(articleId, { refresh = false } = {}) {
+  const params = new URLSearchParams({ id: articleId });
+  if (refresh) params.set('refresh', '1');
+  const response = await fetch(`${API_BASE}/article-comments?${params}`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Failed to fetch comments: ${response.statusText}`);
+  }
+  return response.json();
+}

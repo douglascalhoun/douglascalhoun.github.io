@@ -74,7 +74,12 @@ export function mergeStoriesIntoCache(incoming) {
       pub_date: story.pub_date,
       feed_name: story.feed_name,
       feed_category: story.feed_category,
-      relevance_score: story.relevance_score
+      relevance_score: story.relevance_score,
+      comment_platform: story.comment_platform ?? null,
+      comment_status: story.comment_status ?? null,
+      comment_count: story.comment_count ?? null,
+      comment_thread_url: story.comment_thread_url ?? null,
+      comments_fetched_at: story.comments_fetched_at ?? null
     });
   }
 

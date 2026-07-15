@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { WEAPONS } from '../data/weapons.js';
+import { WEAPONS, WEAPON_ALIASES } from '../data/weapons.js';
 
 const UPGRADE_DEFS = {
     engines: {
@@ -21,10 +21,10 @@ const UPGRADE_DEFS = {
         describe: (level) => `Max hull +${level * 20}`
     },
     weapons: {
-        label: 'Weapons',
+        label: 'Gun Crew',
         maxLevel: 5,
         costs: [220, 450, 800, 1200, 1800],
-        describe: (level) => `Station fire-rate tune +${level * 8}%`
+        describe: (level) => `Broadside reload −${level * 8}%`
     },
     cargo: {
         label: 'Cargo Hold',
@@ -38,7 +38,6 @@ export default class Player {
     constructor(scene, x, y, saved = null) {
         this.scene = scene;
 
-        // Sprite texture (baked once) — Graphics.clear every frame was a Safari stutter source
         this.sprite = scene.add.image(0, 0, 'shipPlayer');
         this.container = scene.add.container(x, y, [this.sprite]);
         this.container.setDepth(100);
@@ -46,51 +45,51 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Dogfight handling: snappy lateral, light drag, readable top speed
-        this.body.setDrag(18);
-        this.body.setMaxVelocity(280);
+        // Naval mass: coasts, turns like a hull
+        this.body.setDrag(12);
+        this.body.setMaxVelocity(210);
         this.body.setCollideWorldBounds(true);
         this.body.useDamping = false;
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        // Mouse/stick aim turns the nose — still has a little inertia so it isn't twitchy
-        this.maxRotationSpeed = 9.5;
-        this.aimTurnRate = 10.5;
-        this.keyboardTurnRate = 4.2;
+        this.maxRotationSpeed = 2.4;
+        this.aimTurnRate = 2.8;
+        this.keyboardTurnRate = 2.2;
 
-        this.thrustLerp = 10;
-        this.strafeLerp = 14;
+        this.thrustLerp = 4.5;
+        this.strafeLerp = 5.5;
 
-        this.baseMainThrust = 320;
-        this.baseReverseThrust = 280;
-        this.baseLateralThrust = 340; // strafe should be the dodge verb
-        this.baseMaxVelocity = 280;
+        this.baseMainThrust = 240;
+        this.baseReverseThrust = 160;
+        this.baseLateralThrust = 140;
+        this.baseMaxVelocity = 210;
         this.baseMaxShields = 80;
         this.baseMaxHull = 80;
         this.baseShieldRegen = 6;
         this.baseWeaponDamage = 1;
-        this.baseFireRate = 480;
         this.baseCargoCapacity = 20;
 
-        this.boostCooldownMs = 700;
-        this.boostImpulse = 420;
+        this.boostCooldownMs = 1100;
+        this.boostImpulse = 280;
         this.lastBoostTime = -9999;
         this.boostUntil = 0;
+        this._lastDodgeSide = 1;
+
+        this.portReadyAt = 0;
+        this.starboardReadyAt = 0;
 
         this.shieldRegenDelay = 2400;
         this.lastHitTime = 0;
         this._regenAccum = 0;
 
         this.credits = saved?.credits ?? 500;
-        this.cargo = saved?.cargo
-            ? { ...saved.cargo }
-            : { food: 0, ore: 0, tech: 0 };
+        this.cargo = saved?.cargo ? { ...saved.cargo } : { food: 0, ore: 0, tech: 0 };
         this.upgrades = saved?.upgrades
             ? { ...saved.upgrades }
             : { engines: 0, shields: 0, hull: 0, weapons: 0, cargo: 0 };
         this.kills = saved?.kills ?? 0;
-        this.weaponId = saved?.weaponId || 'cannon';
+        this.weaponId = this.resolveWeaponId(saved?.weaponId || 'carronade');
         this.harvestIndex = saved?.harvestIndex ?? 0;
         this.bonusShields = saved?.bonusShields ?? 0;
         this.bonusHull = saved?.bonusHull ?? 0;
@@ -104,13 +103,21 @@ export default class Player {
         return UPGRADE_DEFS;
     }
 
+    resolveWeaponId(id) {
+        if (WEAPONS[id]) return id;
+        const aliased = WEAPON_ALIASES[id];
+        if (aliased && WEAPONS[aliased]) return aliased;
+        return 'carronade';
+    }
+
     getWeapon() {
-        return WEAPONS[this.weaponId] || WEAPONS.cannon;
+        return WEAPONS[this.resolveWeaponId(this.weaponId)] || WEAPONS.carronade;
     }
 
     setWeapon(weaponId) {
-        if (!WEAPONS[weaponId]) return false;
-        this.weaponId = weaponId;
+        const id = this.resolveWeaponId(weaponId);
+        if (!WEAPONS[id]) return false;
+        this.weaponId = id;
         this.applyUpgrades(false);
         return true;
     }
@@ -133,7 +140,8 @@ export default class Player {
         this.shieldRegen = this.baseShieldRegen + s * 2;
         this.maxHull = this.baseMaxHull + h * 20 + this.bonusHull;
         this.weaponDamage = this.baseWeaponDamage;
-        this.fireRate = Math.max(110, Math.round(kit.fireRate * (1 - w * 0.06)));
+        this.reloadMs = Math.max(900, Math.round((kit.reloadMs || 2400) * (1 - w * 0.08)));
+        this.fireRate = this.reloadMs;
         this.cargoCapacity = this.baseCargoCapacity + c * 8;
 
         if (refill) {
@@ -143,6 +151,34 @@ export default class Player {
             this.shields = Math.min(this.shields ?? this.maxShields, this.maxShields);
             this.hull = Math.min(this.hull ?? this.maxHull, this.maxHull);
         }
+    }
+
+    sideReady(side) {
+        const now = this.scene.time.now;
+        return side === 'port' ? now >= this.portReadyAt : now >= this.starboardReadyAt;
+    }
+
+    sideReloadFrac(side) {
+        const now = this.scene.time.now;
+        const readyAt = side === 'port' ? this.portReadyAt : this.starboardReadyAt;
+        if (now >= readyAt) return 1;
+        const started = readyAt - this.reloadMs;
+        return Phaser.Math.Clamp((now - started) / this.reloadMs, 0, 1);
+    }
+
+    markSideFired(side) {
+        const ready = this.scene.time.now + this.reloadMs;
+        if (side === 'port') this.portReadyAt = ready;
+        else this.starboardReadyAt = ready;
+    }
+
+    preferSideToward(worldX, worldY) {
+        const dx = worldX - this.getX();
+        const dy = worldY - this.getY();
+        const shipRightX = Math.cos(this.rotation);
+        const shipRightY = Math.sin(this.rotation);
+        const dot = dx * shipRightX + dy * shipRightY;
+        return dot >= 0 ? 'starboard' : 'port';
     }
 
     grantHarvestReward(reward) {
@@ -182,27 +218,16 @@ export default class Player {
     buyUpgrade(key) {
         const def = UPGRADE_DEFS[key];
         if (!def) return { ok: false, message: 'Unknown upgrade.' };
-
         const level = this.getUpgradeLevel(key);
-        if (level >= def.maxLevel) {
-            return { ok: false, message: `${def.label} already maxed.` };
-        }
-
+        if (level >= def.maxLevel) return { ok: false, message: `${def.label} already maxed.` };
         const cost = def.costs[level];
-        if (this.credits < cost) {
-            return { ok: false, message: 'Not enough credits.' };
-        }
-
+        if (this.credits < cost) return { ok: false, message: 'Not enough credits.' };
         this.credits -= cost;
         this.upgrades[key] = level + 1;
         this.applyUpgrades(false);
         if (key === 'shields') this.shields = Math.min(this.maxShields, this.shields + 20);
         if (key === 'hull') this.hull = Math.min(this.maxHull, this.hull + 20);
-
-        return {
-            ok: true,
-            message: `${def.label} → Lv ${this.upgrades[key]} (−${cost}c)`
-        };
+        return { ok: true, message: `${def.label} → Lv ${this.upgrades[key]} (−${cost}c)` };
     }
 
     getSnapshot() {
@@ -221,21 +246,17 @@ export default class Player {
     }
 
     /**
-     * Dogfight controls:
-     * - Aim with mouse / right stick / right virtual stick (nose follows aim)
-     * - WASD / left stick move relative to nose (A/D = strafe dodge)
-     * - Shift / pad boost = short lateral burst
+     * Naval helm: mouse/stick = rudder heading, WASD = sails/thrusters.
+     * Q/R reserved for port/starboard volleys (handled by scene).
      */
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
         const now = this.scene.time.now;
 
-        // --- Aim / turn ----------------------------------------------------
         let desiredAngle = null;
         if (aim && aim.hasAim) {
             desiredAngle = aim.angle;
         } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.25) {
-            // Virtual stick angle is screen math (0=right); convert to ship-forward (0=up)
             desiredAngle = rightJoystick.getAngle() + Math.PI / 2;
         } else if (pad && pad.hasAim) {
             desiredAngle = pad.aimAngle;
@@ -247,29 +268,24 @@ export default class Player {
                 desiredAngle,
                 this.aimTurnRate * dt
             );
-            this.rotationSpeed = 0;
         } else {
-            // Keyboard-only fallback when mouse/stick isn't aiming
             let rotInput = 0;
-            if (keys?.Q?.isDown || keys?.LEFT?.isDown) rotInput -= 1;
-            if (keys?.R?.isDown || keys?.RIGHT?.isDown) rotInput += 1;
+            if (keys?.LEFT?.isDown) rotInput -= 1;
+            if (keys?.RIGHT?.isDown) rotInput += 1;
             if (Math.abs(rotInput) > 0.01) {
                 this.rotation += rotInput * this.keyboardTurnRate * dt;
             }
         }
         this.container.setRotation(this.rotation);
 
-        // --- Move (ship-relative) ------------------------------------------
         let forwardInput = 0;
         let lateralInput = 0;
 
         if (keys) {
             if (keys.W.isDown) forwardInput += 1;
             if (keys.S.isDown) forwardInput -= 1;
-            // A/D are STRAFE now — the dodge verb
             if (keys.A.isDown) lateralInput -= 1;
             if (keys.D.isDown) lateralInput += 1;
-            // Keep J/K as aliases so old muscle memory still works
             if (keys.J?.isDown) lateralInput += 1;
             if (keys.K?.isDown) lateralInput -= 1;
         }
@@ -279,11 +295,9 @@ export default class Player {
             if (Math.abs(pad.lateral) > 0.01) lateralInput += pad.lateral;
         }
 
-        // Left virtual stick = move relative to current facing
         if (leftJoystick && leftJoystick.isActive()) {
             const force = leftJoystick.getForce();
             const angle = leftJoystick.getAngle();
-            // Stick up (−Y screen) = forward
             forwardInput += -Math.sin(angle) * force;
             lateralInput += Math.cos(angle) * force;
         }
@@ -297,10 +311,9 @@ export default class Player {
         const shipRightY = Math.sin(this.rotation);
 
         let forwardSpeed = 0;
-        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.62;
+        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.7;
         else if (forwardInput < 0) forwardSpeed = forwardInput * this.reverseThrust * 0.55;
-        // Lateral gets more authority — ducking shots is the fantasy
-        const lateralSpeed = lateralInput * this.lateralThrust * 0.72;
+        const lateralSpeed = lateralInput * this.lateralThrust * 0.55;
 
         const thrusting = Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01;
         const targetVx = shipForwardX * forwardSpeed + shipRightX * lateralSpeed;
@@ -309,39 +322,30 @@ export default class Player {
         this.body.setAcceleration(0, 0);
 
         if (thrusting) {
-            const rate = Math.abs(lateralInput) > Math.abs(forwardInput) ? this.strafeLerp : this.thrustLerp;
+            const rate = Math.abs(forwardInput) >= Math.abs(lateralInput) ? this.thrustLerp : this.strafeLerp;
             const lerpF = 1 - Math.exp(-rate * dt);
             this.body.velocity.x += (targetVx - this.body.velocity.x) * lerpF;
             this.body.velocity.y += (targetVy - this.body.velocity.y) * lerpF;
         }
 
-        // --- Dodge boost (Shift / pad LB) ----------------------------------
         const wantBoost = (keys && keys.SHIFT?.isDown) || (pad && pad.boost);
         if (wantBoost && now - this.lastBoostTime > this.boostCooldownMs) {
             let side = lateralInput !== 0 ? Math.sign(lateralInput) : this._lastDodgeSide || 1;
             if (lateralInput === 0) this._lastDodgeSide = -side;
             else this._lastDodgeSide = side;
-
             this.body.velocity.x += shipRightX * side * this.boostImpulse;
             this.body.velocity.y += shipRightY * side * this.boostImpulse;
-            // Keep a bit of forward momentum so boost feels like a jink, not a teleport
-            this.body.velocity.x += shipForwardX * forwardInput * 80;
-            this.body.velocity.y += shipForwardY * forwardInput * 80;
-
+            this.body.velocity.x += shipForwardX * Math.max(0, forwardInput) * 60;
+            this.body.velocity.y += shipForwardY * Math.max(0, forwardInput) * 60;
             this.lastBoostTime = now;
-            this.boostUntil = now + 140;
-            if (this.scene.spawnHitSpark) {
-                this.scene.spawnHitSpark(this.getX(), this.getY());
-            }
+            this.boostUntil = now + 160;
+            if (this.scene.spawnHitSpark) this.scene.spawnHitSpark(this.getX(), this.getY());
         }
 
-        if (now < this.boostUntil) {
-            this.container.setAlpha(0.75);
-        } else if (this.container.alpha < 1 && this.container.alpha >= 0.7) {
-            this.container.setAlpha(1);
-        }
+        if (now < this.boostUntil) this.container.setAlpha(0.75);
+        else if (this.container.alpha >= 0.7 && this.container.alpha < 1) this.container.setAlpha(1);
 
-        const maxSpd = now < this.boostUntil ? this.maxSpeed * 1.35 : this.maxSpeed;
+        const maxSpd = now < this.boostUntil ? this.maxSpeed * 1.25 : this.maxSpeed;
         const spd = Math.hypot(this.body.velocity.x, this.body.velocity.y);
         if (spd > maxSpd) {
             const s = maxSpd / spd;
@@ -392,7 +396,6 @@ export default class Player {
         const affordable = Math.floor(this.credits / costPerPoint);
         const points = Math.min(missing, affordable);
         if (points <= 0) return { repaired: false, cost: 0, message: 'Not enough credits.' };
-
         let remaining = points;
         const shieldFill = Math.min(this.maxShields - this.shields, remaining);
         this.shields += shieldFill;

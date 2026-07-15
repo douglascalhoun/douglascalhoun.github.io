@@ -68,7 +68,7 @@ export default class LobbyScene extends Phaser.Scene {
             fill: '#88aa99'
         }).setOrigin(0.5);
 
-        this.add.text(cx, this.scale.height - 28, 'Mouse aim · WASD strafe/thrust · Shift dodge · Space fire  ·  Xbox: LS move RS aim', {
+        this.add.text(cx, this.scale.height - 28, 'Naval broadsides · Mouse helm · Q/R volleys · WASD sail  ·  Xbox: LS sail RS helm', {
             fontSize: '11px',
             fill: '#667788'
         }).setOrigin(0.5);

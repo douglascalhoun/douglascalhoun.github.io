@@ -84,6 +84,8 @@ export default class GameScene extends Phaser.Scene {
         this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,Q,R,SPACE,H,M,SHIFT,LEFT,RIGHT');
         this.dockKey = this.keys.E;
         this.fireKey = this.keys.SPACE;
+        this.portKey = this.keys.Q;
+        this.starboardKey = this.keys.R;
         this.hyperspaceKey = this.keys.H;
         this.mapKey = this.keys.M;
 
@@ -121,7 +123,7 @@ export default class GameScene extends Phaser.Scene {
         });
 
         const room = this.isMultiplayer() ? ` · Room ${this.roomCode}` : '';
-        this.showToast(`DEFEND THE STATION!${room} · Mouse aim · WASD move/strafe · Shift dodge · Space/click fire`, 6000);
+        this.showToast(`NAVAL ACTION!${room} · Mouse helm · WASD sail · Q/R broadsides · Space auto-volley`, 6200);
     }
 
     setupMultiplayer() {
@@ -520,7 +522,7 @@ export default class GameScene extends Phaser.Scene {
 
     createHUD() {
         // Static panel — never recreate Text backgrounds every frame (Safari killer)
-        this.hudPanel = this.add.rectangle(12, 12, 420, 210, 0x001408, 0.72)
+        this.hudPanel = this.add.rectangle(12, 12, 460, 230, 0x001408, 0.72)
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(1999)
@@ -583,7 +585,7 @@ export default class GameScene extends Phaser.Scene {
         this.fireLabel = this.add.text(
             this.scale.width / 2,
             this.scale.height - 140,
-            'FIRE',
+            'VOLLEY',
             { fontSize: '12px', fill: '#ffffff' }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1501);
 
@@ -601,42 +603,128 @@ export default class GameScene extends Phaser.Scene {
     }
 
     fireWeapon() {
+        // Auto broadside toward mouse / nearest foe
+        this.fireBroadside('auto');
+    }
+
+    /**
+     * @param {'port'|'starboard'|'auto'} side
+     */
+    fireBroadside(side = 'auto') {
         if (this.gameOver || this.isDocked) return;
-        const now = Date.now();
-        const rate = this.player.fireRate;
-        if (now - this.lastFireTime < rate) return;
-        this.lastFireTime = now;
+
+        let resolved = side;
+        if (side === 'auto') {
+            const pointer = this.input.activePointer;
+            if (pointer && !this.touchEnabled) {
+                const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+                resolved = this.player.preferSideToward(world.x, world.y);
+            } else {
+                const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
+                if (foe) resolved = this.player.preferSideToward(foe.getX(), foe.getY());
+                else resolved = 'starboard';
+            }
+        }
+
+        if (!this.player.sideReady(resolved)) return;
 
         const kit = this.player.getWeapon();
-        const angle = this.player.getRotation();
+        const facing = this.player.getRotation();
+        // Port = left of nose (−90°), starboard = right (+90°) in ship-forward space
+        const broadsideAngle = resolved === 'port'
+            ? facing - Math.PI / 2
+            : facing + Math.PI / 2;
+
         const originX = this.player.getX();
         const originY = this.player.getY();
+        const muzzle = kit.muzzle || 28;
+        const guns = kit.guns || 3;
+        const spread = kit.spread || 0.25;
 
-        kit.shots.forEach((shot) => {
-            const projectile = new Projectile(this, originX, originY, angle + (shot.angleOffset || 0), {
-                speed: shot.speed,
-                color: shot.color,
-                radius: shot.radius,
-                lifetime: shot.lifetime,
-                damage: 1,
+        // Stagger guns along the hull so the volley reads as a battery
+        for (let i = 0; i < guns; i++) {
+            const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
+            const along = t * 36; // along-ship offset
+            const fx = Math.sin(facing);
+            const fy = -Math.cos(facing);
+            const rx = Math.cos(facing);
+            const ry = Math.sin(facing);
+            const sideSign = resolved === 'port' ? -1 : 1;
+            const sx = originX + fx * along + rx * sideSign * muzzle;
+            const sy = originY + fy * along + ry * sideSign * muzzle;
+            const shotAngle = broadsideAngle + t * spread;
+
+            const projectile = new Projectile(this, sx, sy, shotAngle, {
+                speed: kit.speed,
+                color: kit.color,
+                radius: kit.radius,
+                lifetime: kit.lifetime,
+                damage: kit.damage || 1,
                 friendly: true,
-                seek: shot.seek || false,
-                blast: shot.blast || 0,
-                stretch: shot.stretch || false,
-                lateral: shot.lateral || 0,
-                kind: shot.seek ? 'missile' : shot.blast ? 'bomb' : 'laser'
+                blast: kit.blast || 0,
+                kind: kit.kind || 'bomb',
+                // Use ball texture via kind bomb / custom
             });
+            // Prefer cannonball look
+            if (this.textures.exists('boltBall')) {
+                projectile.setTexture('boltBall');
+                projectile.setTint(kit.color);
+                projectile.setScale(1.1);
+            }
             this.projectiles.push(projectile);
-        });
+        }
+
+        if (kit.chain) {
+            const sideSign = resolved === 'port' ? -1 : 1;
+            const rx = Math.cos(facing);
+            const ry = Math.sin(facing);
+            const chain = new Projectile(
+                this,
+                originX + rx * sideSign * muzzle,
+                originY + ry * sideSign * muzzle,
+                broadsideAngle,
+                {
+                    speed: kit.chain.speed,
+                    color: kit.chain.color,
+                    radius: kit.chain.radius,
+                    lifetime: kit.chain.lifetime,
+                    damage: 1,
+                    friendly: true,
+                    seek: true,
+                    kind: 'missile'
+                }
+            );
+            this.projectiles.push(chain);
+        }
+
+        this.player.markSideFired(resolved);
+        this.spawnBroadsideFlash(resolved, broadsideAngle);
 
         this.sendNet({
             type: 'fire',
             name: this.pilotName,
             x: originX,
             y: originY,
-            rotation: angle,
+            rotation: broadsideAngle,
             systemId: this.currentSystemId,
-            weaponId: this.player.weaponId
+            weaponId: this.player.weaponId,
+            side: resolved
+        });
+    }
+
+    spawnBroadsideFlash(side, angle) {
+        const x = this.player.getX();
+        const y = this.player.getY();
+        const flash = this.add.circle(x, y, 10, 0xffeebb, 0.9).setDepth(115);
+        const rx = Math.cos(this.player.getRotation()) * (side === 'port' ? -1 : 1);
+        const ry = Math.sin(this.player.getRotation()) * (side === 'port' ? -1 : 1);
+        flash.setPosition(x + rx * 30, y + ry * 30);
+        this.tweens.add({
+            targets: flash,
+            alpha: 0,
+            scale: 2.4,
+            duration: 180,
+            onComplete: () => flash.destroy()
         });
     }
 
@@ -660,27 +748,43 @@ export default class GameScene extends Phaser.Scene {
     }
 
     spawnEnemyProjectile(npc, opts = {}) {
-        const count = opts.count || 1;
-        const spread = opts.spread || 0;
-        const baseAngle = npc.getRotation();
-        // Slow readable bolts — dodge windows matter more than bullet hell
-        const shotSpeed = Math.min(240, 160 + (npc.speed || 80) * 0.35);
-        for (let i = 0; i < count; i++) {
-            const t = count === 1 ? 0 : (i / (count - 1)) - 0.5;
+        const side = opts.side || 'starboard';
+        const guns = opts.count || 3;
+        const spread = opts.spread ?? 0.3;
+        const facing = npc.getRotation();
+        const broadsideAngle = side === 'port' ? facing - Math.PI / 2 : facing + Math.PI / 2;
+        const shotSpeed = opts.speed || Math.min(150, 110 + (npc.speed || 80) * 0.25);
+        const muzzle = 22;
+        const fx = Math.sin(facing);
+        const fy = -Math.cos(facing);
+        const rx = Math.cos(facing);
+        const ry = Math.sin(facing);
+        const sideSign = side === 'port' ? -1 : 1;
+
+        for (let i = 0; i < guns; i++) {
+            const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
+            const along = t * 28;
+            const sx = npc.getX() + fx * along + rx * sideSign * muzzle;
+            const sy = npc.getY() + fy * along + ry * sideSign * muzzle;
             const projectile = new Projectile(
                 this,
-                npc.getX(),
-                npc.getY(),
-                baseAngle + t * spread * 2,
+                sx,
+                sy,
+                broadsideAngle + t * spread,
                 {
                     speed: shotSpeed,
-                    damage: npc.shotDamage,
+                    damage: Math.max(4, Math.round((npc.shotDamage || 8) * 0.45)),
                     friendly: false,
-                    lifetime: 2200,
+                    lifetime: 3200,
                     color: npc.color || 0xff6644,
-                    radius: 4
+                    radius: 5,
+                    kind: 'bomb'
                 }
             );
+            if (this.textures.exists('boltBall')) {
+                projectile.setTexture('boltBall');
+                projectile.setTint(npc.color || 0xff6644);
+            }
             this.enemyProjectiles.push(projectile);
         }
     }
@@ -1661,7 +1765,12 @@ export default class GameScene extends Phaser.Scene {
         if (!this.gameOver && !this.isDocked && !this.mapOpen && !this.hyperspaceOpen) {
             const aim = this.getMouseAim();
             this.player.update(safeDelta, this.leftJoystick, this.rightJoystick, this.keys, pad, aim);
-            if (this.fireKey.isDown || this._pointerFire || (pad && pad.fire)) this.fireWeapon();
+
+            if (Phaser.Input.Keyboard.JustDown(this.portKey)) this.fireBroadside('port');
+            if (Phaser.Input.Keyboard.JustDown(this.starboardKey)) this.fireBroadside('starboard');
+
+            const autoFire = this.fireKey.isDown || this._pointerFire || (pad && pad.fire);
+            if (autoFire) this.fireBroadside('auto');
         }
 
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
@@ -1749,18 +1858,25 @@ export default class GameScene extends Phaser.Scene {
             padStatus,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Weapon: ${weapon.label}   Rate: ${p.fireRate}ms   Spd: ${Math.round(p.getSpeed())}`,
-            `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Upgrades E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
+            `Battery: ${weapon.label}   Reload ${p.reloadMs}ms`,
+            `PORT [${this.reloadBar(p.sideReloadFrac('port'))}]  STARBOARD [${this.reloadBar(p.sideReloadFrac('starboard'))}]`,
+            `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Crew/Upgrades E${u.engines} S${u.shields} H${u.hull} G${u.weapons} C${u.cargo}`,
             mission,
             foe ? `Foe: ${foe.label || foe.type} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Sky clear' : 'Awaiting hostiles...'),
-            `Dodge boost: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'Mouse aim · WASD move/strafe · Shift dodge · Space/click fire · E dock',
+            `Jink: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
+            'Mouse helm · WASD sail · Q port / R starboard · Space auto-volley · E dock',
             this.isDocked ? 'DOCKED [E / X undock]' : (inDockingRange ? 'In docking range [E / X]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H / Y]' : ''))
         ].filter(Boolean).join('\n');
 
         if (lines === this.lastHudKey) return;
         this.lastHudKey = lines;
         this.hudText.setText(lines);
+    }
+
+    reloadBar(frac) {
+        const n = 8;
+        const filled = Math.round(frac * n);
+        return `${'='.repeat(filled)}${'-'.repeat(n - filled)}`;
     }
 
     onResize(gameSize) {

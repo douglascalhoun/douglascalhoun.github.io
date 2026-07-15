@@ -41,6 +41,9 @@ export default class NPCShip {
         }
 
         this.lastFireTime = 0;
+        this.portReadyAt = 0;
+        this.starboardReadyAt = 0;
+        this.preferredBroadside = Math.random() > 0.5 ? 1 : -1; // +1 starboard, -1 port
         this.strafeDir = Math.random() > 0.5 ? 1 : -1;
         this.strafeTimer = 0;
         this.weavePhase = Math.random() * Math.PI * 2;
@@ -208,106 +211,133 @@ export default class NPCShip {
         const angleToPlayer = Math.atan2(dy, dx);
 
         this.strafeTimer += delta;
-        this.weavePhase += delta * 0.004;
+        this.weavePhase += delta * 0.003;
 
+        // Naval doctrine: keep the foe on a broadside (ship nose perpendicular to target)
+        const broadsideSign = this.preferredBroadside; // +1 = present starboard
+        const desiredFacing = angleToPlayer - broadsideSign * (Math.PI / 2);
+        const currentFacing = this.container.rotation;
+        const nextFacing = Phaser.Math.Angle.RotateTo(currentFacing, desiredFacing, 1.8 * (delta / 1000));
+        this.container.setRotation(nextFacing);
+
+        // Circle / hold range while sliding along the firing line (passing engagement)
         let vx = 0;
         let vy = 0;
-        const pattern = this.pattern;
+        const alongX = -Math.sin(angleToPlayer); // tangent
+        const alongY = Math.cos(angleToPlayer);
 
-        if (pattern === 'straight') {
-            if (dist > this.idealRange) {
-                vx = (dx / dist) * this.speed;
-                vy = (dy / dist) * this.speed;
-            } else if (dist < this.idealRange - 40) {
-                vx = -(dx / dist) * this.speed * 0.5;
-                vy = -(dy / dist) * this.speed * 0.5;
+        if (this.pattern === 'straight') {
+            // Scout: slow pass — approach then slide past on one beam
+            if (dist > this.idealRange + 60) {
+                vx = (dx / dist) * this.speed * 0.85;
+                vy = (dy / dist) * this.speed * 0.85;
+            } else {
+                vx = alongX * this.strafeDir * this.speed * 0.9;
+                vy = alongY * this.strafeDir * this.speed * 0.9;
+                if (dist < this.idealRange - 40) {
+                    vx -= (dx / dist) * this.speed * 0.35;
+                    vy -= (dy / dist) * this.speed * 0.35;
+                }
             }
-        } else if (pattern === 'weave') {
-            if (dist > this.idealRange + 30) {
-                vx = (dx / dist) * this.speed * 1.1;
-                vy = (dy / dist) * this.speed * 1.1;
+        } else if (this.pattern === 'weave' || this.pattern === 'flank') {
+            const weave = Math.sin(this.weavePhase) * 0.55;
+            vx = alongX * this.strafeDir * this.speed * (0.95 + weave);
+            vy = alongY * this.strafeDir * this.speed * (0.95 + weave);
+            if (dist > this.idealRange + 50) {
+                vx += (dx / dist) * this.speed * 0.5;
+                vy += (dy / dist) * this.speed * 0.5;
             } else if (dist < this.idealRange - 50) {
-                vx = -(dx / dist) * this.speed * 0.85;
-                vy = -(dy / dist) * this.speed * 0.85;
+                vx -= (dx / dist) * this.speed * 0.55;
+                vy -= (dy / dist) * this.speed * 0.55;
             }
-            const weave = Math.sin(this.weavePhase) * this.speed * 0.95;
-            vx += -Math.sin(angleToPlayer) * weave;
-            vy += Math.cos(angleToPlayer) * weave;
-        } else if (pattern === 'flank') {
-            const preferred = angleToPlayer + this.strafeDir * (Math.PI / 2.4);
-            const orbitX = px + Math.cos(preferred) * this.idealRange;
-            const orbitY = py + Math.sin(preferred) * this.idealRange;
-            const odx = orbitX - this.container.x;
-            const ody = orbitY - this.container.y;
-            const od = Math.sqrt(odx * odx + ody * ody) || 1;
-            vx = (odx / od) * this.speed * 1.2;
-            vy = (ody / od) * this.speed * 1.2;
-            if (this.strafeTimer > 2200) {
+            if (this.pattern === 'flank' && this.strafeTimer > 2800) {
+                this.preferredBroadside *= -1;
                 this.strafeDir *= -1;
                 this.strafeTimer = 0;
             }
-        } else if (pattern === 'burst_dash' || pattern === 'warmaster') {
+        } else if (this.pattern === 'burst_dash' || this.pattern === 'warmaster') {
+            // Ace: switch beams mid-pass, occasional dash along the line
             if (time < this.dashUntil) {
-                vx = Math.cos(angleToPlayer + this.strafeDir * 0.9) * this.speed * 1.8;
-                vy = Math.sin(angleToPlayer + this.strafeDir * 0.9) * this.speed * 1.8;
+                vx = alongX * this.strafeDir * this.speed * 1.7;
+                vy = alongY * this.strafeDir * this.speed * 1.7;
             } else {
+                vx = alongX * this.strafeDir * this.speed;
+                vy = alongY * this.strafeDir * this.speed;
                 if (dist > this.idealRange + 40) {
-                    vx = (dx / dist) * this.speed * 1.2;
-                    vy = (dy / dist) * this.speed * 1.2;
-                } else if (dist < this.idealRange - 60) {
-                    vx = -(dx / dist) * this.speed;
-                    vy = -(dy / dist) * this.speed;
+                    vx += (dx / dist) * this.speed * 0.45;
+                    vy += (dy / dist) * this.speed * 0.45;
+                } else if (dist < this.idealRange - 55) {
+                    vx -= (dx / dist) * this.speed * 0.5;
+                    vy -= (dy / dist) * this.speed * 0.5;
                 }
-                vx += -Math.sin(angleToPlayer) * this.strafeDir * this.speed * 0.8;
-                vy += Math.cos(angleToPlayer) * this.strafeDir * this.speed * 0.8;
-
-                if (this.abilities.includes('dash') && this.abilityCooldown <= 0 && dist < 320) {
-                    this.dashUntil = time + 280;
-                    this.abilityCooldown = 2600;
+                if (this.abilities.includes('dash') && this.abilityCooldown <= 0 && dist < 360) {
+                    this.dashUntil = time + 320;
+                    this.abilityCooldown = 2800;
+                    this.preferredBroadside *= -1;
                     this.strafeDir *= -1;
-                    if (this.scene.spawnHitSpark) {
-                        this.scene.spawnHitSpark(this.container.x, this.container.y);
-                    }
                 }
             }
-            if (this.strafeTimer > 1200) {
-                this.strafeDir *= -1;
+            if (this.strafeTimer > 2000) {
+                this.preferredBroadside *= -1;
                 this.strafeTimer = 0;
             }
         } else {
-            if (this.strafeTimer > 1400) {
+            // Raider default: classic circling broadside pass
+            vx = alongX * this.strafeDir * this.speed;
+            vy = alongY * this.strafeDir * this.speed;
+            if (dist > this.idealRange + 45) {
+                vx += (dx / dist) * this.speed * 0.55;
+                vy += (dy / dist) * this.speed * 0.55;
+            } else if (dist < this.idealRange - 55) {
+                vx -= (dx / dist) * this.speed * 0.5;
+                vy -= (dy / dist) * this.speed * 0.5;
+            }
+            if (this.strafeTimer > 3200) {
                 this.strafeDir *= -1;
+                this.preferredBroadside *= -1;
                 this.strafeTimer = 0;
             }
-            if (dist > this.idealRange + 40) {
-                vx = (dx / dist) * this.speed * 1.15;
-                vy = (dy / dist) * this.speed * 1.15;
-            } else if (dist < this.idealRange - 60) {
-                vx = -(dx / dist) * this.speed * 0.9;
-                vy = -(dy / dist) * this.speed * 0.9;
-            }
-            vx += -Math.sin(angleToPlayer) * this.strafeDir * this.speed * 0.75;
-            vy += Math.cos(angleToPlayer) * this.strafeDir * this.speed * 0.75;
         }
 
         this.body.setVelocity(vx, vy);
-        this.container.setRotation(angleToPlayer + Math.PI / 2);
 
         if (this.abilities.includes('mine') && this.mineCooldown <= 0 && dist < 380) {
-            this.mineCooldown = 4200;
+            this.mineCooldown = 4800;
             if (this.scene.spawnEnemyMine) {
                 this.scene.spawnEnemyMine(this.container.x, this.container.y);
             }
         }
 
-        if (dist < this.fireRange && time - this.lastFireTime > this.fireRate) {
-            this.lastFireTime = time;
-            if (this.abilities.includes('burst')) {
-                this.scene.spawnEnemyProjectile(this, { spread: 0.18, count: 3 });
-            } else {
-                this.scene.spawnEnemyProjectile(this);
-            }
-        }
+        // Fire a broadside only when the player sits in that beam's arc
+        this.tryNavalVolley(time, player, angleToPlayer, dist);
+    }
+
+    tryNavalVolley(time, player, angleToPlayer, dist) {
+        if (dist > this.fireRange) return;
+
+        const facing = this.container.rotation;
+        // Vector to player in ship space
+        const localAngle = Phaser.Math.Angle.Wrap(angleToPlayer - facing);
+        // Starboard ≈ +PI/2, port ≈ -PI/2
+        const starboardErr = Math.abs(Phaser.Math.Angle.Wrap(localAngle - Math.PI / 2));
+        const portErr = Math.abs(Phaser.Math.Angle.Wrap(localAngle + Math.PI / 2));
+        const arc = 0.55; // ~31° half-width — must present the beam
+
+        let side = null;
+        if (starboardErr < arc && time >= this.starboardReadyAt) side = 'starboard';
+        else if (portErr < arc && time >= this.portReadyAt) side = 'port';
+        if (!side) return;
+
+        const guns = this.abilities.includes('burst') ? 5 : (this.archetypeId === 'scout' ? 2 : 3);
+        const reload = this.fireRate;
+        if (side === 'starboard') this.starboardReadyAt = time + reload;
+        else this.portReadyAt = time + reload;
+
+        this.scene.spawnEnemyProjectile(this, {
+            side,
+            count: guns,
+            spread: this.abilities.includes('burst') ? 0.4 : 0.28
+        });
     }
 
     updateFlee() {

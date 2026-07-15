@@ -80,5 +80,13 @@ export function ensureGameTextures(scene) {
     g.fillTriangle(20, 2, 8, 36, 32, 36);
     g.generateTexture('shipRemote', 40, 40);
 
+    // Cannonball (naval volley)
+    g.clear();
+    g.fillStyle(0xffdd88, 1);
+    g.fillCircle(6, 6, 6);
+    g.fillStyle(0xffffff, 0.35);
+    g.fillCircle(4, 4, 2);
+    g.generateTexture('boltBall', 12, 12);
+
     g.destroy();
 }

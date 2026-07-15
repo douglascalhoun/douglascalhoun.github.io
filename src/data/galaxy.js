@@ -1,14 +1,23 @@
-/** Galaxy definition — simplified EV Nova style star map */
+/**
+ * The Archipelago — systems are islands in the aether-sea.
+ * Leave an island's gravity well (outer ring) to catch deep hyperspace lanes (EV Nova).
+ */
 
 export const SYSTEMS = {
     sol: {
         id: 'sol',
-        name: 'Sol',
-        color: 0xffdd66,
+        name: 'Sol Haven',
+        color: 0xc9a227,
         mapX: 0,
         mapY: 0,
-        planet: { name: 'Earth', color: 0x3366cc, radius: 300 },
-        station: { name: 'Outpost Alpha', dx: 600, dy: -400 },
+        planet: {
+            name: 'Terra Isle',
+            color: 0x2f6b4f,
+            water: 0x2a5a8a,
+            radius: 300,
+            kind: 'isle'
+        },
+        station: { name: 'King\'s Quay', dx: 600, dy: -400 },
         links: ['vega', 'sirius'],
         prices: {
             food: { buy: 12, sell: 8 },
@@ -16,16 +25,22 @@ export const SYSTEMS = {
             tech: { buy: 45, sell: 30 }
         },
         danger: 1,
-        blurb: 'Home system. Safe trading hub.'
+        blurb: 'Home island. Safe harbor under the lighthouse.'
     },
     vega: {
         id: 'vega',
-        name: 'Vega',
+        name: 'Vega Reach',
         color: 0x88aaff,
         mapX: 180,
         mapY: -40,
-        planet: { name: 'Vega Prime', color: 0x66aadd, radius: 260 },
-        station: { name: 'Vega Exchange', dx: -500, dy: 350 },
+        planet: {
+            name: 'Vega Atoll',
+            color: 0x3a7a9a,
+            water: 0x1a4a6a,
+            radius: 260,
+            kind: 'atoll'
+        },
+        station: { name: 'Exchange Wharf', dx: -500, dy: 350 },
         links: ['sol', 'altair', 'rigel'],
         prices: {
             food: { buy: 18, sell: 11 },
@@ -33,16 +48,22 @@ export const SYSTEMS = {
             tech: { buy: 55, sell: 38 }
         },
         danger: 2,
-        blurb: 'Busy trade corridor. Ore is cheap here.'
+        blurb: 'Busy trade current. Ore washes cheap onto the quay.'
     },
     sirius: {
         id: 'sirius',
-        name: 'Sirius',
-        color: 0xffffff,
+        name: 'Sirius Yard',
+        color: 0xe8e0d0,
         mapX: -160,
         mapY: 70,
-        planet: { name: 'Sirius B', color: 0xccddee, radius: 220 },
-        station: { name: 'Dockside Yard', dx: 450, dy: 500 },
+        planet: {
+            name: 'Sirius Spit',
+            color: 0x8a9aaa,
+            water: 0x4a5a6a,
+            radius: 220,
+            kind: 'spit'
+        },
+        station: { name: 'Drydock Row', dx: 450, dy: 500 },
         links: ['sol', 'procyon'],
         prices: {
             food: { buy: 10, sell: 6 },
@@ -50,16 +71,22 @@ export const SYSTEMS = {
             tech: { buy: 40, sell: 26 }
         },
         danger: 2,
-        blurb: 'Industrial yards. Food surplus, ore scarce.'
+        blurb: 'Shipwrights\' isle. Food surplus, timber scarce.'
     },
     altair: {
         id: 'altair',
-        name: 'Altair',
+        name: 'Altair Frontier',
         color: 0xff8866,
         mapX: 300,
         mapY: 80,
-        planet: { name: 'Altair III', color: 0xcc5533, radius: 280 },
-        station: { name: 'Red Port', dx: 700, dy: -200 },
+        planet: {
+            name: 'Red Cay',
+            color: 0xa05030,
+            water: 0x5a3040,
+            radius: 280,
+            kind: 'cay'
+        },
+        station: { name: 'Corsair Port', dx: 700, dy: -200 },
         links: ['vega', 'rigel'],
         prices: {
             food: { buy: 25, sell: 16 },
@@ -67,15 +94,21 @@ export const SYSTEMS = {
             tech: { buy: 35, sell: 22 }
         },
         danger: 3,
-        blurb: 'Frontier world. Hostile patrols common.'
+        blurb: 'Lawless cay. Privateers ride the gravity well.'
     },
     rigel: {
         id: 'rigel',
-        name: 'Rigel',
+        name: 'Rigel Ice',
         color: 0xaaddff,
         mapX: 220,
         mapY: -160,
-        planet: { name: 'Rigel Ice', color: 0x99ccff, radius: 320 },
+        planet: {
+            name: 'Frost Holm',
+            color: 0xb0c8e0,
+            water: 0x6080a0,
+            radius: 320,
+            kind: 'holm'
+        },
         station: { name: 'Frost Haven', dx: -650, dy: -300 },
         links: ['vega', 'altair'],
         prices: {
@@ -84,16 +117,22 @@ export const SYSTEMS = {
             tech: { buy: 60, sell: 42 }
         },
         danger: 3,
-        blurb: 'Cold outer system. Tech fetches a premium.'
+        blurb: 'Cold outer holm. Charts and chronometers fetch gold.'
     },
     procyon: {
         id: 'procyon',
-        name: 'Procyon',
+        name: 'Procyon Deep',
         color: 0xffcc88,
         mapX: -280,
         mapY: -40,
-        planet: { name: 'Procyon Reach', color: 0xddaa55, radius: 240 },
-        station: { name: 'Far Relay', dx: 200, dy: -550 },
+        planet: {
+            name: 'Far Reef',
+            color: 0xc09040,
+            water: 0x6a5030,
+            radius: 240,
+            kind: 'reef'
+        },
+        station: { name: 'Relay Buoy', dx: 200, dy: -550 },
         links: ['sirius'],
         prices: {
             food: { buy: 14, sell: 9 },
@@ -101,7 +140,7 @@ export const SYSTEMS = {
             tech: { buy: 50, sell: 34 }
         },
         danger: 4,
-        blurb: 'Remote relay. Pirates hunt the lanes.'
+        blurb: 'Remote reef. Pirates hunt the deep lanes beyond the well.'
     }
 };
 
@@ -109,8 +148,8 @@ export const MISSION_TEMPLATES = [
     {
         id: 'haul_food',
         type: 'haul',
-        title: 'Food Run',
-        desc: 'Buy food here and sell it at {dest}.',
+        title: 'Provision Run',
+        desc: 'Buy provisions here and sell them at {dest}.',
         good: 'food',
         amount: 5,
         reward: 180
@@ -118,8 +157,8 @@ export const MISSION_TEMPLATES = [
     {
         id: 'haul_ore',
         type: 'haul',
-        title: 'Ore Contract',
-        desc: 'Deliver ore to {dest}.',
+        title: 'Ore Charter',
+        desc: 'Deliver ore to the quay at {dest}.',
         good: 'ore',
         amount: 4,
         reward: 220
@@ -127,8 +166,8 @@ export const MISSION_TEMPLATES = [
     {
         id: 'haul_tech',
         type: 'haul',
-        title: 'Tech Courier',
-        desc: 'Smuggle tech components to {dest}.',
+        title: 'Chronometer Run',
+        desc: 'Smuggle navigation tech to {dest}.',
         good: 'tech',
         amount: 3,
         reward: 320
@@ -136,16 +175,16 @@ export const MISSION_TEMPLATES = [
     {
         id: 'bounty',
         type: 'bounty',
-        title: 'Pirate Bounty',
-        desc: 'Disable {count} hostile fighters. Any system.',
+        title: 'Privateer Bounty',
+        desc: 'Disable {count} hostile sails. Any island.',
         count: 2,
         reward: 250
     },
     {
         id: 'scout',
         type: 'scout',
-        title: 'Scout Sweep',
-        desc: 'Hyperspace to {dest} and dock there.',
+        title: 'Chart the Lane',
+        desc: 'Ride hyperspace to {dest} and make harbor.',
         reward: 150
     }
 ];

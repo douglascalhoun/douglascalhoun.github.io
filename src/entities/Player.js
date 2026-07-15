@@ -3,22 +3,22 @@ import { WEAPONS, WEAPON_ALIASES } from '../data/weapons.js';
 
 const UPGRADE_DEFS = {
     engines: {
-        label: 'Engines',
+        label: 'Rigging',
         maxLevel: 5,
         costs: [200, 400, 700, 1100, 1600],
-        describe: (level) => `Thrust +${level * 15}%`
+        describe: (level) => `Sail thrust +${level * 15}%`
     },
     shields: {
-        label: 'Shields',
+        label: 'Aether Ward',
         maxLevel: 5,
         costs: [180, 360, 650, 1000, 1500],
-        describe: (level) => `Max shields +${level * 20}, regen +${level * 2}`
+        describe: (level) => `Ward +${level * 20}, mend +${level * 2}`
     },
     hull: {
         label: 'Hull',
         maxLevel: 5,
         costs: [180, 360, 650, 1000, 1500],
-        describe: (level) => `Max hull +${level * 20}`
+        describe: (level) => `Timber hull +${level * 20}`
     },
     weapons: {
         label: 'Gun Crew',
@@ -27,10 +27,10 @@ const UPGRADE_DEFS = {
         describe: (level) => `Broadside reload −${level * 8}%`
     },
     cargo: {
-        label: 'Cargo Hold',
+        label: 'Hold',
         maxLevel: 5,
         costs: [150, 300, 550, 850, 1300],
-        describe: (level) => `Capacity +${level * 8}`
+        describe: (level) => `Hold capacity +${level * 8}`
     }
 };
 
@@ -39,6 +39,7 @@ export default class Player {
         this.scene = scene;
 
         this.sprite = scene.add.image(0, 0, 'shipPlayer');
+        this.sprite.setScale(1.05);
         this.container = scene.add.container(x, y, [this.sprite]);
         this.container.setDepth(100);
         scene.physics.world.enable(this.container);

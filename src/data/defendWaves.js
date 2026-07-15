@@ -1,32 +1,32 @@
 /**
- * Defend-the-Station wave script.
+ * Defend-the-Harbor wave script.
  * Difficulty comes from new behaviors, not HP sponges.
  * Hits stay low so fights stay readable and decisive.
  */
 export const DEFEND_WAVES = [
     {
         id: 1,
-        announce: 'DEFEND THE STATION — Hostile scout inbound!',
+        announce: 'DEFEND THE HARBOR — Privateer scout on the horizon!',
         spawns: [{ archetype: 'scout', count: 1 }]
     },
     {
         id: 2,
-        announce: 'Scout fleeing! Two raiders inbound!',
+        announce: 'Scout fleeing! Two cutters inbound!',
         spawns: [{ archetype: 'raider', count: 2 }]
     },
     {
         id: 3,
-        announce: 'Raiders breaking! Triad wing inbound!',
+        announce: 'Cutters breaking! Corsair triad closing!',
         spawns: [{ archetype: 'weaver', count: 2 }, { archetype: 'flanker', count: 1 }]
     },
     {
         id: 4,
-        announce: 'Wing routed — ACE pilot dropping in!',
+        announce: 'Triad routed — BLACK SAIL ace dropping in!',
         spawns: [{ archetype: 'ace', count: 1 }]
     },
     {
         id: 5,
-        announce: 'ACE down — WARMASTER arrives!',
+        announce: 'Ace struck — WARMASTER flagship arrives!',
         spawns: [{ archetype: 'warmaster', count: 1 }]
     }
 ];
@@ -45,7 +45,7 @@ export const ARCHETYPES = {
         bounty: 80
     },
     raider: {
-        label: 'Raider',
+        label: 'Cutter',
         hits: 2,
         speed: 85,
         fireRate: 2200,
@@ -57,7 +57,7 @@ export const ARCHETYPES = {
         bounty: 110
     },
     weaver: {
-        label: 'Weaver',
+        label: 'Corsair',
         hits: 2,
         speed: 95,
         fireRate: 2000,
@@ -81,7 +81,7 @@ export const ARCHETYPES = {
         bounty: 150
     },
     ace: {
-        label: 'Ace',
+        label: 'Black Sail',
         hits: 3,
         speed: 115,
         fireRate: 1600,

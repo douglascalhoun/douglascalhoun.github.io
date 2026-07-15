@@ -55,11 +55,12 @@ export default class NPCShip {
         const tex = type === 'trader' ? 'shipTrader' : 'shipFighter';
         this.sprite = scene.add.image(0, 0, tex);
         if (type !== 'trader') {
-            this.sprite.setTint(this.color);
-            const scale = this.archetypeId === 'warmaster' ? 1.35
-                : this.archetypeId === 'ace' ? 1.2
+            // Keep painted sails; only warmaster/ace get a slight scale bump
+            const scale = this.archetypeId === 'warmaster' ? 1.25
+                : this.archetypeId === 'ace' ? 1.12
                     : 1;
             this.sprite.setScale(scale);
+            if (this.archetypeId === 'warmaster') this.sprite.setTint(0xffccaa);
         }
 
         this.scorch = scene.add.image(0, 4, 'boltBomb').setVisible(false).setAlpha(0.7).setScale(0.6);

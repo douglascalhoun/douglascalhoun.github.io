@@ -109,7 +109,7 @@ export default class GameScene extends Phaser.Scene {
         }
 
         // Aim reticle (world-space, follows mouse)
-        this.reticle = this.add.circle(0, 0, 6, 0x88ffcc, 0).setStrokeStyle(2, 0x88ffcc, 0.85).setDepth(120);
+        this.reticle = this.add.circle(0, 0, 6, 0xc9a227, 0).setStrokeStyle(2, 0xc9a227, 0.85).setDepth(120);
         this.reticle.setVisible(!this.touchEnabled);
 
         this.scale.on('resize', this.onResize, this);
@@ -124,8 +124,8 @@ export default class GameScene extends Phaser.Scene {
             : '';
         this.showToast(
             this.online
-                ? `SOL ONLINE${room} · pilots share this system · raids scale to the fleet`
-                : `NAVAL ACTION!${room} · Mouse helm · WASD sail · Q/R broadsides`,
+                ? `AETHER ARCHIPELAGO${room} · shared seas · fleet-scaled privateers`
+                : `AETHER SAILS${room} · broadsides · leave the gravity well to jump islands`,
             6200
         );
     }
@@ -136,7 +136,7 @@ export default class GameScene extends Phaser.Scene {
         this.mp.onData = (data) => this.handleNetMessage(data);
         this.mp.onPeer = (info) => {
             const n = info?.pilotCount || this.mp.pilotCount();
-            this.showToast(`Pilot linked · ${n} in system`, 2200);
+            this.showToast(`Sail sighted · ${n} in these waters`, 2200);
             this.broadcastHello();
             this.retuneFleetEncounters(true);
         };
@@ -307,8 +307,8 @@ export default class GameScene extends Phaser.Scene {
         }
 
         const toast = system.id === 'sol'
-            ? (this.online ? `Entered ${system.name} — SOL ONLINE` : `Entered ${system.name} — DEFEND THE STATION`)
-            : `Entered ${system.name} — ${system.blurb}`;
+            ? (this.online ? `Making ${system.name} — shared aether sea` : `Making ${system.name} — defend the harbor`)
+            : `Making ${system.name} — ${system.blurb}`;
         this.showToast(toast, 3200);
         this.sendNet({
             type: 'system',
@@ -538,17 +538,36 @@ export default class GameScene extends Phaser.Scene {
     }
 
     createStarField(worldSize, color = 0xffffff) {
+        // Aether-sea: deep navy wash + foam-spark stars + faint current lines
+        const sea = this.add.graphics();
+        sea.setDepth(-110);
+        sea.fillStyle(0x061018, 1);
+        sea.fillRect(0, 0, worldSize, worldSize);
+        // Soft current bands
+        for (let i = 0; i < 14; i++) {
+            const y = (i / 14) * worldSize + Phaser.Math.Between(-40, 40);
+            sea.lineStyle(2, 0x0e2a38, 0.22);
+            sea.beginPath();
+            sea.moveTo(0, y);
+            for (let x = 0; x < worldSize; x += 180) {
+                sea.lineTo(x, y + Math.sin(x * 0.01 + i) * 30);
+            }
+            sea.strokePath();
+        }
+        sea.setScrollFactor(0.02);
+        this.worldGraphics.push(sea);
+
         const stars = this.add.graphics();
         stars.setDepth(-100);
-        for (let i = 0; i < 90; i++) {
+        for (let i = 0; i < 120; i++) {
             const x = Phaser.Math.Between(0, worldSize);
             const y = Phaser.Math.Between(0, worldSize);
-            const size = Phaser.Math.FloatBetween(0.7, 1.8);
-            const alpha = Phaser.Math.FloatBetween(0.35, 0.8);
-            stars.fillStyle(i % 9 === 0 ? color : 0xffffff, alpha);
+            const size = Phaser.Math.FloatBetween(0.6, 2.0);
+            const foam = i % 7 === 0;
+            stars.fillStyle(foam ? color : (i % 5 === 0 ? 0xa8c8d8 : 0xffffff), Phaser.Math.FloatBetween(0.3, 0.85));
             stars.fillCircle(x, y, size);
         }
-        stars.setScrollFactor(0.04);
+        stars.setScrollFactor(0.05);
         this.worldGraphics.push(stars);
         this.starfield = stars;
         return stars;
@@ -556,36 +575,96 @@ export default class GameScene extends Phaser.Scene {
 
     createPlanet(x, y, planetDef) {
         const radius = planetDef.radius || 280;
-        const color = planetDef.color || 0x3366cc;
+        const land = planetDef.color || 0x2f6b4f;
+        const water = planetDef.water || 0x2a5a8a;
+        const kind = planetDef.kind || 'isle';
         const planet = this.add.graphics();
-        planet.fillStyle(color, 0.2);
-        planet.fillCircle(x, y, radius + 22);
-        planet.fillStyle(color, 1);
+
+        // Gravity well / reef ring (shallows) — leave this to catch deep lanes
+        planet.lineStyle(3, 0x3a8aaa, 0.28);
+        planet.strokeCircle(x, y, radius + 120);
+        planet.lineStyle(2, 0xc9a227, 0.18);
+        planet.strokeCircle(x, y, radius + 160);
+        planet.fillStyle(water, 0.22);
+        planet.fillCircle(x, y, radius + 90);
+
+        // Island body — irregular coast
+        planet.fillStyle(water, 0.85);
         planet.fillCircle(x, y, radius);
-        planet.fillStyle(0xffffff, 0.18);
-        planet.fillCircle(x - radius * 0.3, y - radius * 0.3, radius * 0.55);
-        planet.lineStyle(3, 0xffffff, 0.28);
+        planet.fillStyle(land, 1);
+        planet.fillEllipse(x - radius * 0.05, y, radius * 1.5, radius * 1.15);
+        // Second lobe for cay/atoll character
+        if (kind === 'cay' || kind === 'atoll' || kind === 'reef') {
+            planet.fillEllipse(x + radius * 0.35, y + radius * 0.2, radius * 0.9, radius * 0.7);
+        }
+        if (kind === 'atoll') {
+            planet.fillStyle(water, 1);
+            planet.fillCircle(x, y, radius * 0.35);
+        }
+        // Inland highlight
+        planet.fillStyle(0xffffff, 0.12);
+        planet.fillEllipse(x - radius * 0.25, y - radius * 0.2, radius * 0.7, radius * 0.45);
+        // Tiny harbor cove notch
+        planet.fillStyle(water, 1);
+        planet.fillCircle(x + radius * 0.55, y - radius * 0.1, radius * 0.18);
+
+        // Sparse timber / cliffs for Age-of-Sail silhouette
+        if (kind !== 'holm') {
+            planet.fillStyle(0x1a3a28, 0.85);
+            for (let i = 0; i < 5; i++) {
+                const a = -0.8 + i * 0.35;
+                const tx = x + Math.cos(a) * radius * 0.35;
+                const ty = y + Math.sin(a) * radius * 0.25 - radius * 0.15;
+                planet.fillTriangle(tx, ty - 14, tx - 6, ty + 4, tx + 6, ty + 4);
+            }
+        } else {
+            planet.fillStyle(0xffffff, 0.35);
+            planet.fillEllipse(x, y - radius * 0.1, radius * 0.9, radius * 0.55);
+        }
+
+        planet.lineStyle(2, 0xe8dcc0, 0.25);
         planet.strokeCircle(x, y, radius);
         planet.setDepth(-50);
         this.worldGraphics.push(planet);
-        this.planet = { x, y, radius, name: planetDef.name, color };
+        this.planet = {
+            x, y, radius,
+            name: planetDef.name,
+            color: land,
+            wellRadius: radius + 160
+        };
+
+        // Floating label
+        const isleLabel = this.add.text(x, y + radius + 36, planetDef.name || 'Isle', {
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: '14px',
+            fill: '#c9a227',
+            backgroundColor: '#061018aa',
+            padding: { x: 6, y: 3 }
+        }).setOrigin(0.5).setDepth(-45);
+        this.worldGraphics.push(isleLabel);
+
         return planet;
     }
 
-    createSystemBoundary(centerX, centerY, radius, color = 0xff6600) {
+    createSystemBoundary(centerX, centerY, radius, color = 0xc9a227) {
+        // Deep-lane ring — leave the gravity well / island waters to jump
         const boundary = this.add.graphics();
-        const segments = 72;
+        const segments = 64;
         for (let i = 0; i < segments; i++) {
             const startAngle = (i * 2 * Math.PI) / segments;
-            const endAngle = startAngle + (Math.PI / segments) * 0.68;
-            boundary.lineStyle(2, color, 0.5);
+            const endAngle = startAngle + (Math.PI / segments) * 0.55;
+            boundary.lineStyle(2, color, i % 2 === 0 ? 0.55 : 0.25);
             boundary.beginPath();
             boundary.arc(centerX, centerY, radius, startAngle, endAngle);
             boundary.strokePath();
         }
+        // Outer "deep" wash
+        boundary.lineStyle(1, 0x33aacc, 0.2);
+        boundary.strokeCircle(centerX, centerY, radius + 40);
         boundary.setDepth(-40);
         this.worldGraphics.push(boundary);
         this.boundary = boundary;
+        this.hyperspaceRadius = radius;
         return boundary;
     }
 
@@ -637,16 +716,16 @@ export default class GameScene extends Phaser.Scene {
 
     createHUD() {
         // Static panel — never recreate Text backgrounds every frame (Safari killer)
-        this.hudPanel = this.add.rectangle(12, 12, 480, 245, 0x001408, 0.72)
+        this.hudPanel = this.add.rectangle(12, 12, 480, 245, 0x0c1018, 0.78)
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(1999)
-            .setStrokeStyle(1, 0x1a4a28, 0.8);
+            .setStrokeStyle(1, 0xc9a227, 0.55);
 
         this.hudText = this.add.text(22, 20, '', {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             fontSize: '13px',
-            fill: '#c8ffd8',
+            fill: '#e8dcc0',
             lineSpacing: 3
         }).setScrollFactor(0).setDepth(2000);
 
@@ -665,8 +744,8 @@ export default class GameScene extends Phaser.Scene {
             'DOCK',
             {
                 fontSize: '18px',
-                fill: '#9dffb0',
-                backgroundColor: '#003318',
+                fill: '#e8dcc0',
+                backgroundColor: '#2a1e10',
                 padding: { x: 18, y: 10 }
             }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1500).setAlpha(0).setInteractive();
@@ -676,11 +755,11 @@ export default class GameScene extends Phaser.Scene {
         this.hyperspaceButton = this.add.text(
             this.scale.width / 2 + 72,
             this.scale.height - 48,
-            'HYPER',
+            'DEEP',
             {
                 fontSize: '18px',
-                fill: '#99eeff',
-                backgroundColor: '#06364d',
+                fill: '#a8d4e8',
+                backgroundColor: '#0c2030',
                 padding: { x: 18, y: 10 }
             }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1500).setAlpha(0).setInteractive();
@@ -961,14 +1040,14 @@ export default class GameScene extends Phaser.Scene {
         this.showStationUI();
         this.dockButton.setText('UNDOCK');
         this.dockButton.setAlpha(1);
-        this.showToast(`Docked at ${this.station.getName()} — combat paused`);
+        this.showToast(`Made harbor at ${this.station.getName()} — guns quiet while berthed`);
     }
 
     undock() {
         this.isDocked = false;
         this.hideStationUI();
         this.dockButton.setText('DOCK');
-        this.showToast('Undocked. Safe travels.');
+        this.showToast('Cast off. Fair winds.');
     }
 
     clearAllProjectiles() {
@@ -999,14 +1078,15 @@ export default class GameScene extends Phaser.Scene {
         const panelW = Math.min(500, this.scale.width * 0.92);
         const panelH = Math.min(560, this.scale.height * 0.84);
 
-        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x06140c, 0.96)
-            .setStrokeStyle(2, 0x33aa66)
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x0c1018, 0.96)
+            .setStrokeStyle(2, 0xc9a227)
             .setScrollFactor(0)
             .setDepth(2500);
 
         const title = this.add.text(cx, cy - panelH / 2 + 24, this.station.getName(), {
+            fontFamily: 'Georgia, "Times New Roman", serif',
             fontSize: '20px',
-            fill: '#9dffb0'
+            fill: '#e8dcc0'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
 
         const tabY = cy - panelH / 2 + 60;
@@ -1014,18 +1094,18 @@ export default class GameScene extends Phaser.Scene {
             this.stationTab = 'trade';
             this.rebuildStationBody();
         });
-        const upgradeTab = this.makeStationButton(cx, tabY, 'Upgrades', () => {
+        const upgradeTab = this.makeStationButton(cx, tabY, 'Yard', () => {
             this.stationTab = 'upgrades';
             this.rebuildStationBody();
         });
-        const missionTab = this.makeStationButton(cx + 140, tabY, 'Missions', () => {
+        const missionTab = this.makeStationButton(cx + 140, tabY, 'Charters', () => {
             this.stationTab = 'missions';
             this.rebuildStationBody();
         });
 
         this.stationStatus = this.add.text(cx, cy - panelH / 2 + 100, '', {
             fontSize: '12px',
-            fill: '#d8ffe8',
+            fill: '#c8b890',
             align: 'center',
             wordWrap: { width: panelW - 38 }
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2501);
@@ -1058,16 +1138,16 @@ export default class GameScene extends Phaser.Scene {
 
         if (this.stationTab === 'trade') {
             const goods = [
-                { key: 'food', label: 'Food' },
-                { key: 'ore', label: 'Ore' },
-                { key: 'tech', label: 'Tech' }
+                { key: 'food', label: 'Provisions' },
+                { key: 'ore', label: 'Timber' },
+                { key: 'tech', label: 'Charts' }
             ];
             goods.forEach((good, index) => {
                 const y = cy - 24 + index * 52;
                 buttons.push(this.makeStationButton(cx - 105, y, `Buy ${good.label}`, () => this.buyGood(good.key)));
                 buttons.push(this.makeStationButton(cx + 105, y, `Sell ${good.label}`, () => this.sellGood(good.key)));
             });
-            buttons.push(this.makeStationButton(cx, cy + panelH / 2 - 48, 'Repair Ship', () => {
+            buttons.push(this.makeStationButton(cx, cy + panelH / 2 - 48, 'Careen & Repair', () => {
                 const result = this.player.repair(2);
                 this.showToast(result.message);
                 this.refreshStationStatus();
@@ -1186,14 +1266,14 @@ export default class GameScene extends Phaser.Scene {
     makeStationButton(x, y, label, onClick) {
         const btn = this.add.text(x, y, label, {
             fontSize: '14px',
-            fill: '#ffffff',
-            backgroundColor: '#1a4d33',
+            fill: '#e8dcc0',
+            backgroundColor: '#2a1e10',
             padding: { x: 12, y: 8 }
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2502).setInteractive({ useHandCursor: true });
 
         btn.on('pointerdown', onClick);
-        btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#2a6d4a' }));
-        btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#1a4d33' }));
+        btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#3d2e18' }));
+        btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#2a1e10' }));
         return btn;
     }
 
@@ -1205,9 +1285,9 @@ export default class GameScene extends Phaser.Scene {
 
         if (this.stationTab === 'upgrades') {
             this.stationStatus.setText([
-                `Credits: ${p.credits}   Kills: ${p.kills}`,
-                `E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
-                `Rate ${p.fireRate}ms  Cap ${p.cargoCapacity}  MaxSpd ${Math.round(p.body.maxVelocityX)}`
+                `Purse: ${p.credits}   Prizes: ${p.kills}`,
+                `Rig ${u.engines}  Ward ${u.shields}  Hull ${u.hull}  Guns ${u.weapons}  Hold ${u.cargo}`,
+                `Reload ${p.reloadMs || p.fireRate}ms  Hold ${p.cargoCapacity}  Hull speed ${Math.round(p.body.maxVelocityX)}`
             ].join('\n'));
             return;
         }
@@ -1216,16 +1296,16 @@ export default class GameScene extends Phaser.Scene {
             const mission = this.activeMission || this.offeredMission;
             this.stationStatus.setText(mission
                 ? this.formatMission(mission)
-                : 'No mission data available.'
+                : 'No charters posted today.'
             );
             return;
         }
 
         this.stationStatus.setText([
-            `Credits: ${p.credits}`,
-            `Cargo: ${p.getCargoUsed()}/${p.cargoCapacity}  (F:${p.cargo.food} O:${p.cargo.ore} T:${p.cargo.tech})`,
-            `Hull ${Math.round(p.hull)}/${p.maxHull}  Shields ${Math.round(p.shields)}/${p.maxShields}`,
-            `Prices  Food ${prices.food.buy}/${prices.food.sell}  Ore ${prices.ore.buy}/${prices.ore.sell}  Tech ${prices.tech.buy}/${prices.tech.sell}`
+            `Purse: ${p.credits}`,
+            `Hold: ${p.getCargoUsed()}/${p.cargoCapacity}  (Prov ${p.cargo.food} · Timber ${p.cargo.ore} · Charts ${p.cargo.tech})`,
+            `Hull ${Math.round(p.hull)}/${p.maxHull}  Ward ${Math.round(p.shields)}/${p.maxShields}`,
+            `Prices  Prov ${prices.food.buy}/${prices.food.sell}  Timber ${prices.ore.buy}/${prices.ore.sell}  Charts ${prices.tech.buy}/${prices.tech.sell}`
         ].join('\n'));
     }
 
@@ -1275,13 +1355,14 @@ export default class GameScene extends Phaser.Scene {
             this.center,
             this.center
         );
-        return dist > this.worldSize * 0.45 * 0.92;
+        const rim = this.hyperspaceRadius || this.worldSize * 0.45;
+        return dist > rim * 0.92;
     }
 
     attemptHyperspace() {
         if (this.gameOver || this.isDocked) return;
         if (!this.isNearHyperspaceEdge()) {
-            this.showToast('Reach the orange system edge to enter hyperspace.', 2200);
+            this.showToast('Sail beyond the gravity well (outer brass ring) to catch a deep lane.', 2800);
             return;
         }
         this.openHyperspaceMenu();
@@ -1295,34 +1376,46 @@ export default class GameScene extends Phaser.Scene {
 
         const destinations = linkedSystems(this.currentSystemId);
         if (destinations.length === 0) {
-            this.showToast('No hyperspace lanes from here.', 2200);
+            this.showToast('No deep lanes charted from this island.', 2200);
             return;
         }
 
         this.hyperspaceOpen = true;
         const cx = this.scale.width / 2;
         const cy = this.scale.height / 2;
-        const panelW = Math.min(420, this.scale.width * 0.9);
-        const panelH = 150 + destinations.length * 46;
-        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x03131f, 0.96)
-            .setStrokeStyle(2, 0x33ddff)
+        const panelW = Math.min(440, this.scale.width * 0.9);
+        const panelH = 160 + destinations.length * 46;
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x0c1018, 0.96)
+            .setStrokeStyle(2, 0xc9a227)
             .setScrollFactor(0)
             .setDepth(2700);
-        const title = this.add.text(cx, cy - panelH / 2 + 28, 'HYPERSPACE LANES', {
+        const title = this.add.text(cx, cy - panelH / 2 + 26, 'DEEP HYPERSPACE LANES', {
+            fontFamily: 'Georgia, "Times New Roman", serif',
             fontSize: '18px',
-            fill: '#99eeff'
+            fill: '#e8dcc0'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2701);
-        const hint = this.add.text(cx, cy - panelH / 2 + 56, getSystem(this.currentSystemId).name, {
-            fontSize: '12px',
-            fill: '#c8f8ff'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(2701);
+        const hint = this.add.text(
+            cx,
+            cy - panelH / 2 + 54,
+            `Leaving ${getSystem(this.currentSystemId).name}'s gravity well`,
+            {
+                fontSize: '12px',
+                fill: '#88aacc'
+            }
+        ).setOrigin(0.5).setScrollFactor(0).setDepth(2701);
 
         const items = [overlay, title, hint];
         destinations.forEach((dest, index) => {
-            const btn = this.makeOverlayButton(cx, cy - panelH / 2 + 98 + index * 46, `${dest.name}  (${dest.blurb})`, () => this.jumpTo(dest.id), 2702);
+            const btn = this.makeOverlayButton(
+                cx,
+                cy - panelH / 2 + 100 + index * 46,
+                `Sail to ${dest.name}  —  ${dest.blurb}`,
+                () => this.jumpTo(dest.id),
+                2702
+            );
             items.push(btn);
         });
-        items.push(this.makeOverlayButton(cx, cy + panelH / 2 - 28, 'Cancel', () => this.hideHyperspaceMenu(), 2702));
+        items.push(this.makeOverlayButton(cx, cy + panelH / 2 - 28, 'Remain in these waters', () => this.hideHyperspaceMenu(), 2702));
 
         this.hyperspaceUI = { items };
     }
@@ -1340,13 +1433,13 @@ export default class GameScene extends Phaser.Scene {
     jumpTo(systemId) {
         const linked = linkedSystems(this.currentSystemId).some((sys) => sys.id === systemId);
         if (!linked) {
-            this.showToast('No direct hyperspace lane.', 2000);
+            this.showToast('No direct deep lane charted.', 2000);
             return;
         }
 
         this.hideHyperspaceMenu();
         this.hideGalaxyMap();
-        this.showToast(`Entering hyperspace to ${getSystem(systemId).name}...`, 1200);
+        this.showToast(`Riding the deep lane to ${getSystem(systemId).name}...`, 1200);
         this.cameras.main.fadeOut(180, 0, 0, 0);
         this.time.delayedCall(220, () => {
             this.loadSystem(systemId);
@@ -1372,15 +1465,16 @@ export default class GameScene extends Phaser.Scene {
         const scale = Math.min(1.2, Math.max(0.75, panelW / 620));
         const items = [];
 
-        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x020711, 0.97)
-            .setStrokeStyle(2, 0x6688ff)
+        const overlay = this.add.rectangle(cx, cy, panelW, panelH, 0x061018, 0.97)
+            .setStrokeStyle(2, 0xc9a227)
             .setScrollFactor(0)
             .setDepth(2800);
         items.push(overlay);
 
-        const title = this.add.text(cx, cy - panelH / 2 + 28, 'GALAXY MAP', {
+        const title = this.add.text(cx, cy - panelH / 2 + 28, 'AETHER CHART', {
+            fontFamily: 'Georgia, "Times New Roman", serif',
             fontSize: '20px',
-            fill: '#ccd8ff'
+            fill: '#e8dcc0'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2801);
         items.push(title);
 
@@ -1402,7 +1496,7 @@ export default class GameScene extends Phaser.Scene {
                 const key = [sys.id, destId].sort().join(':');
                 if (drawnLinks.has(key) || !plotted[destId]) return;
                 drawnLinks.add(key);
-                graph.lineStyle(2, 0x4466aa, 0.65);
+                graph.lineStyle(2, 0x6a8aaa, 0.55);
                 graph.lineBetween(plotted[sys.id].x, plotted[sys.id].y, plotted[destId].x, plotted[destId].y);
             });
         });
@@ -1425,13 +1519,13 @@ export default class GameScene extends Phaser.Scene {
         items.push(graph);
 
         const links = linkedSystems(this.currentSystemId).map((sys) => sys.name).join(' · ');
-        items.push(this.add.text(cx, cy + panelH / 2 - 76, `Current: ${getSystem(this.currentSystemId).name}`, {
+        items.push(this.add.text(cx, cy + panelH / 2 - 76, `Island: ${getSystem(this.currentSystemId).name}`, {
             fontSize: '14px',
-            fill: '#ffdd66'
+            fill: '#c9a227'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2802));
-        items.push(this.add.text(cx, cy + panelH / 2 - 50, `Linked: ${links || 'none'}`, {
+        items.push(this.add.text(cx, cy + panelH / 2 - 50, `Deep lanes: ${links || 'none'}`, {
             fontSize: '12px',
-            fill: '#c8d8ff',
+            fill: '#a8c8d8',
             wordWrap: { width: panelW - 40 }
         }).setOrigin(0.5).setScrollFactor(0).setDepth(2802));
         items.push(this.makeOverlayButton(cx, cy + panelH / 2 - 22, 'Close [M]', () => this.hideGalaxyMap(), 2802));
@@ -1452,14 +1546,14 @@ export default class GameScene extends Phaser.Scene {
     makeOverlayButton(x, y, label, onClick, depth = 2700) {
         const btn = this.add.text(x, y, label, {
             fontSize: '13px',
-            fill: '#ffffff',
-            backgroundColor: '#163454',
+            fill: '#e8dcc0',
+            backgroundColor: '#2a1e10',
             padding: { x: 12, y: 8 },
             align: 'center',
             wordWrap: { width: Math.min(460, this.scale.width * 0.78) }
         }).setOrigin(0.5).setScrollFactor(0).setDepth(depth).setInteractive({ useHandCursor: true });
-        btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#24527c' }));
-        btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#163454' }));
+        btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#3d2e18' }));
+        btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#2a1e10' }));
         btn.on('pointerdown', onClick);
         return btn;
     }
@@ -1607,15 +1701,17 @@ export default class GameScene extends Phaser.Scene {
         const y = Phaser.Math.Clamp(this.player.getY() + Math.sin(angle) * dist, 300, this.worldSize - 300);
         const foe = new NPCShip(this, x, y, 'fighter', { tier });
         this.npcs.push(foe);
-        this.showToast(`Tier ${tier} fighter engaging!`, 2200);
+        this.showToast(`Tier ${tier} corsair closing!`, 2200);
     }
 
     createEdgeMarkers() {
         this.markerLabels = {
-            planet: this.add.text(0, 0, 'PLANET', { fontSize: '10px', fill: '#88bbff' })
-                .setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0),
-            station: this.add.text(0, 0, 'STATION', { fontSize: '10px', fill: '#9dffb0' })
-                .setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0)
+            planet: this.add.text(0, 0, 'ISLE', {
+                fontFamily: 'Georgia, serif', fontSize: '10px', fill: '#c9a227'
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0),
+            station: this.add.text(0, 0, 'HARBOR', {
+                fontFamily: 'Georgia, serif', fontSize: '10px', fill: '#e8dcc0'
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0)
         };
         this.shipMarkerLabels = [];
         this.markerPool = [];
@@ -1982,35 +2078,35 @@ export default class GameScene extends Phaser.Scene {
             ? (this.online
                 ? `Sol Online · fleet wave ${this.fleetWaveIndex || 1} · target ${fleet ? targetHostileCount(fleet) : 1} hostiles`
                 : (this.defendComplete
-                    ? 'Mission: Station defended — salvage & explore!'
-                    : `Mission: DEFEND THE STATION — Wave ${Math.min(this.defendWaveIndex + 1, DEFEND_WAVES.length)}/${DEFEND_WAVES.length}`))
+                    ? 'Charter: Harbor held — salvage & chart the lanes!'
+                    : `Charter: DEFEND THE HARBOR — Wave ${Math.min(this.defendWaveIndex + 1, DEFEND_WAVES.length)}/${DEFEND_WAVES.length}`))
             : (this.activeMission
-                ? `Mission: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
-                : 'Mission: none');
+                ? `Charter: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
+                : 'Charter: none');
         const pilotsOnline = this.isMultiplayer()
-            ? `Pilots: ${1 + this.remotePlayers.size}${fleet ? ` · Fleet P${Math.round(fleet.power)} (avg ${fleet.avg.toFixed(1)})` : ''}`
+            ? `Sails: ${1 + this.remotePlayers.size}${fleet ? ` · Fleet P${Math.round(fleet.power)} (avg ${fleet.avg.toFixed(1)})` : ''}`
             : '';
         const room = this.isMultiplayer()
-            ? `${this.online ? 'World' : 'Room'}: ${this.roomCode}${this.mode === 'host' ? ' [ANCHOR]' : ''}`
+            ? `${this.online ? 'Sea' : 'Squadron'}: ${this.roomCode}${this.mode === 'host' ? ' [ANCHOR]' : ''}`
             : '';
         const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
         const weapon = this.player.getWeapon();
 
         const lines = [
-            `${system.name}   Credits: ${p.credits}   Kills: ${p.kills}`,
+            `${system.name}   Purse: ${p.credits}   Prizes: ${p.kills}`,
             room,
             pilotsOnline,
             padStatus,
-            `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
+            `Ward: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
             `Battery: ${weapon.label}   Reload ${p.reloadMs}ms   Power ${powerFromPlayer(p)}`,
             `PORT [${this.reloadBar(p.sideReloadFrac('port'))}]  STARBOARD [${this.reloadBar(p.sideReloadFrac('starboard'))}]`,
-            `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Crew/Upgrades E${u.engines} S${u.shields} H${u.hull} G${u.weapons} C${u.cargo}`,
+            `Hold ${p.getCargoUsed()}/${p.cargoCapacity}   Rig${u.engines} Ward${u.shields} Hull${u.hull} Guns${u.weapons} Hold${u.cargo}`,
             mission,
-            foe ? `Foe: ${foe.label || foe.type} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Sky clear' : 'Awaiting hostiles...'),
-            `Jink: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'Mouse helm · WASD sail · Q port / R starboard · Space auto-volley · E dock',
-            this.isDocked ? 'DOCKED [E / X undock]' : (inDockingRange ? 'In docking range [E / X]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H / Y]' : ''))
+            foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
+            `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
+            'Helm · sails · broadsides · leave the well [H] for deep lanes',
+            this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 
         if (lines === this.lastHudKey) return;

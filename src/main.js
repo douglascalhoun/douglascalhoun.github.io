@@ -11,7 +11,7 @@ const config = {
         height: window.innerHeight,
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
-    backgroundColor: '#000000',
+    backgroundColor: '#061018',
     input: {
         gamepad: true
     },

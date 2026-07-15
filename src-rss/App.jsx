@@ -153,7 +153,7 @@ function FeedView({
             <p className="tagline">{tagline}</p>
             {source?.comments && (
               <p className="source-comments-note">
-                Public comments are harvested for this source — expand under each story, or they open automatically here.
+                Public comments work here — the first few stories open them automatically; use Mark read on a chain to hide it.
               </p>
             )}
             {source && !source.comments && (

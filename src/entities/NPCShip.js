@@ -1,39 +1,52 @@
 import Phaser from 'phaser';
+import { ARCHETYPES } from '../data/defendWaves.js';
 
+/**
+ * NPC ship — traders or archetype fighters.
+ * Difficulty = patterns & abilities, not HP sponges.
+ */
 export default class NPCShip {
-    /**
-     * @param {object} options
-     * @param {number} [options.tier=1] - Escalating difficulty for fighters
-     * @param {number} [options.hits] - Hits until disabled (default by type/tier)
-     */
     constructor(scene, x, y, type = 'trader', options = {}) {
         this.scene = scene;
         this.type = type;
+        this.archetypeId = options.archetype || null;
+        this.archetype = this.archetypeId ? ARCHETYPES[this.archetypeId] : null;
         this.tier = options.tier || 1;
+        this.waveId = options.waveId ?? null;
         this.alive = true;
         this.disabled = false;
+        this.hasFled = false;
+        this.fleeNotified = false;
 
-        // Hit-based health: each player shot = 1 hit
-        const baseHits = type === 'trader' ? 2 : 3;
-        this.maxHits = options.hits ?? (baseHits + Math.max(0, this.tier - 1));
-        this.hits = this.maxHits;
-        this.hitDamage = 1;
+        if (this.archetype) {
+            this.applyArchetype(this.archetype);
+        } else {
+            const baseHits = type === 'trader' ? 2 : 3;
+            this.maxHits = options.hits ?? (baseHits + Math.max(0, this.tier - 1));
+            this.hits = this.maxHits;
+            this.hitDamage = 1;
+            this.speed = type === 'trader' ? 55 : 95 + (this.tier - 1) * 10;
+            this.fleeSpeed = this.speed * 1.25;
+            this.bounty = type === 'trader' ? 75 : 120 + this.tier * 40;
+            this.aggroRange = type === 'fighter' ? 900 + this.tier * 60 : 0;
+            this.fireRange = 420;
+            this.idealRange = 220;
+            this.fireRate = Math.max(420, 780 - this.tier * 40);
+            this.shotDamage = 8 + this.tier * 2;
+            this.color = type === 'trader' ? 0x4a7cff : 0xff6622;
+            this.pattern = 'strafe';
+            this.abilities = [];
+            this.label = type === 'trader' ? 'Trader' : `Fighter T${this.tier}`;
+        }
 
-        this.speed = type === 'trader'
-            ? 55
-            : 95 + (this.tier - 1) * 10;
-        this.fleeSpeed = this.speed * 1.25;
-        this.bounty = type === 'trader'
-            ? 75
-            : 120 + this.tier * 40;
-        this.aggroRange = type === 'fighter' ? 900 + this.tier * 60 : 0;
-        this.fireRange = 420;
-        this.idealRange = 220;
-        this.fireRate = Math.max(420, 780 - this.tier * 40);
-        this.shotDamage = 8 + this.tier * 2;
         this.lastFireTime = 0;
         this.strafeDir = Math.random() > 0.5 ? 1 : -1;
         this.strafeTimer = 0;
+        this.weavePhase = Math.random() * Math.PI * 2;
+        this.dashUntil = 0;
+        this.burstShotsLeft = 0;
+        this.abilityCooldown = 0;
+        this.mineCooldown = 0;
 
         this.sprite = scene.add.graphics();
         this.damageFx = scene.add.graphics();
@@ -57,6 +70,25 @@ export default class NPCShip {
         this.pickNewTarget();
     }
 
+    applyArchetype(arch) {
+        this.maxHits = arch.hits;
+        this.hits = arch.hits;
+        this.hitDamage = 1;
+        this.speed = arch.speed;
+        this.fleeSpeed = arch.speed * 1.35;
+        this.bounty = arch.bounty;
+        this.aggroRange = 1100;
+        this.fireRange = arch.fireRange;
+        this.idealRange = arch.idealRange;
+        this.fireRate = arch.fireRate;
+        this.shotDamage = arch.shotDamage;
+        this.color = arch.color;
+        this.pattern = arch.pattern || 'strafe';
+        this.abilities = arch.abilities || [];
+        this.label = arch.label;
+        this.type = 'fighter';
+    }
+
     drawShip() {
         this.sprite.clear();
         if (this.type === 'trader') {
@@ -68,14 +100,19 @@ export default class NPCShip {
             this.sprite.lineStyle(1, 0xffffff, 0.5);
             this.sprite.strokeRect(-10, -8, 20, 16);
         } else {
-            // Tougher tiers look a bit larger / hotter
-            const scale = 1 + Math.min(0.35, (this.tier - 1) * 0.08);
-            this.sprite.fillStyle(this.tier >= 3 ? 0xff3344 : 0xff6622, 1);
+            const scale = this.archetypeId === 'warmaster' ? 1.35
+                : this.archetypeId === 'ace' ? 1.2
+                    : 1;
+            this.sprite.fillStyle(this.color, 1);
             this.sprite.fillTriangle(0, -16 * scale, -10 * scale, 12 * scale, 10 * scale, 12 * scale);
             this.sprite.fillStyle(0xffcc66, 1);
             this.sprite.fillCircle(0, -2, 3 * scale);
             this.sprite.lineStyle(1, 0xffffff, 0.6);
             this.sprite.strokeTriangle(0, -16 * scale, -10 * scale, 12 * scale, 10 * scale, 12 * scale);
+            if (this.abilities.includes('decoy')) {
+                this.sprite.lineStyle(2, 0xff66aa, 0.7);
+                this.sprite.strokeCircle(0, 0, 18 * scale);
+            }
         }
         this.redrawDamage();
     }
@@ -88,7 +125,6 @@ export default class NPCShip {
         if (missing <= 0 && !this.disabled) return;
 
         if (this.disabled) {
-            // Dead hulk: dark + sparks
             this.sprite.clear();
             this.sprite.fillStyle(0x444444, 1);
             if (this.type === 'trader') {
@@ -105,7 +141,6 @@ export default class NPCShip {
             return;
         }
 
-        // Scorch / smoke for damage taken
         for (let i = 0; i < missing; i++) {
             const ox = -6 + i * 5;
             const oy = 2 + (i % 2) * 3;
@@ -115,7 +150,6 @@ export default class NPCShip {
             this.damageFx.fillCircle(ox + 1, oy - 1, 1.2);
         }
 
-        // Critical (1 hit left): flashing red outline
         if (this.hits === 1) {
             this.damageFx.lineStyle(2, 0xff2222, 0.9);
             this.damageFx.strokeCircle(0, 0, 18);
@@ -142,6 +176,13 @@ export default class NPCShip {
         this.targetY = Phaser.Math.Clamp(this.targetY, 200, 9800);
     }
 
+    notifyFlee() {
+        if (this.fleeNotified) return;
+        this.fleeNotified = true;
+        this.hasFled = true;
+        if (this.scene.onEnemyFled) this.scene.onEnemyFled(this);
+    }
+
     update(time, delta, player) {
         if (!this.alive) return;
 
@@ -151,11 +192,13 @@ export default class NPCShip {
             if (this.sparkTimer > 180) {
                 this.sparkTimer = 0;
                 this.redrawDamage();
-                // Flicker
                 this.container.setAlpha(0.55 + Math.random() * 0.35);
             }
             return;
         }
+
+        if (this.abilityCooldown > 0) this.abilityCooldown -= delta;
+        if (this.mineCooldown > 0) this.mineCooldown -= delta;
 
         if (this.type === 'fighter' && player) {
             const dist = Phaser.Math.Distance.Between(
@@ -163,18 +206,18 @@ export default class NPCShip {
                 player.getX(), player.getY()
             );
 
-            // Flee when one hit from disabled
             if (this.hits === 1) {
                 if (this.mode !== 'flee') {
                     this.mode = 'flee';
                     this.pickFleeTarget(player);
                     this.body.setMaxVelocity(this.fleeSpeed);
+                    this.notifyFlee();
                 } else {
                     this.pickFleeTarget(player);
                 }
             } else if (dist < this.aggroRange) {
                 this.mode = 'attack';
-                this.body.setMaxVelocity(this.speed * 1.2);
+                this.body.setMaxVelocity(this.speed * 1.15);
             } else if (this.mode === 'attack') {
                 this.mode = 'patrol';
                 this.body.setMaxVelocity(this.speed);
@@ -197,7 +240,7 @@ export default class NPCShip {
         }
 
         if (this.mode === 'flee') {
-            this.updateFlee(delta);
+            this.updateFlee();
             return;
         }
 
@@ -213,37 +256,115 @@ export default class NPCShip {
         const angleToPlayer = Math.atan2(dy, dx);
 
         this.strafeTimer += delta;
-        if (this.strafeTimer > 1400) {
-            this.strafeDir *= -1;
-            this.strafeTimer = 0;
-        }
+        this.weavePhase += delta * 0.004;
 
-        // Chase if far, hold and circle if close (duel)
         let vx = 0;
         let vy = 0;
-        if (dist > this.idealRange + 40) {
-            vx = (dx / dist) * this.speed * 1.15;
-            vy = (dy / dist) * this.speed * 1.15;
-        } else if (dist < this.idealRange - 60) {
-            vx = -(dx / dist) * this.speed * 0.9;
-            vy = -(dy / dist) * this.speed * 0.9;
-        }
+        const pattern = this.pattern;
 
-        // Strafe orbit
-        vx += -Math.sin(angleToPlayer) * this.strafeDir * this.speed * 0.75;
-        vy += Math.cos(angleToPlayer) * this.strafeDir * this.speed * 0.75;
+        if (pattern === 'straight') {
+            // Teach: slow chase + sparse shots
+            if (dist > this.idealRange) {
+                vx = (dx / dist) * this.speed;
+                vy = (dy / dist) * this.speed;
+            } else if (dist < this.idealRange - 40) {
+                vx = -(dx / dist) * this.speed * 0.5;
+                vy = -(dy / dist) * this.speed * 0.5;
+            }
+        } else if (pattern === 'weave') {
+            if (dist > this.idealRange + 30) {
+                vx = (dx / dist) * this.speed * 1.1;
+                vy = (dy / dist) * this.speed * 1.1;
+            } else if (dist < this.idealRange - 50) {
+                vx = -(dx / dist) * this.speed * 0.85;
+                vy = -(dy / dist) * this.speed * 0.85;
+            }
+            const weave = Math.sin(this.weavePhase) * this.speed * 0.95;
+            vx += -Math.sin(angleToPlayer) * weave;
+            vy += Math.cos(angleToPlayer) * weave;
+        } else if (pattern === 'flank') {
+            // Prefer side angles — unexpected approach
+            const preferred = angleToPlayer + this.strafeDir * (Math.PI / 2.4);
+            const fx = Math.cos(preferred);
+            const fy = Math.sin(preferred);
+            const orbitX = px + fx * this.idealRange;
+            const orbitY = py + fy * this.idealRange;
+            const odx = orbitX - this.container.x;
+            const ody = orbitY - this.container.y;
+            const od = Math.sqrt(odx * odx + ody * ody) || 1;
+            vx = (odx / od) * this.speed * 1.2;
+            vy = (ody / od) * this.speed * 1.2;
+            if (this.strafeTimer > 2200) {
+                this.strafeDir *= -1;
+                this.strafeTimer = 0;
+            }
+        } else if (pattern === 'burst_dash' || pattern === 'warmaster') {
+            if (time < this.dashUntil) {
+                vx = Math.cos(angleToPlayer + this.strafeDir * 0.9) * this.speed * 1.8;
+                vy = Math.sin(angleToPlayer + this.strafeDir * 0.9) * this.speed * 1.8;
+            } else {
+                if (dist > this.idealRange + 40) {
+                    vx = (dx / dist) * this.speed * 1.2;
+                    vy = (dy / dist) * this.speed * 1.2;
+                } else if (dist < this.idealRange - 60) {
+                    vx = -(dx / dist) * this.speed;
+                    vy = -(dy / dist) * this.speed;
+                }
+                vx += -Math.sin(angleToPlayer) * this.strafeDir * this.speed * 0.8;
+                vy += Math.cos(angleToPlayer) * this.strafeDir * this.speed * 0.8;
+
+                if (this.abilities.includes('dash') && this.abilityCooldown <= 0 && dist < 320) {
+                    this.dashUntil = time + 280;
+                    this.abilityCooldown = 2600;
+                    this.strafeDir *= -1;
+                    if (this.scene.spawnHitSpark) {
+                        this.scene.spawnHitSpark(this.container.x, this.container.y);
+                    }
+                }
+            }
+            if (this.strafeTimer > 1200) {
+                this.strafeDir *= -1;
+                this.strafeTimer = 0;
+            }
+        } else {
+            // Default strafe orbit (raiders)
+            if (this.strafeTimer > 1400) {
+                this.strafeDir *= -1;
+                this.strafeTimer = 0;
+            }
+            if (dist > this.idealRange + 40) {
+                vx = (dx / dist) * this.speed * 1.15;
+                vy = (dy / dist) * this.speed * 1.15;
+            } else if (dist < this.idealRange - 60) {
+                vx = -(dx / dist) * this.speed * 0.9;
+                vy = -(dy / dist) * this.speed * 0.9;
+            }
+            vx += -Math.sin(angleToPlayer) * this.strafeDir * this.speed * 0.75;
+            vy += Math.cos(angleToPlayer) * this.strafeDir * this.speed * 0.75;
+        }
 
         this.body.setVelocity(vx, vy);
         this.container.setRotation(angleToPlayer + Math.PI / 2);
 
+        // Warmaster mine drop (area denial — new verb, not more HP)
+        if (this.abilities.includes('mine') && this.mineCooldown <= 0 && dist < 380) {
+            this.mineCooldown = 4200;
+            if (this.scene.spawnEnemyMine) {
+                this.scene.spawnEnemyMine(this.container.x, this.container.y);
+            }
+        }
+
         if (dist < this.fireRange && time - this.lastFireTime > this.fireRate) {
-            // Only fire when roughly facing player
             this.lastFireTime = time;
-            this.scene.spawnEnemyProjectile(this);
+            if (this.abilities.includes('burst')) {
+                this.scene.spawnEnemyProjectile(this, { spread: 0.18, count: 3 });
+            } else {
+                this.scene.spawnEnemyProjectile(this);
+            }
         }
     }
 
-    updateFlee(delta) {
+    updateFlee() {
         const reached = this.moveToward(this.targetX, this.targetY, this.fleeSpeed, 80, true);
         if (reached) this.pickNewTarget();
     }
@@ -277,7 +398,6 @@ export default class NPCShip {
             }
         });
 
-        // Small knockback spark burst
         if (this.scene.spawnHitSpark) {
             this.scene.spawnHitSpark(this.container.x, this.container.y);
         }
@@ -288,6 +408,8 @@ export default class NPCShip {
         }
         if (this.hits === 1) {
             this.mode = 'flee';
+            this.body.setMaxVelocity(this.fleeSpeed);
+            this.notifyFlee();
             return 'critical';
         }
         return 'hit';
@@ -299,11 +421,11 @@ export default class NPCShip {
         this.mode = 'disabled';
         this.body.setAcceleration(0, 0);
         this.body.setMaxVelocity(40);
-        // Drift leftover velocity
         this.body.setVelocity(this.body.velocity.x * 0.3, this.body.velocity.y * 0.3);
         this.redrawDamage();
         this.container.setAlpha(0.75);
         this.container.setDepth(40);
+        if (this.scene.onEnemyDisabled) this.scene.onEnemyDisabled(this);
     }
 
     destroy() {

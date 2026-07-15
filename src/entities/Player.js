@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { WEAPONS } from '../data/weapons.js';
 
 const UPGRADE_DEFS = {
     engines: {
@@ -23,7 +24,7 @@ const UPGRADE_DEFS = {
         label: 'Weapons',
         maxLevel: 5,
         costs: [220, 450, 800, 1200, 1800],
-        describe: (level) => `Extra hit chance / fire rate +${level * 8}%`
+        describe: (level) => `Station fire-rate tune +${level * 8}%`
     },
     cargo: {
         label: 'Cargo Hold',
@@ -46,31 +47,31 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Mild drag = settle into fights instead of coasting past
-        this.body.setDrag(40);
-        this.body.setMaxVelocity(260);
+        // Clunky starter: heavy drag, modest top speed
+        this.body.setDrag(55);
+        this.body.setMaxVelocity(200);
         this.body.setCollideWorldBounds(true);
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        this.maxRotationSpeed = 7.2;
-        this.rotationAccel = 0.85;
-        this.rotationDrag = 0.78;
-        this.turnBleed = 0.55;
+        // Slow turn — ship should feel like a freighter at first
+        this.maxRotationSpeed = 3.0;
+        this.rotationAccel = 0.55;
+        this.rotationDrag = 0.82;
+        this.turnBleed = 0.62;
 
-        // Naval-tactical base stats (upgrades scale from these)
-        this.baseMainThrust = 380;
-        this.baseReverseThrust = 420;
-        this.baseLateralThrust = 360;
-        this.baseMaxVelocity = 260;
-        this.baseMaxShields = 100;
-        this.baseMaxHull = 100;
-        this.baseShieldRegen = 10;
-        this.baseWeaponDamage = 1; // hit-based combat
-        this.baseFireRate = 180;
+        this.baseMainThrust = 260;
+        this.baseReverseThrust = 300;
+        this.baseLateralThrust = 220;
+        this.baseMaxVelocity = 200;
+        this.baseMaxShields = 80;
+        this.baseMaxHull = 80;
+        this.baseShieldRegen = 6;
+        this.baseWeaponDamage = 1;
+        this.baseFireRate = 480;
         this.baseCargoCapacity = 20;
 
-        this.shieldRegenDelay = 2200;
+        this.shieldRegenDelay = 2400;
         this.lastHitTime = 0;
 
         this.credits = saved?.credits ?? 500;
@@ -81,6 +82,10 @@ export default class Player {
             ? { ...saved.upgrades }
             : { engines: 0, shields: 0, hull: 0, weapons: 0, cargo: 0 };
         this.kills = saved?.kills ?? 0;
+        this.weaponId = saved?.weaponId || 'cannon';
+        this.harvestIndex = saved?.harvestIndex ?? 0;
+        this.bonusShields = saved?.bonusShields ?? 0;
+        this.bonusHull = saved?.bonusHull ?? 0;
 
         this.applyUpgrades(false);
         this.shields = saved?.shields ?? this.maxShields;
@@ -91,23 +96,36 @@ export default class Player {
         return UPGRADE_DEFS;
     }
 
+    getWeapon() {
+        return WEAPONS[this.weaponId] || WEAPONS.cannon;
+    }
+
+    setWeapon(weaponId) {
+        if (!WEAPONS[weaponId]) return false;
+        this.weaponId = weaponId;
+        this.applyUpgrades(false);
+        return true;
+    }
+
     applyUpgrades(refill = false) {
         const e = this.upgrades.engines;
         const s = this.upgrades.shields;
         const h = this.upgrades.hull;
         const w = this.upgrades.weapons;
         const c = this.upgrades.cargo;
+        const kit = this.getWeapon();
 
         this.mainThrust = this.baseMainThrust * (1 + e * 0.15);
         this.reverseThrust = this.baseReverseThrust * (1 + e * 0.12);
         this.lateralThrust = this.baseLateralThrust * (1 + e * 0.12);
         this.body.setMaxVelocity(this.baseMaxVelocity * (1 + e * 0.08));
 
-        this.maxShields = this.baseMaxShields + s * 20;
+        this.maxShields = this.baseMaxShields + s * 20 + this.bonusShields;
         this.shieldRegen = this.baseShieldRegen + s * 2;
-        this.maxHull = this.baseMaxHull + h * 20;
-        this.weaponDamage = this.baseWeaponDamage; // still 1 hit; upgrades mainly affect fire rate
-        this.fireRate = Math.max(90, Math.round(this.baseFireRate * (1 - w * 0.08)));
+        this.maxHull = this.baseMaxHull + h * 20 + this.bonusHull;
+        this.weaponDamage = this.baseWeaponDamage;
+        // Kit defines the feel; station weapons upgrade only nudges cadence
+        this.fireRate = Math.max(110, Math.round(kit.fireRate * (1 - w * 0.06)));
         this.cargoCapacity = this.baseCargoCapacity + c * 8;
 
         if (refill) {
@@ -117,6 +135,23 @@ export default class Player {
             this.shields = Math.min(this.shields ?? this.maxShields, this.maxShields);
             this.hull = Math.min(this.hull ?? this.maxHull, this.maxHull);
         }
+    }
+
+    grantHarvestReward(reward) {
+        if (!reward) return null;
+        if (reward.kind === 'weapon' && reward.weaponId) {
+            this.setWeapon(reward.weaponId);
+        } else if (reward.kind === 'shields') {
+            this.bonusShields += reward.amount || 0;
+            this.applyUpgrades(false);
+            this.shields = Math.min(this.maxShields, this.shields + (reward.amount || 0));
+        } else if (reward.kind === 'armor') {
+            this.bonusHull += reward.amount || 0;
+            this.applyUpgrades(false);
+            this.hull = Math.min(this.maxHull, this.hull + (reward.amount || 0));
+        }
+        this.harvestIndex += 1;
+        return reward;
     }
 
     getUpgradeLevel(key) {
@@ -169,7 +204,11 @@ export default class Player {
             upgrades: { ...this.upgrades },
             kills: this.kills,
             shields: this.shields,
-            hull: this.hull
+            hull: this.hull,
+            weaponId: this.weaponId,
+            harvestIndex: this.harvestIndex,
+            bonusShields: this.bonusShields,
+            bonusHull: this.bonusHull
         };
     }
 
@@ -227,8 +266,9 @@ export default class Player {
         if (keys) {
             if (keys.W.isDown) forwardInput += 1;
             if (keys.S.isDown) forwardInput -= 1;
-            if (keys.K.isDown) lateralInput += 1;
-            if (keys.J.isDown) lateralInput -= 1;
+            // J = starboard (right), K = port (left) — swapped from prior mapping
+            if (keys.J.isDown) lateralInput += 1;
+            if (keys.K.isDown) lateralInput -= 1;
         }
 
         if (pad) {

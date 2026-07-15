@@ -68,7 +68,7 @@ export default class LobbyScene extends Phaser.Scene {
             fill: '#88aa99'
         }).setOrigin(0.5);
 
-        this.add.text(cx, this.scale.height - 28, 'WASD/JK/Space/E/H/M  ·  LS/RS + A fire, X dock, Y hyper, B map', {
+        this.add.text(cx, this.scale.height - 28, 'WASD · J right / K left · Space fire · E/H/M  ·  Xbox pad supported', {
             fontSize: '11px',
             fill: '#667788'
         }).setOrigin(0.5);

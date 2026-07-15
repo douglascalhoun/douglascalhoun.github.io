@@ -7,6 +7,8 @@ import VirtualJoystick from '../utils/VirtualJoystick.js';
 import GamepadControls from '../utils/GamepadControls.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
 import { getSystem, linkedSystems, pickMission, SYSTEMS } from '../data/galaxy.js';
+import { DEFEND_WAVES } from '../data/defendWaves.js';
+import { HARVEST_REWARDS } from '../data/weapons.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -51,6 +53,15 @@ export default class GameScene extends Phaser.Scene {
         this.hyperspaceUI = null;
         this.mapUI = null;
 
+        // Defend the Station mission state
+        this.defendMode = true;
+        this.defendWaveIndex = 0;
+        this.defendWaveIds = new Set();
+        this.defendComplete = false;
+        this.pendingWaveSpawn = null;
+        this.harvestQueue = [];
+        this.mines = [];
+
         this.player = new Player(this, this.center - 800, this.center);
         this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
         this.cameras.main.setBounds(0, 0, this.worldSize, this.worldSize);
@@ -84,9 +95,8 @@ export default class GameScene extends Phaser.Scene {
             hull: this.player.hull
         });
 
-        const systemName = getSystem(this.currentSystemId).name;
         const room = this.isMultiplayer() ? ` · Room ${this.roomCode}` : '';
-        this.showToast(`${systemName}${room} · Keyboard or Xbox pad · E/X dock · H/Y jump · M/B map`, 5200);
+        this.showToast(`DEFEND THE STATION!${room} · Clunky pea cannon · J/K strafe · Space fire`, 5600);
     }
 
     setupMultiplayer() {
@@ -133,6 +143,12 @@ export default class GameScene extends Phaser.Scene {
         this.visitedSystems.add(system.id);
         this.enemyTier = Math.max(1, system.danger || 1);
         this.pendingSpawn = null;
+        this.pendingWaveSpawn = null;
+        this.defendWaveIndex = 0;
+        this.defendWaveIds = new Set();
+        this.defendComplete = false;
+        this.harvestQueue = [];
+        this.clearMines();
         this.physics.world.setBounds(0, 0, this.worldSize, this.worldSize);
 
         this.createStarField(this.worldSize, system.color);
@@ -147,14 +163,24 @@ export default class GameScene extends Phaser.Scene {
             system.prices
         );
 
-        this.spawnNPCs(system.danger);
-        this.placePlayerAtSpawn();
+        // Defend mode in Sol: teach one verb at a time. Other systems keep light traffic.
+        if (this.defendMode && system.id === 'sol') {
+            this.spawnDefendTraders();
+            this.placePlayerNearStation();
+            this.startDefendWave(0, 1800);
+        } else {
+            this.spawnNPCs(system.danger);
+            this.placePlayerAtSpawn();
+        }
 
         if (this.remotePlayer) {
             this.remotePlayer.setInSystem(this.remotePlayer.systemId === this.currentSystemId);
         }
 
-        this.showToast(`Entered ${system.name} — ${system.blurb}`, 3200);
+        const toast = this.defendMode && system.id === 'sol'
+            ? `Entered ${system.name} — DEFEND THE STATION`
+            : `Entered ${system.name} — ${system.blurb}`;
+        this.showToast(toast, 3200);
         this.sendNet({ type: 'system', systemId: this.currentSystemId, name: this.pilotName });
     }
 
@@ -170,6 +196,8 @@ export default class GameScene extends Phaser.Scene {
         this.npcs.forEach((npc) => npc.destroy());
         this.npcs = [];
         this.clearAllProjectiles();
+        this.clearMines();
+        this.harvestQueue = [];
     }
 
     placePlayerAtSpawn() {
@@ -180,6 +208,21 @@ export default class GameScene extends Phaser.Scene {
         this.player.container.setRotation(0);
         this.player.body.setVelocity(0, 0);
         this.player.body.setAcceleration(0, 0);
+    }
+
+    placePlayerNearStation() {
+        if (!this.player || !this.station) return;
+        this.player.container.setPosition(this.station.getX() - 220, this.station.getY() + 40);
+        this.player.rotation = -Math.PI / 2;
+        this.player.rotationSpeed = 0;
+        this.player.container.setRotation(this.player.rotation);
+        this.player.body.setVelocity(0, 0);
+        this.player.body.setAcceleration(0, 0);
+    }
+
+    spawnDefendTraders() {
+        const c = this.worldSize / 2;
+        this.npcs.push(new NPCShip(this, c + 900, c + 700, 'trader'));
     }
 
     spawnNPCs(danger = 1) {
@@ -199,6 +242,157 @@ export default class GameScene extends Phaser.Scene {
                 { tier: Math.max(1, danger) }
             ));
         }
+    }
+
+    startDefendWave(index, delayMs = 1200) {
+        if (index >= DEFEND_WAVES.length) {
+            this.defendComplete = true;
+            this.showToast('Station secure! Warmaster down — harvest wrecks for gear.', 5000);
+            return;
+        }
+        this.pendingWaveSpawn = { index, at: Date.now() + delayMs };
+    }
+
+    spawnDefendWave(index) {
+        const wave = DEFEND_WAVES[index];
+        if (!wave) return;
+
+        this.defendWaveIndex = index;
+        this.defendWaveIds = new Set();
+        const anchorX = this.station ? this.station.getX() : this.center;
+        const anchorY = this.station ? this.station.getY() : this.center;
+
+        let slot = 0;
+        wave.spawns.forEach((group) => {
+            for (let i = 0; i < group.count; i++) {
+                const angle = -0.6 + slot * 0.45 + Phaser.Math.FloatBetween(-0.1, 0.1);
+                const dist = 620 + slot * 70;
+                const id = `w${wave.id}_${group.archetype}_${i}_${Date.now()}`;
+                const foe = new NPCShip(
+                    this,
+                    anchorX + Math.cos(angle) * dist,
+                    anchorY + Math.sin(angle) * dist,
+                    'fighter',
+                    { archetype: group.archetype, waveId: wave.id }
+                );
+                foe.defendId = id;
+                this.npcs.push(foe);
+                this.defendWaveIds.add(id);
+                slot += 1;
+            }
+        });
+
+        this.showToast(wave.announce, 3600);
+    }
+
+    onEnemyFled(npc) {
+        if (!this.defendMode || this.defendComplete) return;
+        if (npc.waveId == null) return;
+
+        const wave = DEFEND_WAVES[this.defendWaveIndex];
+        if (!wave || npc.waveId !== wave.id) return;
+
+        // Nintendo-style: when the current pack all "run", introduce the next verb
+        const waveNpcs = this.npcs.filter((n) => n.waveId === wave.id && n.alive);
+        const allRunningOrDown = waveNpcs.every((n) => n.hasFled || n.disabled);
+        if (!allRunningOrDown) return;
+        if (this.pendingWaveSpawn) return;
+
+        this.startDefendWave(this.defendWaveIndex + 1, 1600);
+    }
+
+    onEnemyDisabled(npc) {
+        if (!npc || npc.type === 'trader') return;
+        // Queue station harvest — wrecks become upgrades, not just kill credit
+        if (npc.harvestQueued) return;
+        npc.harvestQueued = true;
+        this.harvestQueue.push({
+            npc,
+            at: Date.now() + 1600
+        });
+    }
+
+    processHarvestQueue() {
+        if (!this.station || this.isDocked) return;
+        const now = Date.now();
+        this.harvestQueue = this.harvestQueue.filter((job) => {
+            if (!job.npc || !job.npc.alive || !job.npc.disabled) return false;
+            if (now < job.at) return true;
+
+            const npc = job.npc;
+            this.playHarvestBeam(npc.getX(), npc.getY());
+            const reward = HARVEST_REWARDS[this.player.harvestIndex % HARVEST_REWARDS.length];
+            this.player.grantHarvestReward(reward);
+            this.player.credits += Math.floor(npc.bounty * 0.5);
+            this.showToast(reward.toast, 3200);
+
+            // Remove inert wreck after salvage
+            this.time.delayedCall(400, () => {
+                npc.destroy();
+            });
+            return false;
+        });
+    }
+
+    playHarvestBeam(x, y) {
+        if (!this.station) return;
+        const beam = this.add.graphics().setDepth(90);
+        beam.lineStyle(3, 0x66ffcc, 0.85);
+        beam.lineBetween(this.station.getX(), this.station.getY(), x, y);
+        beam.fillStyle(0xaaffee, 0.7);
+        beam.fillCircle(x, y, 10);
+        this.tweens.add({
+            targets: beam,
+            alpha: 0,
+            duration: 700,
+            onComplete: () => beam.destroy()
+        });
+    }
+
+    spawnEnemyMine(x, y) {
+        const mine = this.add.circle(x, y, 7, 0xff2266, 0.85).setDepth(70);
+        mine.armAt = Date.now() + 700;
+        mine.lifeUntil = Date.now() + 9000;
+        mine.radius = 48;
+        mine.damage = 14;
+        this.mines.push(mine);
+        this.tweens.add({
+            targets: mine,
+            scale: 1.25,
+            duration: 500,
+            yoyo: true,
+            repeat: -1
+        });
+    }
+
+    clearMines() {
+        (this.mines || []).forEach((m) => m.destroy());
+        this.mines = [];
+    }
+
+    updateMines() {
+        const now = Date.now();
+        this.mines = this.mines.filter((mine) => {
+            if (!mine.active) return false;
+            if (now > mine.lifeUntil) {
+                mine.destroy();
+                return false;
+            }
+            if (now < mine.armAt || this.gameOver || this.isDocked) return true;
+            const dist = Phaser.Math.Distance.Between(
+                mine.x, mine.y,
+                this.player.getX(), this.player.getY()
+            );
+            if (dist < mine.radius) {
+                const dead = this.player.takeDamage(mine.damage);
+                this.spawnExplosion(mine.x, mine.y);
+                this.cameras.main.shake(90, 0.005);
+                mine.destroy();
+                if (dead) this.triggerGameOver();
+                return false;
+            }
+            return true;
+        });
     }
 
     createStarField(worldSize, color = 0xffffff) {
@@ -382,22 +576,36 @@ export default class GameScene extends Phaser.Scene {
         if (now - this.lastFireTime < rate) return;
         this.lastFireTime = now;
 
-        const projectile = new Projectile(
-            this,
-            this.player.getX(),
-            this.player.getY(),
-            this.player.getRotation(),
-            520,
-            { damage: 1, fromPlayer: true, lifetime: 1500 }
-        );
-        this.projectiles.push(projectile);
+        const kit = this.player.getWeapon();
+        const angle = this.player.getRotation();
+        const originX = this.player.getX();
+        const originY = this.player.getY();
+
+        kit.shots.forEach((shot) => {
+            const projectile = new Projectile(this, originX, originY, angle + (shot.angleOffset || 0), {
+                speed: shot.speed,
+                color: shot.color,
+                radius: shot.radius,
+                lifetime: shot.lifetime,
+                damage: 1,
+                friendly: true,
+                seek: shot.seek || false,
+                blast: shot.blast || 0,
+                stretch: shot.stretch || false,
+                lateral: shot.lateral || 0,
+                kind: shot.seek ? 'missile' : shot.blast ? 'bomb' : 'laser'
+            });
+            this.projectiles.push(projectile);
+        });
+
         this.sendNet({
             type: 'fire',
             name: this.pilotName,
-            x: this.player.getX(),
-            y: this.player.getY(),
-            rotation: this.player.getRotation(),
-            systemId: this.currentSystemId
+            x: originX,
+            y: originY,
+            rotation: angle,
+            systemId: this.currentSystemId,
+            weaponId: this.player.weaponId
         });
     }
 
@@ -408,27 +616,40 @@ export default class GameScene extends Phaser.Scene {
             data.x,
             data.y,
             data.rotation,
-            520,
-            { damage: 0, fromPlayer: false, lifetime: 1200 }
+            {
+                speed: 520,
+                damage: 0,
+                friendly: false,
+                lifetime: 1200,
+                color: 0x33ddff,
+                radius: 4
+            }
         );
-        projectile.sprite.clear();
-        projectile.sprite.fillStyle(0x33ddff, 1);
-        projectile.sprite.fillCircle(0, 0, 4);
-        projectile.sprite.lineStyle(1, 0xffffff, 0.8);
-        projectile.sprite.strokeCircle(0, 0, 4);
         this.remoteProjectiles.push(projectile);
     }
 
-    spawnEnemyProjectile(npc) {
-        const projectile = new Projectile(
-            this,
-            npc.getX(),
-            npc.getY(),
-            npc.getRotation(),
-            360 + npc.tier * 15,
-            { damage: npc.shotDamage, fromPlayer: false, lifetime: 1500 }
-        );
-        this.enemyProjectiles.push(projectile);
+    spawnEnemyProjectile(npc, opts = {}) {
+        const count = opts.count || 1;
+        const spread = opts.spread || 0;
+        const baseAngle = npc.getRotation();
+        for (let i = 0; i < count; i++) {
+            const t = count === 1 ? 0 : (i / (count - 1)) - 0.5;
+            const projectile = new Projectile(
+                this,
+                npc.getX(),
+                npc.getY(),
+                baseAngle + t * spread * 2,
+                {
+                    speed: 300 + (npc.speed || 80) * 0.4,
+                    damage: npc.shotDamage,
+                    friendly: false,
+                    lifetime: 1500,
+                    color: npc.color || 0xff6644,
+                    radius: 3.5
+                }
+            );
+            this.enemyProjectiles.push(projectile);
+        }
     }
 
     attemptDocking() {
@@ -960,30 +1181,52 @@ export default class GameScene extends Phaser.Scene {
     }
 
     handleCombat() {
+        const seekTarget = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter') || null;
+
         this.projectiles = this.projectiles.filter((proj) => {
-            if (!proj.update()) return false;
+            if (!proj.update(undefined, undefined, seekTarget)) return false;
+
+            const hitList = [];
             for (const npc of this.npcs) {
                 if (!npc.isCombatTarget()) continue;
                 const dist = Phaser.Math.Distance.Between(proj.getX(), proj.getY(), npc.getX(), npc.getY());
-                if (dist < 26) {
-                    const result = npc.takeDamage(1);
-                    proj.destroy();
-                    if (result === 'disabled') {
-                        this.player.credits += npc.bounty;
-                        this.player.kills += 1;
-                        this.showToast(`${npc.type} disabled! +${npc.bounty}c`, 2200);
-                        this.spawnExplosion(npc.getX(), npc.getY());
-                        this.recordBountyKill(npc);
-                        if (npc.type === 'fighter') {
-                            this.queueTougherFighter(npc.tier);
-                        }
-                    } else if (result === 'critical') {
-                        this.showToast('Enemy critical — they\'re running!', 1600);
-                    }
-                    return false;
-                }
+                const hitRad = 26 + (proj.blastRadius ? 0 : 0);
+                if (dist < hitRad) hitList.push(npc);
             }
-            return true;
+
+            if (hitList.length === 0) return true;
+
+            const applyHit = (npc) => {
+                const result = npc.takeDamage(1);
+                if (result === 'disabled') {
+                    this.player.credits += npc.bounty;
+                    this.player.kills += 1;
+                    this.showToast(`${npc.label || npc.type} disabled! Station inbound for salvage.`, 2400);
+                    this.spawnExplosion(npc.getX(), npc.getY());
+                    this.recordBountyKill(npc);
+                    if (!this.defendMode && npc.type === 'fighter') {
+                        this.queueTougherFighter(npc.tier);
+                    }
+                } else if (result === 'critical') {
+                    this.showToast(`${npc.label || 'Enemy'} breaking off — they're running!`, 1800);
+                }
+            };
+
+            if (proj.blastRadius > 0) {
+                const bx = proj.getX();
+                const by = proj.getY();
+                this.spawnExplosion(bx, by);
+                for (const npc of this.npcs) {
+                    if (!npc.isCombatTarget()) continue;
+                    const dist = Phaser.Math.Distance.Between(bx, by, npc.getX(), npc.getY());
+                    if (dist < proj.blastRadius) applyHit(npc);
+                }
+            } else {
+                applyHit(hitList[0]);
+            }
+
+            proj.destroy();
+            return false;
         });
 
         this.enemyProjectiles = this.enemyProjectiles.filter((proj) => {
@@ -1037,6 +1280,17 @@ export default class GameScene extends Phaser.Scene {
     }
 
     maybeRespawnNPCs() {
+        if (this.defendMode && this.currentSystemId === 'sol') {
+            if (this.pendingWaveSpawn && Date.now() >= this.pendingWaveSpawn.at) {
+                const idx = this.pendingWaveSpawn.index;
+                this.pendingWaveSpawn = null;
+                this.spawnDefendWave(idx);
+            }
+            this.processHarvestQueue();
+            this.npcs = this.npcs.filter((n) => n.alive);
+            return;
+        }
+
         const traders = this.npcs.filter((n) => n.alive && n.type === 'trader' && !n.disabled);
         if (traders.length < 2) {
             const c = this.worldSize / 2;
@@ -1164,7 +1418,7 @@ export default class GameScene extends Phaser.Scene {
             if (!npc.alive) continue;
             if (this.isOnScreen(npc.getX(), npc.getY(), 50)) continue;
             const color = npc.disabled ? 0x888888 : (npc.type === 'fighter' ? 0xff5533 : 0x5588ff);
-            const text = npc.disabled ? 'WRECK' : (npc.type === 'fighter' ? `FOE T${npc.tier}` : 'TRADE');
+            const text = npc.disabled ? 'WRECK' : (npc.type === 'fighter' ? (npc.label || `FOE`).toUpperCase().slice(0, 8) : 'TRADE');
             labelIdx = this.drawShipMarker(labelIdx, npc.getX(), npc.getY(), color, npc.type === 'fighter' ? 10 : 8, text, npc.disabled ? '#aaaaaa' : (npc.type === 'fighter' ? '#ff8866' : '#88aaff'));
         }
 
@@ -1307,8 +1561,13 @@ export default class GameScene extends Phaser.Scene {
 
         if (!this.isDocked) {
             this.npcs.forEach((npc) => npc.update(time, delta, this.player));
-            if (!this.gameOver) this.handleCombat();
+            if (!this.gameOver) {
+                this.handleCombat();
+                this.updateMines();
+            }
             this.maybeRespawnNPCs();
+        } else {
+            this.processHarvestQueue();
         }
 
         if (this.remotePlayer) this.remotePlayer.update(delta);
@@ -1352,14 +1611,19 @@ export default class GameScene extends Phaser.Scene {
         const u = p.upgrades;
         const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
         const system = getSystem(this.currentSystemId);
-        const mission = this.activeMission
-            ? `Mission: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
-            : 'Mission: none';
+        const mission = this.defendMode && this.currentSystemId === 'sol'
+            ? (this.defendComplete
+                ? 'Mission: Station defended — salvage & explore!'
+                : `Mission: DEFEND THE STATION — Wave ${Math.min(this.defendWaveIndex + 1, DEFEND_WAVES.length)}/${DEFEND_WAVES.length}`)
+            : (this.activeMission
+                ? `Mission: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
+                : 'Mission: none');
         const friend = this.remotePlayer
             ? `Friend: ${this.remotePlayer.name} @ ${getSystem(this.remotePlayer.systemId).name}`
             : (this.isMultiplayer() ? 'Friend: waiting...' : '');
         const room = this.isMultiplayer() ? `Room: ${this.roomCode}` : '';
         const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
+        const weapon = this.player.getWeapon();
 
         this.hudText.setText([
             `${system.name}   Credits: ${p.credits}   Kills: ${p.kills}`,
@@ -1368,11 +1632,11 @@ export default class GameScene extends Phaser.Scene {
             padStatus,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Speed: ${Math.round(p.getSpeed())}   Rate: ${p.fireRate}ms`,
+            `Weapon: ${weapon.label}   Rate: ${p.fireRate}ms   Spd: ${Math.round(p.getSpeed())}`,
             `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Upgrades E${u.engines} S${u.shields} H${u.hull} W${u.weapons} C${u.cargo}`,
             mission,
-            foe ? `Foe T${foe.tier}: ${foe.hits}/${foe.maxHits} hits [${foe.mode}]` : `Next foe tier: ${this.enemyTier}`,
-            'KB: WASD/JK/Space/E/H/M   Xbox: LS fly · RS strafe · A/RT fire · X dock · Y hyper · B map',
+            foe ? `Foe: ${foe.label || foe.type} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Sky clear' : 'Awaiting hostiles...'),
+            'KB: WASD turn/thrust · J right / K left · Space fire · E dock · H jump · M map',
             this.isDocked ? 'DOCKED [E / X undock]' : (inDockingRange ? 'In docking range [E / X]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H / Y]' : ''))
         ].filter(Boolean).join('\n'));
     }

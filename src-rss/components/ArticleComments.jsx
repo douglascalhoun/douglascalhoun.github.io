@@ -92,9 +92,7 @@ function statusLabel(data) {
     return `${n} comment${n === 1 ? '' : 's'}`;
   }
   if (data.status === 'empty') return 'No comments yet';
-  if (data.status === 'unsupported') return 'Not available from this source';
   if (data.status === 'closed') return 'Comments closed';
-  if (data.status === 'paywalled') return 'Subscriber only';
   if (data.status === 'error') return 'Couldn’t load';
   return 'Comments';
 }
@@ -111,7 +109,7 @@ function ArticleComments({
   const [revision, setRevision] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [data, setData] = useState(() => {
-    if (article.comment_status) {
+    if (article.comment_status && article.comment_status !== 'unsupported') {
       return {
         status: article.comment_status,
         platform: article.comment_platform,
@@ -122,6 +120,11 @@ function ArticleComments({
     }
     return null;
   });
+
+  // Never show comment UI once we know this story's publisher has no harvest.
+  if (data?.status === 'unsupported') {
+    return null;
+  }
 
   async function load({ refresh = false } = {}) {
     try {
@@ -254,8 +257,11 @@ function ArticleComments({
                 )}
               </div>
 
-              {data.message && data.status !== 'ok' && (
+              {data.message && data.status === 'empty' && (
                 <p className="comments-note">{data.message}</p>
+              )}
+              {data.message && data.status === 'error' && (
+                <p className="comments-error">{data.message}</p>
               )}
 
               {data.status === 'ok' && visibleRoots.length > 0 && (

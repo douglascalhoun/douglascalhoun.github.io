@@ -46,7 +46,7 @@ export function SourcesIndexPage() {
             </button>
             <h1>Sources</h1>
             <p className="tagline">
-              One page per newsroom — headlines, blurbs, and comments where available
+              One page per newsroom — headlines and blurbs
             </p>
           </div>
         </div>

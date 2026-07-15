@@ -1,6 +1,6 @@
 import React from 'react';
 import ArticleComments from './ArticleComments';
-import { getSourceByName } from '../services/sources';
+import { getSourceByName, sourceSupportsComments } from '../services/sources';
 import { navigate } from '../services/routing';
 
 function formatDate(value) {
@@ -20,13 +20,7 @@ function ArticleCard({
   autoOpenComments = false
 }) {
   const source = getSourceByName(article.feed_name);
-  const commentsCapable = Boolean(
-    autoOpenComments
-    || source?.comments
-    || article.comment_platform === 'nyt'
-    || article.comment_platform === 'ars'
-    || article.comment_platform === 'guardian'
-  );
+  const showComments = sourceSupportsComments(source);
 
   return (
     <article className="story">
@@ -62,11 +56,13 @@ function ArticleCard({
         {article.description && (
           <p className="story-blurb">{article.description}</p>
         )}
-        <ArticleComments
-          article={article}
-          autoOpen={commentsCapable && autoOpenComments}
-          defaultOpen={false}
-        />
+        {showComments && (
+          <ArticleComments
+            article={article}
+            autoOpen={autoOpenComments}
+            defaultOpen={false}
+          />
+        )}
       </div>
     </article>
   );

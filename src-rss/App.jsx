@@ -153,12 +153,7 @@ function FeedView({
             <p className="tagline">{tagline}</p>
             {source?.comments && (
               <p className="source-comments-note">
-                Public comments work here — the first few stories open them automatically; use Mark read on a chain to hide it.
-              </p>
-            )}
-            {source && !source.comments && (
-              <p className="source-comments-note muted">
-                This source does not expose a public comments feed.
+                The first few stories open comments automatically; use Mark read on a chain to hide it.
               </p>
             )}
           </div>

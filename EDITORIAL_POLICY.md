@@ -7,15 +7,14 @@ Unread feed of serious English-language news and tech reporting.
 2. Drops celebrity gossip and incremental political noise
 3. Caches stories in your browser
 4. Shows only stories you have not marked read
-5. Harvests public comments (when available) and un-collapses them under each story
+5. Harvests public comments for NYT and Ars Technica, un-collapsed under each story
 
 ## Comments
-Reliable public harvest today:
-- **NYT** — community `requestHandler` JSON (author, body, recs, replies, timestamps)
+Only shown for sources we can harvest:
+- **NYT** — community `requestHandler` JSON
 - **Ars Technica** — OpenForum / XenForo thread linked from each story
-- **Guardian** — Discussion API (adapter ready if the feed returns)
 
-Other Worldwire sources are marked unsupported with a clear reason (BBC comments usually off; FT / Economist / WSJ / Bloomberg / WaPo / MIT TR not publicly harvestable from here). Comments load on expand and cache in Postgres for ~30 minutes.
+Other sources have no comment UI.
 
 ## Not included
 No images, search, filters, favorites, or push-notification UI.

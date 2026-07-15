@@ -136,6 +136,15 @@ export function getSourceByName(name) {
     || null;
 }
 
+/** True only for publishers we can actually harvest comments from. */
+export function sourceSupportsComments(sourceOrName) {
+  if (!sourceOrName) return false;
+  if (typeof sourceOrName === 'object') {
+    return Boolean(sourceOrName.comments);
+  }
+  return Boolean(getSourceByName(sourceOrName)?.comments);
+}
+
 export function sourcePath(slug) {
   return `/source/${slug}`;
 }

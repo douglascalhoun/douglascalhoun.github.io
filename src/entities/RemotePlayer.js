@@ -17,27 +17,16 @@ export default class RemotePlayer {
         this.lastUpdate = Date.now();
         this.visibleInSystem = true;
 
-        this.sprite = scene.add.graphics();
-        this.draw();
+        this.sprite = scene.add.image(0, 0, 'shipRemote');
+        this.sprite.setTint(0xffaa33);
         this.container = scene.add.container(this.x, this.y, [this.sprite]);
         this.container.setDepth(90);
 
         this.label = scene.add.text(0, -34, this.name, {
             fontSize: '12px',
             fill: '#ffcc66',
-            backgroundColor: '#00000088',
             padding: { x: 4, y: 2 }
         }).setOrigin(0.5).setDepth(91);
-    }
-
-    draw() {
-        this.sprite.clear();
-        this.sprite.fillStyle(0xffaa33, 1);
-        this.sprite.fillTriangle(0, -20, -12, 14, 12, 14);
-        this.sprite.fillStyle(0xffffff, 1);
-        this.sprite.fillCircle(0, -3, 3);
-        this.sprite.lineStyle(2, 0x663300, 1);
-        this.sprite.strokeTriangle(0, -20, -12, 14, 12, 14);
     }
 
     applyState(state) {
@@ -69,7 +58,6 @@ export default class RemotePlayer {
         this.container.setRotation(this.rotation);
         this.label.setPosition(this.x, this.y - 34);
 
-        // Stale remote player fades
         if (Date.now() - this.lastUpdate > 4000) {
             this.container.setAlpha(0.35);
         } else {

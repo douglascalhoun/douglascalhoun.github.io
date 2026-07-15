@@ -38,32 +38,35 @@ export default class Player {
     constructor(scene, x, y, saved = null) {
         this.scene = scene;
 
-        this.sprite = scene.add.graphics();
-        this.drawShip();
-
+        // Sprite texture (baked once) — Graphics.clear every frame was a Safari stutter source
+        this.sprite = scene.add.image(0, 0, 'shipPlayer');
         this.container = scene.add.container(x, y, [this.sprite]);
         this.container.setDepth(100);
         scene.physics.world.enable(this.container);
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Clunky starter: heavy drag, modest top speed
-        this.body.setDrag(55);
-        this.body.setMaxVelocity(200);
+        // Milder drag + velocity blending = smooth strafe without accel fighting drag
+        this.body.setDrag(28);
+        this.body.setMaxVelocity(220);
         this.body.setCollideWorldBounds(true);
+        this.body.useDamping = false;
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        // Slow turn — ship should feel like a freighter at first
         this.maxRotationSpeed = 3.0;
         this.rotationAccel = 0.55;
         this.rotationDrag = 0.82;
-        this.turnBleed = 0.62;
+        this.turnBleed = 0.35;
 
-        this.baseMainThrust = 260;
+        // Response rate for velocity blending (higher = snappier, still smooth)
+        this.thrustLerp = 6.5;
+        this.strafeLerp = 8.0;
+
+        this.baseMainThrust = 280;
         this.baseReverseThrust = 300;
-        this.baseLateralThrust = 220;
-        this.baseMaxVelocity = 200;
+        this.baseLateralThrust = 260;
+        this.baseMaxVelocity = 220;
         this.baseMaxShields = 80;
         this.baseMaxHull = 80;
         this.baseShieldRegen = 6;
@@ -73,6 +76,7 @@ export default class Player {
 
         this.shieldRegenDelay = 2400;
         this.lastHitTime = 0;
+        this._regenAccum = 0;
 
         this.credits = saved?.credits ?? 500;
         this.cargo = saved?.cargo
@@ -118,13 +122,13 @@ export default class Player {
         this.mainThrust = this.baseMainThrust * (1 + e * 0.15);
         this.reverseThrust = this.baseReverseThrust * (1 + e * 0.12);
         this.lateralThrust = this.baseLateralThrust * (1 + e * 0.12);
-        this.body.setMaxVelocity(this.baseMaxVelocity * (1 + e * 0.08));
+        this.maxSpeed = this.baseMaxVelocity * (1 + e * 0.08);
+        this.body.setMaxVelocity(this.maxSpeed);
 
         this.maxShields = this.baseMaxShields + s * 20 + this.bonusShields;
         this.shieldRegen = this.baseShieldRegen + s * 2;
         this.maxHull = this.baseMaxHull + h * 20 + this.bonusHull;
         this.weaponDamage = this.baseWeaponDamage;
-        // Kit defines the feel; station weapons upgrade only nudges cadence
         this.fireRate = Math.max(110, Math.round(kit.fireRate * (1 - w * 0.06)));
         this.cargoCapacity = this.baseCargoCapacity + c * 8;
 
@@ -212,20 +216,8 @@ export default class Player {
         };
     }
 
-    drawShip() {
-        this.sprite.clear();
-        this.sprite.fillStyle(0x44ff88, 1);
-        this.sprite.fillTriangle(0, -22, -14, 16, 14, 16);
-        this.sprite.fillStyle(0xffffff, 1);
-        this.sprite.fillCircle(0, -4, 4);
-        this.sprite.fillStyle(0x66aaff, 0.95);
-        this.sprite.fillTriangle(-6, 16, 6, 16, 0, 26);
-        this.sprite.lineStyle(2, 0x0a2a14, 1);
-        this.sprite.strokeTriangle(0, -22, -14, 16, 14, 16);
-    }
-
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null) {
-        const dt = delta / 1000;
+        const dt = Math.min(0.05, delta / 1000);
 
         let rotInput = 0;
         if (keys) {
@@ -240,25 +232,16 @@ export default class Player {
         }
 
         if (Math.abs(rotInput) > 0.01) {
-            this.rotationSpeed = Phaser.Math.Linear(
-                this.rotationSpeed,
-                Phaser.Math.Clamp(rotInput, -1, 1) * this.maxRotationSpeed,
-                Math.min(1, this.rotationAccel * 10 * dt)
-            );
+            const target = Phaser.Math.Clamp(rotInput, -1, 1) * this.maxRotationSpeed;
+            const t = 1 - Math.exp(-this.rotationAccel * 12 * dt);
+            this.rotationSpeed += (target - this.rotationSpeed) * t;
         } else {
-            this.rotationSpeed *= Math.pow(this.rotationDrag, dt * 60);
+            this.rotationSpeed *= Math.exp(-4.2 * dt);
             if (Math.abs(this.rotationSpeed) < 0.02) this.rotationSpeed = 0;
         }
 
         this.rotation += this.rotationSpeed * dt;
         this.container.setRotation(this.rotation);
-
-        const turnAmount = Math.min(1, Math.abs(this.rotationSpeed) / this.maxRotationSpeed);
-        if (turnAmount > 0.15) {
-            const bleed = 1 - turnAmount * this.turnBleed * dt * 3.2;
-            this.body.velocity.x *= bleed;
-            this.body.velocity.y *= bleed;
-        }
 
         let forwardInput = 0;
         let lateralInput = 0;
@@ -266,7 +249,6 @@ export default class Player {
         if (keys) {
             if (keys.W.isDown) forwardInput += 1;
             if (keys.S.isDown) forwardInput -= 1;
-            // J = starboard (right), K = port (left) — swapped from prior mapping
             if (keys.J.isDown) lateralInput += 1;
             if (keys.K.isDown) lateralInput -= 1;
         }
@@ -291,17 +273,40 @@ export default class Player {
         const shipRightX = Math.cos(this.rotation);
         const shipRightY = Math.sin(this.rotation);
 
-        let thrustMagnitude = 0;
-        if (forwardInput > 0) thrustMagnitude = forwardInput * this.mainThrust;
-        else if (forwardInput < 0) thrustMagnitude = forwardInput * this.reverseThrust;
+        // Target velocity in ship space — blend into body velocity.
+        // Avoids Arcade accel vs drag fighting (felt like strafe stutter on Safari).
+        let forwardSpeed = 0;
+        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.55;
+        else if (forwardInput < 0) forwardSpeed = forwardInput * this.reverseThrust * 0.55;
+        const lateralSpeed = lateralInput * this.lateralThrust * 0.55;
 
-        if (Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01) {
-            this.body.setAcceleration(
-                shipForwardX * thrustMagnitude + shipRightX * lateralInput * this.lateralThrust,
-                shipForwardY * thrustMagnitude + shipRightY * lateralInput * this.lateralThrust
-            );
-        } else {
-            this.body.setAcceleration(0, 0);
+        const thrusting = Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01;
+        const targetVx = shipForwardX * forwardSpeed + shipRightX * lateralSpeed;
+        const targetVy = shipForwardY * forwardSpeed + shipRightY * lateralSpeed;
+
+        // Clear Arcade acceleration — we own velocity
+        this.body.setAcceleration(0, 0);
+
+        if (thrusting) {
+            const lerpF = 1 - Math.exp(-(Math.abs(lateralInput) > 0.01 ? this.strafeLerp : this.thrustLerp) * dt);
+            this.body.velocity.x += (targetVx - this.body.velocity.x) * lerpF;
+            this.body.velocity.y += (targetVy - this.body.velocity.y) * lerpF;
+        }
+
+        // Soft turn bleed (gentler than before so strafe doesn't hitch while turning)
+        const turnAmount = Math.min(1, Math.abs(this.rotationSpeed) / this.maxRotationSpeed);
+        if (turnAmount > 0.2 && !thrusting) {
+            const bleed = Math.exp(-this.turnBleed * turnAmount * dt * 2.5);
+            this.body.velocity.x *= bleed;
+            this.body.velocity.y *= bleed;
+        }
+
+        // Clamp speed manually for consistent feel
+        const spd = Math.hypot(this.body.velocity.x, this.body.velocity.y);
+        if (spd > this.maxSpeed) {
+            const s = this.maxSpeed / spd;
+            this.body.velocity.x *= s;
+            this.body.velocity.y *= s;
         }
 
         this.regenShields(delta);
@@ -310,7 +315,11 @@ export default class Player {
     regenShields(delta) {
         if (this.shields >= this.maxShields) return;
         if (Date.now() - this.lastHitTime < this.shieldRegenDelay) return;
-        this.shields = Math.min(this.maxShields, this.shields + this.shieldRegen * (delta / 1000));
+        this._regenAccum += this.shieldRegen * (delta / 1000);
+        if (this._regenAccum >= 0.25) {
+            this.shields = Math.min(this.maxShields, this.shields + this._regenAccum);
+            this._regenAccum = 0;
+        }
     }
 
     takeDamage(amount) {

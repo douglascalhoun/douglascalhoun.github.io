@@ -3,7 +3,7 @@ import { ARCHETYPES } from '../data/defendWaves.js';
 
 /**
  * NPC ship — traders or archetype fighters.
- * Difficulty = patterns & abilities, not HP sponges.
+ * Uses baked sprites (no per-frame Graphics) for Safari smoothness.
  */
 export default class NPCShip {
     constructor(scene, x, y, type = 'trader', options = {}) {
@@ -17,6 +17,7 @@ export default class NPCShip {
         this.disabled = false;
         this.hasFled = false;
         this.fleeNotified = false;
+        this.harvestQueued = false;
 
         if (this.archetype) {
             this.applyArchetype(this.archetype);
@@ -44,28 +45,37 @@ export default class NPCShip {
         this.strafeTimer = 0;
         this.weavePhase = Math.random() * Math.PI * 2;
         this.dashUntil = 0;
-        this.burstShotsLeft = 0;
         this.abilityCooldown = 0;
         this.mineCooldown = 0;
+        this.sparkTimer = 0;
 
-        this.sprite = scene.add.graphics();
-        this.damageFx = scene.add.graphics();
-        this.drawShip();
+        const tex = type === 'trader' ? 'shipTrader' : 'shipFighter';
+        this.sprite = scene.add.image(0, 0, tex);
+        if (type !== 'trader') {
+            this.sprite.setTint(this.color);
+            const scale = this.archetypeId === 'warmaster' ? 1.35
+                : this.archetypeId === 'ace' ? 1.2
+                    : 1;
+            this.sprite.setScale(scale);
+        }
 
-        this.container = scene.add.container(x, y, [this.sprite, this.damageFx]);
+        this.scorch = scene.add.image(0, 4, 'boltBomb').setVisible(false).setAlpha(0.7).setScale(0.6);
+        this.critRing = scene.add.circle(0, 0, 18, 0xff2222, 0).setStrokeStyle(2, 0xff2222, 0.9).setVisible(false);
+
+        this.container = scene.add.container(x, y, [this.sprite, this.scorch, this.critRing]);
         this.container.setDepth(50);
         scene.physics.world.enable(this.container);
 
         this.body = this.container.body;
         this.body.setCircle(12, -12, -12);
         this.body.setMaxVelocity(this.speed);
+        this.body.setAcceleration(0, 0);
 
         this.targetX = x;
         this.targetY = y;
         this.wanderTimer = 0;
         this.wanderInterval = Phaser.Math.Between(3000, 6000);
         this.mode = 'patrol';
-        this.sparkTimer = 0;
 
         this.pickNewTarget();
     }
@@ -89,91 +99,34 @@ export default class NPCShip {
         this.type = 'fighter';
     }
 
-    drawShip() {
-        this.sprite.clear();
-        if (this.type === 'trader') {
-            this.sprite.fillStyle(0x4a7cff, 1);
-            this.sprite.fillRect(-10, -8, 20, 16);
-            this.sprite.fillRect(-5, -14, 10, 6);
-            this.sprite.fillStyle(0xaaccff, 1);
-            this.sprite.fillCircle(0, 0, 3);
-            this.sprite.lineStyle(1, 0xffffff, 0.5);
-            this.sprite.strokeRect(-10, -8, 20, 16);
-        } else {
-            const scale = this.archetypeId === 'warmaster' ? 1.35
-                : this.archetypeId === 'ace' ? 1.2
-                    : 1;
-            this.sprite.fillStyle(this.color, 1);
-            this.sprite.fillTriangle(0, -16 * scale, -10 * scale, 12 * scale, 10 * scale, 12 * scale);
-            this.sprite.fillStyle(0xffcc66, 1);
-            this.sprite.fillCircle(0, -2, 3 * scale);
-            this.sprite.lineStyle(1, 0xffffff, 0.6);
-            this.sprite.strokeTriangle(0, -16 * scale, -10 * scale, 12 * scale, 10 * scale, 12 * scale);
-            if (this.abilities.includes('decoy')) {
-                this.sprite.lineStyle(2, 0xff66aa, 0.7);
-                this.sprite.strokeCircle(0, 0, 18 * scale);
-            }
-        }
-        this.redrawDamage();
-    }
-
-    redrawDamage() {
-        this.damageFx.clear();
-        if (!this.alive) return;
-
+    refreshDamageVisual() {
         const missing = this.maxHits - this.hits;
-        if (missing <= 0 && !this.disabled) return;
-
         if (this.disabled) {
-            this.sprite.clear();
-            this.sprite.fillStyle(0x444444, 1);
-            if (this.type === 'trader') {
-                this.sprite.fillRect(-10, -8, 20, 16);
-            } else {
-                this.sprite.fillTriangle(0, -16, -10, 12, 10, 12);
-            }
-            this.damageFx.fillStyle(0xff6600, 0.9);
-            this.damageFx.fillCircle(-4, 2, 2);
-            this.damageFx.fillStyle(0xffaa00, 0.7);
-            this.damageFx.fillCircle(5, -3, 1.5);
-            this.damageFx.lineStyle(1, 0x222222, 0.8);
-            this.damageFx.lineBetween(-8, -6, 8, 8);
+            this.sprite.setTexture('shipWreck');
+            this.sprite.clearTint();
+            this.scorch.setVisible(true);
+            this.critRing.setVisible(false);
             return;
         }
-
-        for (let i = 0; i < missing; i++) {
-            const ox = -6 + i * 5;
-            const oy = 2 + (i % 2) * 3;
-            this.damageFx.fillStyle(0x222222, 0.85);
-            this.damageFx.fillCircle(ox, oy, 2.5);
-            this.damageFx.fillStyle(0xff8800, 0.55);
-            this.damageFx.fillCircle(ox + 1, oy - 1, 1.2);
-        }
-
-        if (this.hits === 1) {
-            this.damageFx.lineStyle(2, 0xff2222, 0.9);
-            this.damageFx.strokeCircle(0, 0, 18);
-        }
+        this.scorch.setVisible(missing > 0);
+        this.scorch.setAlpha(0.4 + missing * 0.2);
+        this.critRing.setVisible(this.hits === 1);
+        this.container.setAlpha(this.hits === 1 ? 0.85 : 1);
     }
 
     pickNewTarget() {
-        const worldSize = 10000;
-        const centerX = worldSize / 2;
-        const centerY = worldSize / 2;
         const angle = Math.random() * Math.PI * 2;
         const distance = Math.random() * 2000;
-        this.targetX = centerX + Math.cos(angle) * distance;
-        this.targetY = centerY + Math.sin(angle) * distance;
+        this.targetX = 5000 + Math.cos(angle) * distance;
+        this.targetY = 5000 + Math.sin(angle) * distance;
     }
 
     pickFleeTarget(player) {
         const dx = this.container.x - player.getX();
         const dy = this.container.y - player.getY();
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        this.targetX = this.container.x + (dx / len) * 1400;
-        this.targetY = this.container.y + (dy / len) * 1400;
-        this.targetX = Phaser.Math.Clamp(this.targetX, 200, 9800);
-        this.targetY = Phaser.Math.Clamp(this.targetY, 200, 9800);
+        this.targetX = Phaser.Math.Clamp(this.container.x + (dx / len) * 1400, 200, 9800);
+        this.targetY = Phaser.Math.Clamp(this.container.y + (dy / len) * 1400, 200, 9800);
     }
 
     notifyFlee() {
@@ -189,9 +142,8 @@ export default class NPCShip {
         if (this.disabled) {
             this.body.setVelocity(this.body.velocity.x * 0.98, this.body.velocity.y * 0.98);
             this.sparkTimer += delta;
-            if (this.sparkTimer > 180) {
+            if (this.sparkTimer > 280) {
                 this.sparkTimer = 0;
-                this.redrawDamage();
                 this.container.setAlpha(0.55 + Math.random() * 0.35);
             }
             return;
@@ -263,7 +215,6 @@ export default class NPCShip {
         const pattern = this.pattern;
 
         if (pattern === 'straight') {
-            // Teach: slow chase + sparse shots
             if (dist > this.idealRange) {
                 vx = (dx / dist) * this.speed;
                 vy = (dy / dist) * this.speed;
@@ -283,12 +234,9 @@ export default class NPCShip {
             vx += -Math.sin(angleToPlayer) * weave;
             vy += Math.cos(angleToPlayer) * weave;
         } else if (pattern === 'flank') {
-            // Prefer side angles — unexpected approach
             const preferred = angleToPlayer + this.strafeDir * (Math.PI / 2.4);
-            const fx = Math.cos(preferred);
-            const fy = Math.sin(preferred);
-            const orbitX = px + fx * this.idealRange;
-            const orbitY = py + fy * this.idealRange;
+            const orbitX = px + Math.cos(preferred) * this.idealRange;
+            const orbitY = py + Math.sin(preferred) * this.idealRange;
             const odx = orbitX - this.container.x;
             const ody = orbitY - this.container.y;
             const od = Math.sqrt(odx * odx + ody * ody) || 1;
@@ -327,7 +275,6 @@ export default class NPCShip {
                 this.strafeTimer = 0;
             }
         } else {
-            // Default strafe orbit (raiders)
             if (this.strafeTimer > 1400) {
                 this.strafeDir *= -1;
                 this.strafeTimer = 0;
@@ -346,7 +293,6 @@ export default class NPCShip {
         this.body.setVelocity(vx, vy);
         this.container.setRotation(angleToPlayer + Math.PI / 2);
 
-        // Warmaster mine drop (area denial — new verb, not more HP)
         if (this.abilities.includes('mine') && this.mineCooldown <= 0 && dist < 380) {
             this.mineCooldown = 4200;
             if (this.scene.spawnEnemyMine) {
@@ -383,14 +329,11 @@ export default class NPCShip {
         return true;
     }
 
-    /**
-     * @returns {'hit'|'critical'|'disabled'|false}
-     */
     takeDamage(amount = 1) {
         if (!this.alive || this.disabled) return false;
 
         this.hits -= amount;
-        this.redrawDamage();
+        this.refreshDamageVisual();
         this.container.setAlpha(0.45);
         this.scene.time.delayedCall(70, () => {
             if (this.alive && this.container.active && !this.disabled) {
@@ -422,7 +365,7 @@ export default class NPCShip {
         this.body.setAcceleration(0, 0);
         this.body.setMaxVelocity(40);
         this.body.setVelocity(this.body.velocity.x * 0.3, this.body.velocity.y * 0.3);
-        this.redrawDamage();
+        this.refreshDamageVisual();
         this.container.setAlpha(0.75);
         this.container.setDepth(40);
         if (this.scene.onEnemyDisabled) this.scene.onEnemyDisabled(this);

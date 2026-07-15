@@ -9,6 +9,7 @@ import RemotePlayer from '../entities/RemotePlayer.js';
 import { getSystem, linkedSystems, pickMission, SYSTEMS } from '../data/galaxy.js';
 import { DEFEND_WAVES } from '../data/defendWaves.js';
 import { HARVEST_REWARDS } from '../data/weapons.js';
+import { ensureGameTextures } from '../utils/Textures.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -23,6 +24,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     create() {
+        ensureGameTextures(this);
+
         this.worldSize = 10000;
         this.center = this.worldSize / 2;
         this.physics.world.setBounds(0, 0, this.worldSize, this.worldSize);
@@ -35,6 +38,10 @@ export default class GameScene extends Phaser.Scene {
         this.mapOpen = false;
         this.hyperspaceOpen = false;
         this.visitedSystems = new Set(['sol']);
+        this.lastHudUpdate = 0;
+        this.lastHudKey = '';
+        this.markerPool = [];
+        this.shipMarkerLabels = [];
 
         this.worldGraphics = [];
         this.npcs = [];
@@ -63,9 +70,10 @@ export default class GameScene extends Phaser.Scene {
         this.mines = [];
 
         this.player = new Player(this, this.center - 800, this.center);
-        this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
+        this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
         this.cameras.main.setBounds(0, 0, this.worldSize, this.worldSize);
         this.cameras.main.setZoom(1);
+        this.cameras.main.roundPixels = true;
 
         this.setupTouchControls();
         this.gamepad = new GamepadControls(this);
@@ -398,7 +406,7 @@ export default class GameScene extends Phaser.Scene {
     createStarField(worldSize, color = 0xffffff) {
         const stars = this.add.graphics();
         stars.setDepth(-100);
-        for (let i = 0; i < 160; i++) {
+        for (let i = 0; i < 90; i++) {
             const x = Phaser.Math.Between(0, worldSize);
             const y = Phaser.Math.Between(0, worldSize);
             const size = Phaser.Math.FloatBetween(0.7, 1.8);
@@ -494,12 +502,18 @@ export default class GameScene extends Phaser.Scene {
     }
 
     createHUD() {
-        this.hudText = this.add.text(12, 12, '', {
-            fontSize: '14px',
+        // Static panel — never recreate Text backgrounds every frame (Safari killer)
+        this.hudPanel = this.add.rectangle(12, 12, 420, 210, 0x001408, 0.72)
+            .setOrigin(0, 0)
+            .setScrollFactor(0)
+            .setDepth(1999)
+            .setStrokeStyle(1, 0x1a4a28, 0.8);
+
+        this.hudText = this.add.text(22, 20, '', {
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: '13px',
             fill: '#c8ffd8',
-            backgroundColor: '#001408aa',
-            padding: { x: 10, y: 8 },
-            lineSpacing: 4
+            lineSpacing: 3
         }).setScrollFactor(0).setDepth(2000);
 
         this.toastText = this.add.text(this.scale.width / 2, 70, '', {
@@ -1326,16 +1340,38 @@ export default class GameScene extends Phaser.Scene {
     }
 
     createEdgeMarkers() {
-        this.markerLayer = this.add.graphics().setScrollFactor(0).setDepth(1800);
+        this.markerLabels = {
+            planet: this.add.text(0, 0, 'PLANET', { fontSize: '10px', fill: '#88bbff' })
+                .setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0),
+            station: this.add.text(0, 0, 'STATION', { fontSize: '10px', fill: '#9dffb0' })
+                .setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0)
+        };
+        this.shipMarkerLabels = [];
+        this.markerPool = [];
+    }
+
+    acquireMarker() {
+        let m = this.markerPool.find((img) => !img.activeUse);
+        if (!m) {
+            m = this.add.image(0, 0, 'edgeMarker')
+                .setScrollFactor(0)
+                .setDepth(1800)
+                .setOrigin(0.5, 0.85);
+            this.markerPool.push(m);
+        }
+        m.activeUse = true;
+        m.setActive(true).setVisible(true);
+        return m;
     }
 
     isOnScreen(worldX, worldY, pad = 40) {
         const cam = this.cameras.main;
+        const view = cam.worldView;
         return (
-            worldX > cam.worldView.x - pad &&
-            worldX < cam.worldView.x + cam.worldView.width + pad &&
-            worldY > cam.worldView.y - pad &&
-            worldY < cam.worldView.y + cam.worldView.height + pad
+            worldX > view.x - pad &&
+            worldX < view.x + view.width + pad &&
+            worldY > view.y - pad &&
+            worldY < view.y + view.height + pad
         );
     }
 
@@ -1343,8 +1379,9 @@ export default class GameScene extends Phaser.Scene {
         const cam = this.cameras.main;
         const cx = this.scale.width / 2;
         const cy = this.scale.height / 2;
-        const sx = (worldX - cam.worldView.x) / cam.zoom;
-        const sy = (worldY - cam.worldView.y) / cam.zoom;
+        const view = cam.worldView;
+        const sx = (worldX - view.x) / cam.zoom;
+        const sy = (worldY - view.y) / cam.zoom;
         const dx = sx - cx;
         const dy = sy - cy;
         const angle = Math.atan2(dy, dx);
@@ -1371,46 +1408,46 @@ export default class GameScene extends Phaser.Scene {
         return { x: cx + ex, y: cy + ey, angle };
     }
 
-    drawEdgeMarker(g, x, y, angle, color, size = 10) {
-        const tipX = x + Math.cos(angle) * size;
-        const tipY = y + Math.sin(angle) * size;
-        const leftX = x + Math.cos(angle + 2.5) * size * 0.7;
-        const leftY = y + Math.sin(angle + 2.5) * size * 0.7;
-        const rightX = x + Math.cos(angle - 2.5) * size * 0.7;
-        const rightY = y + Math.sin(angle - 2.5) * size * 0.7;
-
-        g.fillStyle(color, 0.95);
-        g.fillTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
-        g.lineStyle(1, 0xffffff, 0.35);
-        g.strokeTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
+    placeEdgeMarker(x, y, angle, color, size = 10) {
+        const m = this.acquireMarker();
+        m.setPosition(x, y);
+        m.setRotation(angle + Math.PI / 2);
+        m.setTint(color);
+        m.setScale(size / 14);
+        return m;
     }
 
     updateEdgeMarkers() {
-        const g = this.markerLayer;
-        g.clear();
+        for (const m of this.markerPool) m.activeUse = false;
 
-        if (!this.markerLabels) {
-            this.markerLabels = {
-                planet: this.add.text(0, 0, 'PLANET', { fontSize: '10px', fill: '#88bbff' }).setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0),
-                station: this.add.text(0, 0, 'STATION', { fontSize: '10px', fill: '#9dffb0' }).setOrigin(0.5).setScrollFactor(0).setDepth(1801).setAlpha(0)
-            };
-            this.shipMarkerLabels = [];
+        const hideLabel = (label) => { if (label) label.setAlpha(0); };
+
+        if (this.planet) {
+            if (this.isOnScreen(this.planet.x, this.planet.y, 60)) {
+                hideLabel(this.markerLabels.planet);
+            } else {
+                const edge = this.projectToEdge(this.planet.x, this.planet.y);
+                this.placeEdgeMarker(edge.x, edge.y, edge.angle, 0x66aaff, 12);
+                this.markerLabels.planet.setPosition(
+                    edge.x - Math.cos(edge.angle) * 18,
+                    edge.y - Math.sin(edge.angle) * 18
+                ).setAlpha(0.9);
+            }
         }
 
-        const targets = [];
-        if (this.planet) targets.push({ x: this.planet.x, y: this.planet.y, color: 0x66aaff, size: 12, key: 'planet' });
-        if (this.station) targets.push({ x: this.station.getX(), y: this.station.getY(), color: 0x44ff88, size: 11, key: 'station' });
-
-        for (const t of targets) {
-            const label = this.markerLabels[t.key];
-            if (this.isOnScreen(t.x, t.y, 60)) {
-                label.setAlpha(0);
-                continue;
+        if (this.station) {
+            const sx = this.station.getX();
+            const sy = this.station.getY();
+            if (this.isOnScreen(sx, sy, 60)) {
+                hideLabel(this.markerLabels.station);
+            } else {
+                const edge = this.projectToEdge(sx, sy);
+                this.placeEdgeMarker(edge.x, edge.y, edge.angle, 0x44ff88, 11);
+                this.markerLabels.station.setPosition(
+                    edge.x - Math.cos(edge.angle) * 18,
+                    edge.y - Math.sin(edge.angle) * 18
+                ).setAlpha(0.9);
             }
-            const edge = this.projectToEdge(t.x, t.y);
-            this.drawEdgeMarker(g, edge.x, edge.y, edge.angle, t.color, t.size);
-            label.setPosition(edge.x - Math.cos(edge.angle) * 18, edge.y - Math.sin(edge.angle) * 18);
-            label.setAlpha(0.9);
         }
 
         let labelIdx = 0;
@@ -1418,35 +1455,51 @@ export default class GameScene extends Phaser.Scene {
             if (!npc.alive) continue;
             if (this.isOnScreen(npc.getX(), npc.getY(), 50)) continue;
             const color = npc.disabled ? 0x888888 : (npc.type === 'fighter' ? 0xff5533 : 0x5588ff);
-            const text = npc.disabled ? 'WRECK' : (npc.type === 'fighter' ? (npc.label || `FOE`).toUpperCase().slice(0, 8) : 'TRADE');
-            labelIdx = this.drawShipMarker(labelIdx, npc.getX(), npc.getY(), color, npc.type === 'fighter' ? 10 : 8, text, npc.disabled ? '#aaaaaa' : (npc.type === 'fighter' ? '#ff8866' : '#88aaff'));
+            const text = npc.disabled
+                ? 'WRECK'
+                : (npc.type === 'fighter' ? (npc.label || 'FOE').toUpperCase().slice(0, 8) : 'TRADE');
+            const textColor = npc.disabled ? '#aaaaaa' : (npc.type === 'fighter' ? '#ff8866' : '#88aaff');
+            const edge = this.projectToEdge(npc.getX(), npc.getY());
+            this.placeEdgeMarker(edge.x, edge.y, edge.angle, color, npc.type === 'fighter' ? 10 : 8);
+
+            if (!this.shipMarkerLabels[labelIdx]) {
+                this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
+                    fontSize: '10px',
+                    fill: '#ffffff'
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+            }
+            const lbl = this.shipMarkerLabels[labelIdx];
+            lbl.setText(text);
+            lbl.setColor(textColor);
+            lbl.setPosition(edge.x - Math.cos(edge.angle) * 18, edge.y - Math.sin(edge.angle) * 18);
+            lbl.setAlpha(0.9);
+            labelIdx += 1;
         }
 
-        if (this.remotePlayer && this.remotePlayer.visibleInSystem && !this.isOnScreen(this.remotePlayer.x, this.remotePlayer.y, 50)) {
-            labelIdx = this.drawShipMarker(labelIdx, this.remotePlayer.x, this.remotePlayer.y, 0x33ddff, 10, 'FRIEND', '#99eeff');
+        if (this.remotePlayer && this.remotePlayer.visibleInSystem
+            && !this.isOnScreen(this.remotePlayer.x, this.remotePlayer.y, 50)) {
+            const edge = this.projectToEdge(this.remotePlayer.x, this.remotePlayer.y);
+            this.placeEdgeMarker(edge.x, edge.y, edge.angle, 0x33ddff, 10);
+            if (!this.shipMarkerLabels[labelIdx]) {
+                this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
+                    fontSize: '10px',
+                    fill: '#ffffff'
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+            }
+            const lbl = this.shipMarkerLabels[labelIdx];
+            lbl.setText('FRIEND');
+            lbl.setColor('#99eeff');
+            lbl.setPosition(edge.x - Math.cos(edge.angle) * 18, edge.y - Math.sin(edge.angle) * 18);
+            lbl.setAlpha(0.9);
+            labelIdx += 1;
         }
 
         for (let i = labelIdx; i < this.shipMarkerLabels.length; i++) {
             this.shipMarkerLabels[i].setAlpha(0);
         }
-    }
-
-    drawShipMarker(labelIdx, x, y, color, size, text, textColor) {
-        const edge = this.projectToEdge(x, y);
-        this.drawEdgeMarker(this.markerLayer, edge.x, edge.y, edge.angle, color, size);
-
-        if (!this.shipMarkerLabels[labelIdx]) {
-            this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
-                fontSize: '9px',
-                fill: textColor
-            }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+        for (const m of this.markerPool) {
+            if (!m.activeUse) m.setVisible(false);
         }
-        const lbl = this.shipMarkerLabels[labelIdx];
-        lbl.setText(text);
-        lbl.setColor(textColor);
-        lbl.setPosition(edge.x - Math.cos(edge.angle) * 16, edge.y - Math.sin(edge.angle) * 16);
-        lbl.setAlpha(0.9);
-        return labelIdx + 1;
     }
 
     handleNetMessage(raw) {
@@ -1541,7 +1594,7 @@ export default class GameScene extends Phaser.Scene {
 
         this.player.destroy();
         this.player = new Player(this, this.worldSize / 2 - 800, this.worldSize / 2, snapshot);
-        this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
+        this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
         this.gameOver = false;
         this.dockButton.setText('DOCK');
         this.showToast('Respawned. Upgrades and cargo retained.');
@@ -1550,17 +1603,21 @@ export default class GameScene extends Phaser.Scene {
     update(time, delta) {
         if (!this.player || !this.station) return;
 
+        // Clamp huge frame spikes (tab backgrounded) so physics doesn't hitch
+        const safeDelta = Math.min(delta, 50);
         const pad = this.gamepad ? this.gamepad.poll() : null;
 
         if (!this.gameOver && !this.isDocked && !this.mapOpen && !this.hyperspaceOpen) {
-            this.player.update(delta, this.leftJoystick, this.rightJoystick, this.keys, pad);
+            this.player.update(safeDelta, this.leftJoystick, this.rightJoystick, this.keys, pad);
             if (this.fireKey.isDown || (pad && pad.fire)) this.fireWeapon();
         }
 
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
 
         if (!this.isDocked) {
-            this.npcs.forEach((npc) => npc.update(time, delta, this.player));
+            for (let i = 0; i < this.npcs.length; i++) {
+                this.npcs[i].update(time, safeDelta, this.player);
+            }
             if (!this.gameOver) {
                 this.handleCombat();
                 this.updateMines();
@@ -1570,8 +1627,12 @@ export default class GameScene extends Phaser.Scene {
             this.processHarvestQueue();
         }
 
-        if (this.remotePlayer) this.remotePlayer.update(delta);
-        this.updateEdgeMarkers();
+        if (this.remotePlayer) this.remotePlayer.update(safeDelta);
+
+        // Edge markers every other frame — labels don't need 60Hz
+        this._markerFrame = (this._markerFrame || 0) + 1;
+        if (this._markerFrame % 2 === 0) this.updateEdgeMarkers();
+
         this.updateActionButtonVisibility(inDockingRange);
         this.sendState(time);
 
@@ -1589,7 +1650,11 @@ export default class GameScene extends Phaser.Scene {
             this.toastText.setAlpha(0);
         }
 
-        this.updateHUD(inDockingRange, pad);
+        // HUD text at ~10Hz — setText every frame recreates canvas glyphs on Safari
+        if (time - this.lastHudUpdate > 100) {
+            this.lastHudUpdate = time;
+            this.updateHUD(inDockingRange, pad);
+        }
     }
 
     updateActionButtonVisibility(inDockingRange) {
@@ -1625,7 +1690,7 @@ export default class GameScene extends Phaser.Scene {
         const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
         const weapon = this.player.getWeapon();
 
-        this.hudText.setText([
+        const lines = [
             `${system.name}   Credits: ${p.credits}   Kills: ${p.kills}`,
             room,
             friend,
@@ -1638,7 +1703,11 @@ export default class GameScene extends Phaser.Scene {
             foe ? `Foe: ${foe.label || foe.type} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Sky clear' : 'Awaiting hostiles...'),
             'KB: WASD turn/thrust · J right / K left · Space fire · E dock · H jump · M map',
             this.isDocked ? 'DOCKED [E / X undock]' : (inDockingRange ? 'In docking range [E / X]' : (this.isNearHyperspaceEdge() ? 'Hyperspace edge [H / Y]' : ''))
-        ].filter(Boolean).join('\n'));
+        ].filter(Boolean).join('\n');
+
+        if (lines === this.lastHudKey) return;
+        this.lastHudKey = lines;
+        this.hudText.setText(lines);
     }
 
     onResize(gameSize) {

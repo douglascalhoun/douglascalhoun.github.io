@@ -10,6 +10,8 @@ import { getSystem, linkedSystems, pickMission, SYSTEMS } from '../data/galaxy.j
 import { DEFEND_WAVES } from '../data/defendWaves.js';
 import { HARVEST_REWARDS } from '../data/weapons.js';
 import { ensureGameTextures } from '../utils/Textures.js';
+import MultiplayerClient, { WORLD_ROOM } from '../net/MultiplayerClient.js';
+import { powerFromPlayer, summarizeFleet, recipeForFleet, targetHostileCount } from '../net/WorldDirector.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -21,6 +23,7 @@ export default class GameScene extends Phaser.Scene {
         this.roomCode = data.roomCode || null;
         this.mp = data.mp || null;
         this.pilotName = data.pilotName || 'Pilot';
+        this.online = Boolean(data.online) || (this.mode !== 'solo' && Boolean(this.mp));
     }
 
     create() {
@@ -33,8 +36,11 @@ export default class GameScene extends Phaser.Scene {
         this.currentSystemId = 'sol';
         this.activeMission = null;
         this.offeredMission = null;
-        this.remotePlayer = null;
+        this.remotePlayers = new Map();
         this.lastNetSend = 0;
+        this.fleetWaveIndex = 0;
+        this.lastFleetKey = '';
+        this.reconnecting = false;
         this.mapOpen = false;
         this.hyperspaceOpen = false;
         this.visitedSystems = new Set(['sol']);
@@ -111,6 +117,69 @@ export default class GameScene extends Phaser.Scene {
 
         this.setupMultiplayer();
         this.loadSystem('sol');
+        this.broadcastHello();
+
+        const room = this.isMultiplayer()
+            ? (this.online ? ` · SOL ONLINE (${this.roomCode})` : ` · Room ${this.roomCode}`)
+            : '';
+        this.showToast(
+            this.online
+                ? `SOL ONLINE${room} · pilots share this system · raids scale to the fleet`
+                : `NAVAL ACTION!${room} · Mouse helm · WASD sail · Q/R broadsides`,
+            6200
+        );
+    }
+
+    setupMultiplayer() {
+        if (!this.mp) return;
+
+        this.mp.onData = (data) => this.handleNetMessage(data);
+        this.mp.onPeer = (info) => {
+            const n = info?.pilotCount || this.mp.pilotCount();
+            this.showToast(`Pilot linked · ${n} in system`, 2200);
+            this.broadcastHello();
+            this.retuneFleetEncounters(true);
+        };
+        this.mp.onPeerLeave = (peerId) => {
+            const remote = this.remotePlayers.get(peerId);
+            if (remote) {
+                this.showToast(`${remote.name} left Sol`, 2000);
+                remote.destroy();
+                this.remotePlayers.delete(peerId);
+            }
+            this.retuneFleetEncounters(true);
+        };
+        this.mp.onClose = async (info) => {
+            this.showToast('Sol Anchor lost — reclaiming world…', 2800);
+            for (const r of this.remotePlayers.values()) r.destroy();
+            this.remotePlayers.clear();
+            if (info?.reason === 'anchor_left' && this.online && !this.reconnecting) {
+                this.reconnecting = true;
+                try {
+                    await this.mp.destroy();
+                    const result = await this.mp.enterWorld(this.roomCode || WORLD_ROOM);
+                    this.mode = result.mode;
+                    this.roomCode = result.roomCode;
+                    this.setupMultiplayer();
+                    this.broadcastHello();
+                    this.showToast(
+                        result.mode === 'host' ? 'You are the new Sol Anchor' : 'Rejoined Sol traffic',
+                        2600
+                    );
+                } catch (err) {
+                    this.showToast(`Reconnect failed: ${err.message || err}`, 4000);
+                }
+                this.reconnecting = false;
+            }
+        };
+    }
+
+    isMultiplayer() {
+        return this.mode !== 'solo' && this.mp;
+    }
+
+    broadcastHello() {
+        if (!this.player) return;
         this.sendNet({
             type: 'hello',
             name: this.pilotName,
@@ -119,43 +188,71 @@ export default class GameScene extends Phaser.Scene {
             y: this.player.getY(),
             rotation: this.player.getRotation(),
             shields: this.player.shields,
-            hull: this.player.hull
+            hull: this.player.hull,
+            power: powerFromPlayer(this.player)
         });
-
-        const room = this.isMultiplayer() ? ` · Room ${this.roomCode}` : '';
-        this.showToast(`NAVAL ACTION!${room} · Mouse helm · WASD sail · Q/R broadsides · Space auto-volley`, 6200);
-    }
-
-    setupMultiplayer() {
-        if (!this.mp) return;
-
-        this.mp.onData = (data) => this.handleNetMessage(data);
-        this.mp.onPeer = () => {
-            this.showToast('Friend connected.', 2200);
-            this.sendNet({
-                type: 'hello',
-                name: this.pilotName,
-                systemId: this.currentSystemId,
-                x: this.player.getX(),
-                y: this.player.getY(),
-                rotation: this.player.getRotation(),
-                shields: this.player.shields,
-                hull: this.player.hull
-            });
-        };
-        this.mp.onClose = () => {
-            this.showToast('Friend disconnected.', 2600);
-            if (this.remotePlayer) this.remotePlayer.setInSystem(false);
-        };
-    }
-
-    isMultiplayer() {
-        return this.mode !== 'solo' && this.mp;
     }
 
     sendNet(data) {
         if (!this.mp) return;
         this.mp.send(data);
+    }
+
+    getFleet() {
+        return summarizeFleet(powerFromPlayer(this.player), this.remotePlayers);
+    }
+
+    retuneFleetEncounters(force = false) {
+        if (!this.online || this.currentSystemId !== 'sol') return;
+        const fleet = this.getFleet();
+        const key = `${fleet.pilots}:${Math.round(fleet.avg)}`;
+        if (!force && key === this.lastFleetKey) return;
+        this.lastFleetKey = key;
+        this.showToast(`Fleet power P${Math.round(fleet.power)} · ${fleet.pilots} pilot${fleet.pilots > 1 ? 's' : ''}`, 2400);
+
+        // Top up hostiles toward fleet target without sponging existing ones
+        const fighters = this.npcs.filter((n) => n.isCombatTarget() && n.type === 'fighter');
+        const want = targetHostileCount(fleet);
+        if (fighters.length < want && !this.pendingWaveSpawn) {
+            this.queueFleetWave(900);
+        }
+    }
+
+    queueFleetWave(delayMs = 1200) {
+        if (this.pendingWaveSpawn) return;
+        this.pendingWaveSpawn = { fleet: true, at: Date.now() + delayMs };
+    }
+
+    spawnFleetWave() {
+        const fleet = this.getFleet();
+        const recipe = recipeForFleet(fleet, this.fleetWaveIndex);
+        this.fleetWaveIndex += 1;
+        this.defendWaveIndex = this.fleetWaveIndex;
+        this.defendWaveIds = new Set();
+
+        const anchorX = this.station ? this.station.getX() : this.center;
+        const anchorY = this.station ? this.station.getY() : this.center;
+        let slot = 0;
+        recipe.spawns.forEach((group) => {
+            for (let i = 0; i < group.count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 580 + slot * 80 + Math.random() * 120;
+                const id = `fleet_${this.fleetWaveIndex}_${group.archetype}_${i}_${Date.now()}`;
+                const foe = new NPCShip(
+                    this,
+                    Phaser.Math.Clamp(anchorX + Math.cos(angle) * dist, 300, this.worldSize - 300),
+                    Phaser.Math.Clamp(anchorY + Math.sin(angle) * dist, 300, this.worldSize - 300),
+                    'fighter',
+                    { archetype: group.archetype, waveId: this.fleetWaveIndex }
+                );
+                foe.defendId = id;
+                this.npcs.push(foe);
+                this.defendWaveIds.add(id);
+                slot += 1;
+            }
+        });
+        this.showToast(recipe.announce, 3600);
+        this.sendNet({ type: 'fleet', fleet, wave: this.fleetWaveIndex, announce: recipe.announce });
     }
 
     loadSystem(systemId) {
@@ -190,25 +287,35 @@ export default class GameScene extends Phaser.Scene {
             system.prices
         );
 
-        // Defend mode in Sol: teach one verb at a time. Other systems keep light traffic.
+        // Sol: solo tutorial waves, or online fleet-scaled raids
         if (this.defendMode && system.id === 'sol') {
             this.spawnDefendTraders();
             this.placePlayerNearStation();
-            this.startDefendWave(0, 1800);
+            if (this.online) {
+                this.fleetWaveIndex = 0;
+                this.queueFleetWave(1600);
+            } else {
+                this.startDefendWave(0, 1800);
+            }
         } else {
             this.spawnNPCs(system.danger);
             this.placePlayerAtSpawn();
         }
 
-        if (this.remotePlayer) {
-            this.remotePlayer.setInSystem(this.remotePlayer.systemId === this.currentSystemId);
+        for (const remote of this.remotePlayers.values()) {
+            remote.setInSystem(remote.systemId === this.currentSystemId);
         }
 
-        const toast = this.defendMode && system.id === 'sol'
-            ? `Entered ${system.name} — DEFEND THE STATION`
+        const toast = system.id === 'sol'
+            ? (this.online ? `Entered ${system.name} — SOL ONLINE` : `Entered ${system.name} — DEFEND THE STATION`)
             : `Entered ${system.name} — ${system.blurb}`;
         this.showToast(toast, 3200);
-        this.sendNet({ type: 'system', systemId: this.currentSystemId, name: this.pilotName });
+        this.sendNet({
+            type: 'system',
+            systemId: this.currentSystemId,
+            name: this.pilotName,
+            power: powerFromPlayer(this.player)
+        });
     }
 
     clearWorldObjects() {
@@ -316,10 +423,17 @@ export default class GameScene extends Phaser.Scene {
         if (!this.defendMode || this.defendComplete) return;
         if (npc.waveId == null) return;
 
+        if (this.online) {
+            const waveNpcs = this.npcs.filter((n) => n.waveId === npc.waveId && n.alive);
+            const allRunningOrDown = waveNpcs.every((n) => n.hasFled || n.disabled);
+            if (!allRunningOrDown || this.pendingWaveSpawn) return;
+            this.queueFleetWave(1400);
+            return;
+        }
+
         const wave = DEFEND_WAVES[this.defendWaveIndex];
         if (!wave || npc.waveId !== wave.id) return;
 
-        // Nintendo-style: when the current pack all "run", introduce the next verb
         const waveNpcs = this.npcs.filter((n) => n.waveId === wave.id && n.alive);
         const allRunningOrDown = waveNpcs.every((n) => n.hasFled || n.disabled);
         if (!allRunningOrDown) return;
@@ -352,6 +466,7 @@ export default class GameScene extends Phaser.Scene {
             this.player.grantHarvestReward(reward);
             this.player.credits += Math.floor(npc.bounty * 0.5);
             this.showToast(reward.toast, 3200);
+            if (this.online) this.retuneFleetEncounters(true);
 
             // Remove inert wreck after salvage
             this.time.delayedCall(400, () => {
@@ -522,7 +637,7 @@ export default class GameScene extends Phaser.Scene {
 
     createHUD() {
         // Static panel — never recreate Text backgrounds every frame (Safari killer)
-        this.hudPanel = this.add.rectangle(12, 12, 460, 230, 0x001408, 0.72)
+        this.hudPanel = this.add.rectangle(12, 12, 480, 245, 0x001408, 0.72)
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(1999)
@@ -1451,9 +1566,10 @@ export default class GameScene extends Phaser.Scene {
     maybeRespawnNPCs() {
         if (this.defendMode && this.currentSystemId === 'sol') {
             if (this.pendingWaveSpawn && Date.now() >= this.pendingWaveSpawn.at) {
-                const idx = this.pendingWaveSpawn.index;
+                const pending = this.pendingWaveSpawn;
                 this.pendingWaveSpawn = null;
-                this.spawnDefendWave(idx);
+                if (pending.fleet || this.online) this.spawnFleetWave();
+                else this.spawnDefendWave(pending.index);
             }
             this.processHarvestQueue();
             this.npcs = this.npcs.filter((n) => n.alive);
@@ -1631,9 +1747,10 @@ export default class GameScene extends Phaser.Scene {
             labelIdx += 1;
         }
 
-        if (this.remotePlayer && this.remotePlayer.visibleInSystem
-            && !this.isOnScreen(this.remotePlayer.x, this.remotePlayer.y, 50)) {
-            const edge = this.projectToEdge(this.remotePlayer.x, this.remotePlayer.y);
+        for (const remote of this.remotePlayers.values()) {
+            if (!remote.visibleInSystem) continue;
+            if (this.isOnScreen(remote.x, remote.y, 50)) continue;
+            const edge = this.projectToEdge(remote.x, remote.y);
             this.placeEdgeMarker(edge.x, edge.y, edge.angle, 0x33ddff, 10);
             if (!this.shipMarkerLabels[labelIdx]) {
                 this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
@@ -1642,7 +1759,7 @@ export default class GameScene extends Phaser.Scene {
                 }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
             }
             const lbl = this.shipMarkerLabels[labelIdx];
-            lbl.setText('FRIEND');
+            lbl.setText((remote.name || 'PILOT').slice(0, 8).toUpperCase());
             lbl.setColor('#99eeff');
             lbl.setPosition(edge.x - Math.cos(edge.angle) * 18, edge.y - Math.sin(edge.angle) * 18);
             lbl.setAlpha(0.9);
@@ -1667,18 +1784,16 @@ export default class GameScene extends Phaser.Scene {
             }
         }
         if (!data || typeof data !== 'object') return;
+        // Ignore our own echoed packets
+        if (data.fromId && this.mp?.localId && data.fromId === this.mp.localId) return;
 
         if (data.type === 'hello' || data.type === 'state') {
-            this.ensureRemotePlayer(data);
-            this.remotePlayer.applyState({
-                name: data.name,
-                x: data.x ?? this.remotePlayer.x,
-                y: data.y ?? this.remotePlayer.y,
-                rotation: data.rotation ?? this.remotePlayer.rotation,
-                systemId: data.systemId || this.remotePlayer.systemId,
-                shields: data.shields,
-                hull: data.hull
-            });
+            const remote = this.ensureRemotePlayer(data);
+            remote.applyState(data);
+            if (data.type === 'hello') {
+                this.showToast(`${data.name || 'Pilot'} entered the system`, 1800);
+                this.retuneFleetEncounters(true);
+            }
             return;
         }
 
@@ -1688,28 +1803,50 @@ export default class GameScene extends Phaser.Scene {
             return;
         }
 
+        if (data.type === 'fleet') {
+            // Soft sync: if we're quiet, adopt their wave pressure
+            if (data.announce && data.wave > this.fleetWaveIndex) {
+                this.fleetWaveIndex = data.wave;
+            }
+            return;
+        }
+
         if (data.type === 'hyperspace' || data.type === 'system') {
-            this.ensureRemotePlayer(data);
-            const systemId = data.systemId || this.remotePlayer.systemId;
-            this.remotePlayer.systemId = systemId;
-            this.remotePlayer.setInSystem(systemId === this.currentSystemId);
-            const name = data.name || this.remotePlayer.name || 'Friend';
-            this.showToast(`${name} jumped to ${getSystem(systemId).name}`, 2200);
+            const remote = this.ensureRemotePlayer(data);
+            const systemId = data.systemId || remote.systemId;
+            remote.systemId = systemId;
+            remote.power = data.power ?? remote.power;
+            remote.setInSystem(systemId === this.currentSystemId);
+            const name = data.name || remote.name || 'Pilot';
+            this.showToast(`${name} → ${getSystem(systemId).name}`, 2200);
+            this.retuneFleetEncounters(true);
         }
     }
 
     ensureRemotePlayer(data = {}) {
-        if (this.remotePlayer) return;
-        this.remotePlayer = new RemotePlayer(this, {
-            name: data.name || 'Friend',
-            systemId: data.systemId || this.currentSystemId,
-            x: data.x ?? this.center + 100,
-            y: data.y ?? this.center,
-            rotation: data.rotation || 0,
-            shields: data.shields,
-            hull: data.hull
-        });
-        this.remotePlayer.setInSystem(this.remotePlayer.systemId === this.currentSystemId);
+        const id = data.fromId || data.id || data.name || 'unknown';
+        let remote = this.remotePlayers.get(id);
+        if (!remote) {
+            // Spread new arrivals around the station so they don't stack
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 180 + Math.random() * 220;
+            const sx = (this.station ? this.station.getX() : this.center) + Math.cos(angle) * dist;
+            const sy = (this.station ? this.station.getY() : this.center) + Math.sin(angle) * dist;
+            remote = new RemotePlayer(this, {
+                id,
+                name: data.name || 'Pilot',
+                systemId: data.systemId || this.currentSystemId,
+                x: data.x ?? sx,
+                y: data.y ?? sy,
+                rotation: data.rotation || 0,
+                shields: data.shields,
+                hull: data.hull,
+                power: data.power ?? 1
+            });
+            this.remotePlayers.set(id, remote);
+        }
+        remote.setInSystem((data.systemId || remote.systemId) === this.currentSystemId);
+        return remote;
     }
 
     sendState(time) {
@@ -1724,7 +1861,8 @@ export default class GameScene extends Phaser.Scene {
             rotation: this.player.getRotation(),
             systemId: this.currentSystemId,
             shields: this.player.shields,
-            hull: this.player.hull
+            hull: this.player.hull,
+            power: powerFromPlayer(this.player)
         });
     }
 
@@ -1788,7 +1926,9 @@ export default class GameScene extends Phaser.Scene {
             this.processHarvestQueue();
         }
 
-        if (this.remotePlayer) this.remotePlayer.update(safeDelta);
+        for (const remote of this.remotePlayers.values()) {
+            remote.update(safeDelta);
+        }
 
         // Edge markers every other frame — labels don't need 60Hz
         this._markerFrame = (this._markerFrame || 0) + 1;
@@ -1837,28 +1977,33 @@ export default class GameScene extends Phaser.Scene {
         const u = p.upgrades;
         const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
         const system = getSystem(this.currentSystemId);
+        const fleet = this.online ? this.getFleet() : null;
         const mission = this.defendMode && this.currentSystemId === 'sol'
-            ? (this.defendComplete
-                ? 'Mission: Station defended — salvage & explore!'
-                : `Mission: DEFEND THE STATION — Wave ${Math.min(this.defendWaveIndex + 1, DEFEND_WAVES.length)}/${DEFEND_WAVES.length}`)
+            ? (this.online
+                ? `Sol Online · fleet wave ${this.fleetWaveIndex || 1} · target ${fleet ? targetHostileCount(fleet) : 1} hostiles`
+                : (this.defendComplete
+                    ? 'Mission: Station defended — salvage & explore!'
+                    : `Mission: DEFEND THE STATION — Wave ${Math.min(this.defendWaveIndex + 1, DEFEND_WAVES.length)}/${DEFEND_WAVES.length}`))
             : (this.activeMission
                 ? `Mission: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
                 : 'Mission: none');
-        const friend = this.remotePlayer
-            ? `Friend: ${this.remotePlayer.name} @ ${getSystem(this.remotePlayer.systemId).name}`
-            : (this.isMultiplayer() ? 'Friend: waiting...' : '');
-        const room = this.isMultiplayer() ? `Room: ${this.roomCode}` : '';
+        const pilotsOnline = this.isMultiplayer()
+            ? `Pilots: ${1 + this.remotePlayers.size}${fleet ? ` · Fleet P${Math.round(fleet.power)} (avg ${fleet.avg.toFixed(1)})` : ''}`
+            : '';
+        const room = this.isMultiplayer()
+            ? `${this.online ? 'World' : 'Room'}: ${this.roomCode}${this.mode === 'host' ? ' [ANCHOR]' : ''}`
+            : '';
         const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
         const weapon = this.player.getWeapon();
 
         const lines = [
             `${system.name}   Credits: ${p.credits}   Kills: ${p.kills}`,
             room,
-            friend,
+            pilotsOnline,
             padStatus,
             `Shields: ${Math.round(p.shields)} / ${p.maxShields}`,
             `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Battery: ${weapon.label}   Reload ${p.reloadMs}ms`,
+            `Battery: ${weapon.label}   Reload ${p.reloadMs}ms   Power ${powerFromPlayer(p)}`,
             `PORT [${this.reloadBar(p.sideReloadFrac('port'))}]  STARBOARD [${this.reloadBar(p.sideReloadFrac('starboard'))}]`,
             `Cargo ${p.getCargoUsed()}/${p.cargoCapacity}   Crew/Upgrades E${u.engines} S${u.shields} H${u.hull} G${u.weapons} C${u.cargo}`,
             mission,
@@ -1912,7 +2057,7 @@ export default class GameScene extends Phaser.Scene {
         this.hideHyperspaceMenu();
         this.hideGalaxyMap();
         this.clearWorldObjects();
-        this.remotePlayer?.destroy();
-        this.remotePlayer = null;
+        for (const r of this.remotePlayers.values()) r.destroy();
+        this.remotePlayers.clear();
     }
 }

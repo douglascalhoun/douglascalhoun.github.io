@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build && node scripts/sync-pages.mjs"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

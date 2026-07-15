@@ -182,6 +182,68 @@ export default class Player {
         return dot >= 0 ? 'starboard' : 'port';
     }
 
+    /**
+     * Broadside train arcs (Age-of-Sail / SoT style):
+     * each battery covers beam ±45° (45° off the bow through 135°).
+     * Returns clamped aim angle, hot side, and whether the cursor sits in-arc.
+     */
+    getBroadsideAim(worldX, worldY) {
+        const facing = this.rotation;
+        const dx = worldX - this.getX();
+        const dy = worldY - this.getY();
+        const dist = Math.hypot(dx, dy);
+        const toCursor = dist < 8 ? facing : Math.atan2(dx, -dy);
+        const rel = Phaser.Math.Angle.Wrap(toCursor - facing);
+
+        const ARC_MIN = Math.PI / 4;       // 45° off the bow
+        const ARC_MAX = (3 * Math.PI) / 4; // 135° (45° abaft the beam)
+
+        const side = rel >= 0 ? 'starboard' : 'port';
+        let aimRel;
+        let inArc;
+        if (side === 'starboard') {
+            aimRel = Phaser.Math.Clamp(rel, ARC_MIN, ARC_MAX);
+            inArc = rel >= ARC_MIN && rel <= ARC_MAX;
+        } else {
+            aimRel = Phaser.Math.Clamp(rel, -ARC_MAX, -ARC_MIN);
+            inArc = rel <= -ARC_MIN && rel >= -ARC_MAX;
+        }
+
+        return {
+            side,
+            aimAngle: facing + aimRel,
+            aimRel,
+            toCursor,
+            rel,
+            inArc,
+            dist,
+            arcMin: ARC_MIN,
+            arcMax: ARC_MAX
+        };
+    }
+
+    /** Clamp a world point onto a forced battery's train arc. */
+    clampAimToSide(worldX, worldY, side) {
+        const facing = this.rotation;
+        const dx = worldX - this.getX();
+        const dy = worldY - this.getY();
+        const toCursor = Math.atan2(dx, -dy);
+        const rel = Phaser.Math.Angle.Wrap(toCursor - facing);
+        const ARC_MIN = Math.PI / 4;
+        const ARC_MAX = (3 * Math.PI) / 4;
+        const aimRel = side === 'starboard'
+            ? Phaser.Math.Clamp(Math.abs(rel) < 1e-6 ? Math.PI / 2 : rel, ARC_MIN, ARC_MAX)
+            : Phaser.Math.Clamp(Math.abs(rel) < 1e-6 ? -Math.PI / 2 : rel, -ARC_MAX, -ARC_MIN);
+        // If forcing port but cursor is deep starboard (or vice versa), snap to pure beam
+        if (side === 'starboard' && rel < 0) {
+            return facing + Math.PI / 2;
+        }
+        if (side === 'port' && rel > 0) {
+            return facing - Math.PI / 2;
+        }
+        return facing + aimRel;
+    }
+
     grantHarvestReward(reward) {
         if (!reward) return null;
         if (reward.kind === 'weapon' && reward.weaponId) {
@@ -247,16 +309,19 @@ export default class Player {
     }
 
     /**
-     * Naval helm: mouse/stick = rudder heading, WASD = sails/thrusters.
-     * Q/R reserved for port/starboard volleys (handled by scene).
+     * Naval helm: mouse both presents a broadside and trains the guns.
+     * When the cursor is abeam, turn to keep that battery on target;
+     * when it's ahead/aft, turn the bow toward the cursor.
      */
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
         const now = this.scene.time.now;
 
         let desiredAngle = null;
+        let turnScale = 1;
         if (aim && aim.hasAim) {
-            desiredAngle = aim.angle;
+            desiredAngle = aim.helmAngle != null ? aim.helmAngle : aim.angle;
+            turnScale = aim.turnRateScale != null ? aim.turnRateScale : 1;
         } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.25) {
             desiredAngle = rightJoystick.getAngle() + Math.PI / 2;
         } else if (pad && pad.hasAim) {
@@ -267,7 +332,7 @@ export default class Player {
             this.rotation = Phaser.Math.Angle.RotateTo(
                 this.rotation,
                 desiredAngle,
-                this.aimTurnRate * dt
+                this.aimTurnRate * turnScale * dt
             );
         } else {
             let rotInput = 0;

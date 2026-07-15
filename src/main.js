@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import LobbyScene from './scenes/LobbyScene.js';
 import GameScene from './scenes/GameScene.js';
 
 const config = {
@@ -40,7 +39,7 @@ const config = {
             overlapBias: 4
         }
     },
-    scene: [LobbyScene, GameScene],
+    scene: [GameScene],
     banner: false
 };
 

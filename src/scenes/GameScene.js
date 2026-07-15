@@ -19,11 +19,14 @@ export default class GameScene extends Phaser.Scene {
     }
 
     init(data = {}) {
-        this.mode = data.mode || 'solo';
-        this.roomCode = data.roomCode || null;
+        // Always drop into the shared Sol MMO — no lobby gate
+        this.pilotName = data.pilotName
+            || localStorage.getItem('spacenova_name')
+            || 'Captain';
+        this.mode = data.mode || 'joining';
+        this.roomCode = data.roomCode || WORLD_ROOM;
         this.mp = data.mp || null;
-        this.pilotName = data.pilotName || 'Pilot';
-        this.online = Boolean(data.online) || (this.mode !== 'solo' && Boolean(this.mp));
+        this.online = true;
     }
 
     create() {
@@ -115,19 +118,83 @@ export default class GameScene extends Phaser.Scene {
         this.scale.on('resize', this.onResize, this);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
 
-        this.setupMultiplayer();
         this.loadSystem('sol');
-        this.broadcastHello();
+        this.showToast('Casting off into Sol Haven — shared aether sea…', 4200);
 
-        const room = this.isMultiplayer()
-            ? (this.online ? ` · SOL ONLINE (${this.roomCode})` : ` · Room ${this.roomCode}`)
-            : '';
-        this.showToast(
-            this.online
-                ? `AETHER ARCHIPELAGO${room} · shared seas · fleet-scaled privateers`
-                : `AETHER SAILS${room} · broadsides · leave the gravity well to jump islands`,
-            6200
-        );
+        if (this.mp) {
+            this.setupMultiplayer();
+            this.broadcastHello();
+            this.showToast(
+                `AETHER ARCHIPELAGO · ${this.roomCode} · sail forth`,
+                5200
+            );
+        } else {
+            this.joinSharedWorld();
+        }
+    }
+
+    async joinSharedWorld() {
+        this.mp = new MultiplayerClient({
+            onStatus: () => {},
+            onPeer: () => {},
+            onData: () => {},
+            onClose: () => {}
+        });
+        try {
+            const result = await this.mp.enterWorld(WORLD_ROOM);
+            this.mode = result.mode;
+            this.roomCode = result.roomCode;
+            this.online = true;
+            this.setupMultiplayer();
+            this.broadcastHello();
+            this.retuneFleetEncounters(true);
+            this.showToast(
+                result.mode === 'host'
+                    ? `You hold the Sol Anchor (${result.roomCode}) — other sails will appear`
+                    : `Underway on ${result.roomCode} — shared seas ahead`,
+                4800
+            );
+        } catch (err) {
+            this.mode = 'solo';
+            this.online = false;
+            this.showToast(
+                `Harbor signal lost (${err.message || err}) — sailing solo until reconnect`,
+                5000
+            );
+            // Retry a few times so late PeerJS / race conditions still land in the MMO
+            this.time.delayedCall(4000, () => {
+                if (!this.isMultiplayer()) this.retrySharedWorld();
+            });
+        }
+    }
+
+    async retrySharedWorld() {
+        if (this.reconnecting || this.isMultiplayer()) return;
+        this.reconnecting = true;
+        try {
+            if (this.mp) await this.mp.destroy();
+            this.mp = new MultiplayerClient({
+                onStatus: () => {},
+                onPeer: () => {},
+                onData: () => {},
+                onClose: () => {}
+            });
+            const result = await this.mp.enterWorld(WORLD_ROOM);
+            this.mode = result.mode;
+            this.roomCode = result.roomCode;
+            this.online = true;
+            this.setupMultiplayer();
+            this.broadcastHello();
+            this.retuneFleetEncounters(true);
+            this.showToast(`Rejoined Sol Haven (${result.roomCode})`, 3200);
+        } catch (_) {
+            this.reconnecting = false;
+            this.time.delayedCall(8000, () => {
+                if (!this.isMultiplayer()) this.retrySharedWorld();
+            });
+            return;
+        }
+        this.reconnecting = false;
     }
 
     setupMultiplayer() {
@@ -175,7 +242,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     isMultiplayer() {
-        return this.mode !== 'solo' && this.mp;
+        return Boolean(this.mp && this.mode !== 'solo' && this.mode !== 'joining');
     }
 
     broadcastHello() {

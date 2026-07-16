@@ -13,6 +13,7 @@ import { ensureGameTextures } from '../utils/Textures.js';
 import MultiplayerClient, { WORLD_ROOM } from '../net/MultiplayerClient.js';
 import { powerFromPlayer, summarizeFleet, recipeForFleet, targetHostileCount } from '../net/WorldDirector.js';
 import { BUILD_ID, BUILD_LABEL } from '../buildInfo.js';
+import { resetQuoteCycle, QUOTE_TOTAL } from '../data/enemyQuotes.js';
 
 const MAX_PLAYER_SHOTS = 8;
 
@@ -34,6 +35,8 @@ export default class GameScene extends Phaser.Scene {
 
     create() {
         ensureGameTextures(this);
+        // Fresh no-repeat pirate shout decks for this session
+        resetQuoteCycle();
 
         this.worldSize = 10000;
         this.center = this.worldSize / 2;
@@ -130,7 +133,7 @@ export default class GameScene extends Phaser.Scene {
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
 
         this.loadSystem('sol');
-        this.showToast(`${BUILD_LABEL} · slow sail · bow-ram foes · lead every shot`, 5200);
+        this.showToast(`${BUILD_LABEL} · ${QUOTE_TOTAL.toLocaleString()} pirate shouts · no mid-fight repeats`, 5200);
 
         if (this.mp) {
             this.setupMultiplayer();

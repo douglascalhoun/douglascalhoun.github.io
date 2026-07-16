@@ -1,7 +1,9 @@
 /**
- * Enemy barks — short philosophy / great sayings matched to mood.
- * Moods rise from combat circumstance (see NPCShip.resolveMood).
+ * Enemy barks — pirate shouts matched to mood.
+ * Pool: ≥10k unique lines (generated). Session cycle = shuffle without replacement
+ * until a mood deck is exhausted, then reshuffle.
  */
+import { QUOTE_POOL, QUOTE_POOL_TOTAL } from './enemyQuotes.pool.js';
 
 export const MOODS = {
     aggressive: {
@@ -26,70 +28,87 @@ export const MOODS = {
     }
 };
 
-export const QUOTES = {
-    aggressive: [
-        'Fortune favors the bold.',
-        'I came, I saw, I conquered.',
-        'The die is cast.',
-        'Si vis pacem, para bellum.',
-        'Cry havoc, and let slip the dogs of war.',
-        'Victory belongs to the most persevering.',
-        'Who dares, wins.',
-        'Aut viam inveniam aut faciam.',
-        'The stronger man wins.',
-        'Strike while the iron is hot.',
-        'Audentes fortuna iuvat.',
-        'No retreat. No surrender.'
-    ],
-    pensive: [
-        'The unexamined life is not worth living.',
-        'I think, therefore I am.',
-        'Know thyself.',
-        'This too shall pass.',
-        'The only true wisdom is knowing you know nothing.',
-        'Man is the measure of all things.',
-        'Time is a created thing.',
-        'We are what we repeatedly do.',
-        'The journey of a thousand miles begins with one step.',
-        'Still waters run deep.',
-        'To be is to be perceived.',
-        'All that is gold does not glitter.'
-    ],
-    fearful: [
-        'The only thing we have to fear is fear itself.',
-        'Cowards die many times before their deaths.',
-        'He who fights and runs away…',
-        'Discretion is the better part of valor.',
-        'Even the brave may tremble.',
-        'Fear is the mind-killer.',
-        'Better a live dog than a dead lion.',
-        'The night is darkest before the dawn.',
-        'Save yourselves!',
-        'I am not afraid of storms… only drowning.',
-        'Run, that you may live.',
-        'Death smiles at us all.'
-    ],
-    upset: [
-        'Et tu, Brute?',
-        'Hell hath no fury…',
-        'I am wrapping myself in misfortune!',
-        'O, I am fortune’s fool!',
-        'The fault, dear Brutus, is not in our stars.',
-        'Rage, rage against the dying of the light.',
-        'I will have such revenges…',
-        'Something is rotten in the state of Denmark.',
-        'This is the way the world ends.',
-        'Not with a bang but a whimper.',
-        'I am become Death…',
-        'My name is Ozymandias, king of kings!'
-    ]
-};
+export const QUOTES = QUOTE_POOL;
+export const QUOTE_TOTAL = QUOTE_POOL_TOTAL;
+
+function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+    }
+    return arr;
+}
+
+/**
+ * Per-mood draw-without-replacement decks for one play session.
+ * Reshuffles only after a mood's full list has been spoken.
+ */
+class QuoteCycle {
+    constructor(pool) {
+        this.pool = pool;
+        this.decks = {};
+        this.cursor = {};
+        this.spoken = {};
+        for (const mood of Object.keys(MOODS)) {
+            this._reshuffle(mood);
+            this.spoken[mood] = 0;
+        }
+    }
+
+    _reshuffle(mood) {
+        const src = this.pool[mood] || this.pool.pensive || [];
+        this.decks[mood] = shuffleInPlace(src.slice());
+        this.cursor[mood] = 0;
+    }
+
+    next(mood) {
+        const key = MOODS[mood] ? mood : 'pensive';
+        if (!this.decks[key] || this.cursor[key] >= this.decks[key].length) {
+            this._reshuffle(key);
+        }
+        const line = this.decks[key][this.cursor[key]];
+        this.cursor[key] += 1;
+        this.spoken[key] += 1;
+        return line;
+    }
+
+    /** Remaining unique lines before a mood reshuffles. */
+    remaining(mood) {
+        const key = MOODS[mood] ? mood : 'pensive';
+        const deck = this.decks[key];
+        if (!deck) return 0;
+        return Math.max(0, deck.length - this.cursor[key]);
+    }
+
+    stats() {
+        const byMood = {};
+        for (const mood of Object.keys(MOODS)) {
+            byMood[mood] = {
+                pool: (this.pool[mood] || []).length,
+                remaining: this.remaining(mood),
+                spoken: this.spoken[mood] || 0
+            };
+        }
+        return { total: QUOTE_POOL_TOTAL, byMood };
+    }
+}
+
+/** One cycle shared by all NPCs for the whole session. */
+export const quoteCycle = new QuoteCycle(QUOTE_POOL);
 
 export function pickQuote(mood) {
-    const list = QUOTES[mood] || QUOTES.pensive;
-    return list[Math.floor(Math.random() * list.length)];
+    return quoteCycle.next(mood);
 }
 
 export function moodColor(mood) {
     return (MOODS[mood] || MOODS.pensive).color;
+}
+
+export function resetQuoteCycle() {
+    for (const mood of Object.keys(MOODS)) {
+        quoteCycle._reshuffle(mood);
+        quoteCycle.spoken[mood] = 0;
+    }
 }

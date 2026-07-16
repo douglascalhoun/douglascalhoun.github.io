@@ -877,7 +877,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Free-aim volley along the smoothly trained gun bearing.
+     * Free-aim volley — fires along trained gunAim (full 360°).
      * @param {'port'|'starboard'|'auto'} side
      */
     fireBroadside(side = 'auto') {
@@ -886,36 +886,35 @@ export default class GameScene extends Phaser.Scene {
         const fireAngle = this.player.gunAim;
         let resolved = side;
         if (side === 'auto') {
-            resolved = this.player.preferSideForGunAim();
+            // Use whichever battery is ready; prefer the side nearest the aim
+            const prefer = this.player.preferSideForGunAim();
+            const other = prefer === 'port' ? 'starboard' : 'port';
+            if (this.player.sideReady(prefer)) resolved = prefer;
+            else if (this.player.sideReady(other)) resolved = other;
+            else return;
+        } else if (!this.player.sideReady(resolved)) {
+            return;
         }
 
-        if (!this.player.sideReady(resolved)) return;
-
         const kit = this.player.getWeapon();
-        const facing = this.player.getRotation();
         const originX = this.player.getX();
         const originY = this.player.getY();
         const muzzle = kit.muzzle || 28;
         const guns = kit.guns || 3;
         const spread = kit.spread || 0.25;
-        const fx = Math.sin(facing);
-        const fy = -Math.cos(facing);
-        const rx = Math.cos(facing);
-        const ry = Math.sin(facing);
         const aimFx = Math.sin(fireAngle);
         const aimFy = -Math.cos(fireAngle);
-        const sideSign = resolved === 'port' ? -1 : 1;
+        // Perpendicular to aim for spreading gun ports across the volley face
+        const acrossX = Math.cos(fireAngle);
+        const acrossY = Math.sin(fireAngle);
 
-        // Ripple the battery — guns speak in sequence along the train
-        const rippleMs = 48;
+        // Ripple the battery along the aim bearing — works bow, beam, or stern
+        const rippleMs = 45;
         for (let i = 0; i < guns; i++) {
             const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
-            const along = t * 36;
-            // Muzzle sits on the hot side, but can also sit near the bow for chase fire
-            const bowBias = Math.cos(Phaser.Math.Angle.Wrap(fireAngle - facing)); // 1 = forward
-            const sidePush = Phaser.Math.Linear(muzzle * 0.35, muzzle, 1 - Math.max(0, bowBias));
-            const sx = originX + fx * along + rx * sideSign * sidePush + aimFx * 6;
-            const sy = originY + fy * along + ry * sideSign * sidePush + aimFy * 6;
+            const across = t * 28;
+            const sx = originX + aimFx * muzzle + acrossX * across;
+            const sy = originY + aimFy * muzzle + acrossY * across;
             const shotAngle = fireAngle + t * spread;
 
             this.time.delayedCall(i * rippleMs, () => {
@@ -1201,17 +1200,12 @@ export default class GameScene extends Phaser.Scene {
         const bow = dir(facing);
         g.lineStyle(2, 0xffffff, 0.28);
         g.lineBetween(x - bow.dx * 22, y - bow.dy * 22, x + bow.dx * 54, y + bow.dy * 54);
-        // tiny bow notch
         g.fillStyle(0xffffff, 0.35);
         g.fillCircle(x + bow.dx * 54, y + bow.dy * 54, 2.5);
 
-        // --- Desired helm (where bow is easing toward) ------------------------
-        const helmGap = Math.abs(Phaser.Math.Angle.Wrap(p.desiredHelm - facing));
-        if (helmGap > 0.08) {
-            const h = dir(p.desiredHelm);
-            g.lineStyle(1.5, 0xc9a227, 0.35);
-            g.lineBetween(x + h.dx * 20, y + h.dy * 20, x + h.dx * 70, y + h.dy * 70);
-        }
+        // Faint 360° train ring — guns may bear any way around the hull
+        g.lineStyle(1, 0xc9a227, 0.18);
+        g.strokeCircle(x, y, 48);
 
         // --- Trained gun aim + volley spread ----------------------------------
         const halfFan = spread * 0.5;
@@ -2365,7 +2359,7 @@ export default class GameScene extends Phaser.Scene {
             mission,
             foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
             `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'Teal=way · cream=sail order · brass=gun train · Q/R or click volley',
+            'Mouse aims 360° · A/D rudder · W/S sails · click/Q/R volley',
             this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 

@@ -55,11 +55,11 @@ export default class Player {
         this.rotation = 0;
         this.rotationSpeed = 0;
         this.maxRotationSpeed = 1.4;
-        this.hullTurnRate = 1.15;      // bow follows helm slowly
-        this.gunTrainRate = 1.85;      // guns ease toward reticle (not twitchy)
-        this.helmTrackRate = 2.4;      // desired helm tracks cursor
-        this.keyboardTurnRate = 1.35;
-        this.aimTurnRate = 1.15;       // kept for older call sites
+        this.hullTurnRate = 1.55;      // rudder (A/D) turns the bow
+        this.gunTrainRate = 3.2;       // guns ease to cursor — full 360°, independent of hull
+        this.helmTrackRate = 2.4;
+        this.keyboardTurnRate = 1.55;
+        this.aimTurnRate = 3.2;
 
         // Low accel = inertia; ships gather way instead of snapping
         this.thrustLerp = 1.25;
@@ -326,16 +326,15 @@ export default class Player {
     }
 
     /**
-     * Sailing helm + free-aim battery.
-     * - Cursor sets desired gun bearing & helm; both ease smoothly (no snaps).
-     * - Thrust builds along the bow with heavy inertia / long coast.
+     * Sailing helm + free-aim battery (full 360°).
+     * - Mouse / right-stick trains guns anywhere around the ship (independent of bow).
+     * - A/D (and arrows) are the rudder; W/S gather or kill way.
      */
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
         const now = this.scene.time.now;
 
-        // --- Aim / helm desires from cursor or sticks ---------------------------
-        let hasCursor = false;
+        // --- Gun desire from cursor / sticks (NOT tied to hull facing) --------
         if (aim && aim.hasAim) {
             if (aim.cursorX != null) {
                 this.cursorX = aim.cursorX;
@@ -343,78 +342,69 @@ export default class Player {
                 const dx = this.cursorX - this.getX();
                 const dy = this.cursorY - this.getY();
                 this.cursorDist = Math.hypot(dx, dy);
-                if (this.cursorDist >= 10) {
+                if (this.cursorDist >= 8) {
                     this.desiredGunAim = Math.atan2(dx, -dy);
-                    this.desiredHelm = this.desiredGunAim;
-                    hasCursor = true;
                 }
             } else if (aim.angle != null) {
-                this.desiredGunAim = aim.helmAngle != null ? aim.angle : aim.angle;
-                this.desiredHelm = aim.helmAngle != null ? aim.helmAngle : aim.angle;
-                hasCursor = true;
+                this.desiredGunAim = aim.angle;
             }
         } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.25) {
             this.desiredGunAim = rightJoystick.getAngle() + Math.PI / 2;
-            this.desiredHelm = this.desiredGunAim;
             this.cursorDist = 200;
-            hasCursor = true;
         } else if (pad && pad.hasAim) {
             this.desiredGunAim = pad.aimAngle;
-            this.desiredHelm = pad.aimAngle;
             this.cursorDist = 200;
             this.cursorX = this.getX() + Math.sin(pad.aimAngle) * 200;
             this.cursorY = this.getY() + -Math.cos(pad.aimAngle) * 200;
-            hasCursor = true;
         }
 
-        // Guns train smoothly toward reticle (any direction, including bow)
+        // Smooth 360° gun train — shortest arc, no clamps
         this.gunAim = Phaser.Math.Angle.RotateTo(
             this.gunAim,
             this.desiredGunAim,
             this.gunTrainRate * dt
         );
 
-        // Hull turns even slower — sailing inertia in yaw
-        if (hasCursor) {
-            this.rotation = Phaser.Math.Angle.RotateTo(
-                this.rotation,
-                this.desiredHelm,
-                this.hullTurnRate * dt
-            );
-        } else {
-            let rotInput = 0;
-            if (keys?.LEFT?.isDown) rotInput -= 1;
-            if (keys?.RIGHT?.isDown) rotInput += 1;
-            if (Math.abs(rotInput) > 0.01) {
-                this.rotation += rotInput * this.keyboardTurnRate * dt;
-                this.desiredHelm = this.rotation;
-            }
+        // --- Rudder: A/D + arrows turn the bow (mouse does not) ----------------
+        let rotInput = 0;
+        if (keys?.A?.isDown || keys?.LEFT?.isDown) rotInput -= 1;
+        if (keys?.D?.isDown || keys?.RIGHT?.isDown) rotInput += 1;
+        // Gamepad left-stick X as rudder when not using it purely for thrust
+        if (pad && Math.abs(pad.lateral) > 0.25 && Math.abs(pad.forward) < 0.35) {
+            rotInput += Math.sign(pad.lateral);
+        }
+        if (Math.abs(rotInput) > 0.01) {
+            this.rotation += rotInput * this.hullTurnRate * dt;
+            this.desiredHelm = this.rotation;
         }
         this.container.setRotation(this.rotation);
 
-        // --- Sail input --------------------------------------------------------
+        // --- Sail input (W/S way-on; light lateral only from pad/touch) --------
         let forwardInput = 0;
         let lateralInput = 0;
 
         if (keys) {
             if (keys.W.isDown) forwardInput += 1;
             if (keys.S.isDown) forwardInput -= 1;
-            if (keys.A.isDown) lateralInput -= 1;
-            if (keys.D.isDown) lateralInput += 1;
+            // J/K remain as light sheer / lateral shove
             if (keys.J?.isDown) lateralInput += 1;
             if (keys.K?.isDown) lateralInput -= 1;
         }
 
         if (pad) {
             if (Math.abs(pad.forward) > 0.01) forwardInput += pad.forward;
-            if (Math.abs(pad.lateral) > 0.01) lateralInput += pad.lateral;
+            // Only use stick X as lateral when also pushing forward (rudder handled above)
+            if (Math.abs(pad.forward) >= 0.35 && Math.abs(pad.lateral) > 0.01) {
+                lateralInput += pad.lateral * 0.45;
+            }
         }
 
         if (leftJoystick && leftJoystick.isActive()) {
             const force = leftJoystick.getForce();
             const angle = leftJoystick.getAngle();
             forwardInput += -Math.sin(angle) * force;
-            lateralInput += Math.cos(angle) * force;
+            // Touch stick Y-dominant thrust; X contributes light lateral
+            lateralInput += Math.cos(angle) * force * 0.4;
         }
 
         forwardInput = Phaser.Math.Clamp(forwardInput, -1, 1);

@@ -51,7 +51,7 @@ export default class Projectile extends Phaser.Physics.Arcade.Image {
             this.y += Math.sin(angle) * lateral;
         }
 
-        const scale = opts.scale ?? (this.friendly ? 0.92 : 0.85);
+        const scale = opts.scale ?? (this.friendly ? 0.68 : 0.75);
         this.setScale(scale);
         this.setDepth(112);
         // Keep a warm tint but don't crush the baked highlights

@@ -421,6 +421,22 @@ export default class NPCShip {
             }
         }
 
+        // Priority: juke player balls on a collision course
+        const dodge = this.computeShotDodge();
+        if (dodge) {
+            vx = vx * 0.2 + dodge.x;
+            vy = vy * 0.2 + dodge.y;
+            this.body.setMaxVelocity(this.speed * 1.55);
+            // Flip beam when a shot is close — break the player's lead
+            if (dodge.urgent && this.strafeTimer > 400) {
+                this.strafeDir *= -1;
+                this.preferredBroadside *= -1;
+                this.strafeTimer = 0;
+            }
+        } else {
+            this.body.setMaxVelocity(this.speed * 1.15);
+        }
+
         this.body.setVelocity(vx, vy);
 
         if (this.abilities.includes('mine') && this.mineCooldown <= 0 && dist < 380) {
@@ -432,6 +448,70 @@ export default class NPCShip {
 
         // Single slow ball when the foe is roughly on a beam (duel / lead / juke)
         this.tryNavalShot(time, player, angleToPlayer, dist);
+    }
+
+    /**
+     * Scan player cannonballs and return a strong lateral dodge if one will hit.
+     */
+    computeShotDodge() {
+        const shots = this.scene?.projectiles;
+        if (!shots || !shots.length || !this.body) return null;
+
+        const sx = this.container.x;
+        const sy = this.container.y;
+        const svx = this.body.velocity.x;
+        const svy = this.body.velocity.y;
+        const hitRad = 48;
+
+        let best = null;
+        let bestT = Infinity;
+
+        for (let i = 0; i < shots.length; i++) {
+            const proj = shots[i];
+            if (!proj || !proj.active || proj.friendly === false) continue;
+            const pvx = proj.body?.velocity?.x;
+            const pvy = proj.body?.velocity?.y;
+            if (pvx == null || pvy == null) continue;
+
+            const relX = sx - proj.x;
+            const relY = sy - proj.y;
+            const distNow = Math.hypot(relX, relY);
+            if (distNow > 520) continue;
+
+            const relVx = svx - pvx;
+            const relVy = svy - pvy;
+            const rv2 = relVx * relVx + relVy * relVy;
+            if (rv2 < 40) continue;
+
+            // Time to closest approach
+            let t = -(relX * relVx + relY * relVy) / rv2;
+            if (t < 0 || t > 2.0) continue;
+
+            const missX = relX + relVx * t;
+            const missY = relY + relVy * t;
+            const miss = Math.hypot(missX, missY);
+            if (miss > hitRad) continue;
+
+            if (t < bestT) {
+                bestT = t;
+                const plen = Math.hypot(pvx, pvy) || 1;
+                // Perpendicular to the shot — pick the side already slightly clear
+                let perpX = -pvy / plen;
+                let perpY = pvx / plen;
+                const sideDot = relX * perpX + relY * perpY;
+                const sign = sideDot >= 0 ? 1 : -1;
+                const urgency = 1 - t / 2.0;
+                const strength = this.speed * (1.25 + urgency * 1.6);
+                best = {
+                    x: perpX * sign * strength,
+                    y: perpY * sign * strength,
+                    urgent: t < 0.55,
+                    t
+                };
+            }
+        }
+
+        return best;
     }
 
     tryNavalShot(time, player, angleToPlayer, dist) {
@@ -469,6 +549,13 @@ export default class NPCShip {
     updateFlee() {
         const reached = this.moveToward(this.targetX, this.targetY, this.fleeSpeed, 80, true);
         if (reached) this.pickNewTarget();
+        // Juke incoming shot even while running
+        const dodge = this.computeShotDodge();
+        if (dodge && this.body) {
+            this.body.velocity.x = this.body.velocity.x * 0.3 + dodge.x;
+            this.body.velocity.y = this.body.velocity.y * 0.3 + dodge.y;
+            this.body.setMaxVelocity(this.fleeSpeed * 1.35);
+        }
     }
 
     moveToward(tx, ty, speed, stopDistance, face) {

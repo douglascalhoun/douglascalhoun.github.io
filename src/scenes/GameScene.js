@@ -14,7 +14,7 @@ import MultiplayerClient, { WORLD_ROOM } from '../net/MultiplayerClient.js';
 import { powerFromPlayer, summarizeFleet, recipeForFleet, targetHostileCount } from '../net/WorldDirector.js';
 import { BUILD_ID, BUILD_LABEL } from '../buildInfo.js';
 
-const MAX_PLAYER_SHOTS = 20;
+const MAX_PLAYER_SHOTS = 8;
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -1009,14 +1009,14 @@ export default class GameScene extends Phaser.Scene {
             const projectile = new Projectile(this, sx, sy, shotAngle, {
                 speed: kit.speed,
                 color: kit.color,
-                radius: Math.max(5, kit.radius || 5),
+                radius: Math.max(4, kit.radius || 4),
                 lifetime: kit.lifetime,
                 damage: kit.damage || 1,
                 friendly: true,
                 blast: kit.blast || 0,
                 kind: 'bomb',
                 seek: Boolean(kit.seek),
-                scale: 0.92,
+                scale: 0.68,
                 trail: true
             });
             this.projectiles.push(projectile);
@@ -1120,9 +1120,9 @@ export default class GameScene extends Phaser.Scene {
             friendly: false,
             lifetime: 4200,
             color: npc.color || 0xff6644,
-            radius: 6,
+            radius: 5.5,
             kind: 'bomb',
-            scale: 0.85,
+            scale: 0.75,
             trail: true
         });
         this.enemyProjectiles.push(projectile);

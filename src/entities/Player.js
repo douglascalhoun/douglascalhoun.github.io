@@ -24,7 +24,12 @@ const UPGRADE_DEFS = {
         label: 'Gun Crew',
         maxLevel: 5,
         costs: [220, 450, 800, 1200, 1800],
-        describe: (level) => `+${level} ball${level === 1 ? '' : 's'}/volley · reload −${level * 6}%`
+        describe: (level) => {
+            const extra = Math.floor(level / 2);
+            return extra > 0
+                ? `+${extra} ball${extra === 1 ? '' : 's'}/volley · reload −${level * 6}%`
+                : `Reload −${level * 6}%`;
+        }
     },
     cargo: {
         label: 'Hold',
@@ -156,8 +161,8 @@ export default class Player {
         this.reloadMs = Math.max(850, Math.round((kit.reloadMs || 2400) * (1 - w * 0.06)));
         this.fireRate = this.reloadMs;
         this.cargoCapacity = this.baseCargoCapacity + c * 8;
-        // Kit balls + Gun Crew levels
-        this.volleyGuns = Math.max(1, (kit.guns || 1) + w);
+        // Kit balls + modest Gun Crew bonus (+1 every 2 levels)
+        this.volleyGuns = Math.max(1, (kit.guns || 1) + Math.floor(w / 2));
         this.volleySpread = kit.spread || 0;
 
         if (refill) {

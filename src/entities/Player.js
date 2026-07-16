@@ -351,19 +351,62 @@ export default class Player {
         return cost !== null && this.credits >= cost;
     }
 
+    /** Discrete pips for HUD (shields/hull feel like remaining hits). */
+    getIntegrityPips(kind, total = 10) {
+        const cur = kind === 'shields' ? this.shields : this.hull;
+        const max = kind === 'shields' ? this.maxShields : this.maxHull;
+        if (max <= 0) return 0;
+        return Math.max(0, Math.min(total, Math.ceil((cur / max) * total)));
+    }
+
+    /**
+     * Next yard spend target — Gun Crew first, else cheapest available.
+     * @returns {{ key: string, label: string, level: number, cost: number, have: number, need: number, frac: number } | null}
+     */
+    getNextUpgradeTarget() {
+        const order = ['weapons', 'engines', 'shields', 'hull', 'cargo'];
+        let pick = null;
+        for (const key of order) {
+            const cost = this.getUpgradeCost(key);
+            if (cost == null) continue;
+            const def = UPGRADE_DEFS[key];
+            const candidate = {
+                key,
+                label: def.label,
+                level: this.getUpgradeLevel(key),
+                cost,
+                have: this.credits,
+                need: Math.max(0, cost - this.credits),
+                frac: Phaser.Math.Clamp(this.credits / cost, 0, 1)
+            };
+            if (key === 'weapons') return candidate;
+            if (!pick || cost < pick.cost) pick = candidate;
+        }
+        return pick;
+    }
+
     buyUpgrade(key) {
         const def = UPGRADE_DEFS[key];
-        if (!def) return { ok: false, message: 'Unknown upgrade.' };
+        if (!def) return { ok: false, message: 'Unknown upgrade.', kind: null };
         const level = this.getUpgradeLevel(key);
-        if (level >= def.maxLevel) return { ok: false, message: `${def.label} already maxed.` };
+        if (level >= def.maxLevel) return { ok: false, message: `${def.label} already maxed.`, kind: null };
         const cost = def.costs[level];
-        if (this.credits < cost) return { ok: false, message: 'Not enough credits.' };
+        if (this.credits < cost) return { ok: false, message: 'Not enough credits.', kind: null };
         this.credits -= cost;
         this.upgrades[key] = level + 1;
         this.applyUpgrades(false);
         if (key === 'shields') this.shields = Math.min(this.maxShields, this.shields + 20);
         if (key === 'hull') this.hull = Math.min(this.maxHull, this.hull + 20);
-        return { ok: true, message: `${def.label} → Lv ${this.upgrades[key]} (−${cost}c)` };
+        const shipKeys = new Set(['engines', 'hull', 'shields', 'cargo']);
+        const kind = key === 'weapons' ? 'gun' : (shipKeys.has(key) ? 'ship' : 'gear');
+        return {
+            ok: true,
+            message: `${def.label} → Lv ${this.upgrades[key]} (−${cost}c)`,
+            kind,
+            key,
+            label: def.label,
+            level: this.upgrades[key]
+        };
     }
 
     getSnapshot() {

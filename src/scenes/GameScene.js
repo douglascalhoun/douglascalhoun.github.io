@@ -544,9 +544,25 @@ export default class GameScene extends Phaser.Scene {
             const npc = job.npc;
             this.playHarvestBeam(npc.getX(), npc.getY());
             const reward = HARVEST_REWARDS[this.player.harvestIndex % HARVEST_REWARDS.length];
+            const prevWeapon = this.player.weaponId;
             this.player.grantHarvestReward(reward);
             this.player.credits += Math.floor(npc.bounty * 0.5);
-            this.showToast(reward.toast, 3200);
+            if (reward.kind === 'weapon' && reward.weaponId && this.player.weaponId !== prevWeapon) {
+                const kit = this.player.getWeapon();
+                this.showUpgradePopup({
+                    title: `NEW GUN: ${kit.label.toUpperCase()}`,
+                    subtitle: reward.toast || kit.description || '',
+                    kind: 'gun'
+                });
+            } else if (reward.kind === 'shields' || reward.kind === 'armor') {
+                this.showUpgradePopup({
+                    title: reward.kind === 'shields' ? 'SHIP WARD REINFORCED' : 'SHIP HULL REINFORCED',
+                    subtitle: reward.toast || '',
+                    kind: 'ship'
+                });
+            } else {
+                this.showToast(reward.toast, 3200);
+            }
             if (this.online) this.retuneFleetEncounters(true);
 
             // Remove inert wreck after salvage
@@ -881,18 +897,27 @@ export default class GameScene extends Phaser.Scene {
 
     createHUD() {
         // Static panel — never recreate Text backgrounds every frame (Safari killer)
-        this.hudPanel = this.add.rectangle(12, 12, 480, 245, 0x0c1018, 0.78)
+        this.hudPanel = this.add.rectangle(12, 12, 500, 318, 0x0c1018, 0.78)
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(1999)
             .setStrokeStyle(1, 0xc9a227, 0.55);
 
-        this.hudText = this.add.text(22, 20, '', {
+        this.hudText = this.add.text(22, 18, '', {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            fontSize: '13px',
+            fontSize: '12px',
             fill: '#e8dcc0',
-            lineSpacing: 3
+            lineSpacing: 2
         }).setScrollFactor(0).setDepth(2000);
+
+        // Graphical status meters (shields / hull / guns / yard progress)
+        this.statusGfx = this.add.graphics().setScrollFactor(0).setDepth(2001);
+        this.statusLabels = this.add.text(22, 168, '', {
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: '11px',
+            fill: '#c9b896',
+            lineSpacing: 5
+        }).setScrollFactor(0).setDepth(2002);
 
         this.toastText = this.add.text(this.scale.width / 2, 70, '', {
             fontSize: '16px',
@@ -900,6 +925,28 @@ export default class GameScene extends Phaser.Scene {
             backgroundColor: '#000000aa',
             padding: { x: 12, y: 8 }
         }).setOrigin(0.5).setScrollFactor(0).setDepth(3100).setAlpha(0);
+
+        // Big upgrade celebration banner
+        this.upgradeBannerBg = this.add.rectangle(
+            this.scale.width / 2, this.scale.height * 0.28, 420, 96, 0x1a140c, 0.94
+        ).setStrokeStyle(2, 0xc9a227, 0.95).setScrollFactor(0).setDepth(3200).setAlpha(0);
+        this.upgradeBannerTitle = this.add.text(this.scale.width / 2, this.scale.height * 0.28 - 16, '', {
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: '26px',
+            fill: '#ffe08a',
+            align: 'center'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(3201).setAlpha(0);
+        this.upgradeBannerSub = this.add.text(this.scale.width / 2, this.scale.height * 0.28 + 18, '', {
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: '13px',
+            fill: '#e8dcc0',
+            align: 'center'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(3201).setAlpha(0);
+        this._upgradeBannerUntil = 0;
+
+        // World-space integrity ring over the ship
+        this.shipStatusGfx = this.add.graphics().setDepth(105);
+        this.lastStatusDraw = 0;
     }
 
     createActionButtons() {
@@ -959,6 +1006,165 @@ export default class GameScene extends Phaser.Scene {
         this.statusMessageUntil = Date.now() + duration;
         this.toastText.setText(message);
         this.toastText.setAlpha(1);
+    }
+
+    /**
+     * Celebration popup for new gun kits or shipyard upgrades.
+     * @param {{ title: string, subtitle?: string, kind?: 'gun'|'ship'|'gear' }} opts
+     */
+    showUpgradePopup(opts) {
+        const title = opts.title || 'Upgrade';
+        const subtitle = opts.subtitle || '';
+        const kind = opts.kind || 'gear';
+        const stroke = kind === 'gun' ? 0x66ffcc : (kind === 'ship' ? 0xc9a227 : 0xaaddff);
+
+        this.upgradeBannerTitle.setText(title);
+        this.upgradeBannerSub.setText(subtitle);
+        this.upgradeBannerBg.setStrokeStyle(2, stroke, 0.95);
+        this.upgradeBannerBg.setPosition(this.scale.width / 2, this.scale.height * 0.28);
+        this.upgradeBannerTitle.setPosition(this.scale.width / 2, this.scale.height * 0.28 - 16);
+        this.upgradeBannerSub.setPosition(this.scale.width / 2, this.scale.height * 0.28 + 18);
+
+        const targets = [this.upgradeBannerBg, this.upgradeBannerTitle, this.upgradeBannerSub];
+        targets.forEach((t) => {
+            t.setAlpha(0);
+            t.setScale(0.85);
+        });
+        this.tweens.add({
+            targets,
+            alpha: 1,
+            scale: 1,
+            duration: 220,
+            ease: 'Back.Out'
+        });
+        this._upgradeBannerUntil = Date.now() + 3800;
+        // Also echo in the small toast
+        this.showToast(`${title}${subtitle ? ` — ${subtitle}` : ''}`, 3200);
+    }
+
+    hideUpgradePopupIfExpired() {
+        if (!this._upgradeBannerUntil || Date.now() < this._upgradeBannerUntil) return;
+        if (this.upgradeBannerBg.alpha <= 0) {
+            this._upgradeBannerUntil = 0;
+            return;
+        }
+        this._upgradeBannerUntil = 0;
+        this.tweens.add({
+            targets: [this.upgradeBannerBg, this.upgradeBannerTitle, this.upgradeBannerSub],
+            alpha: 0,
+            duration: 280
+        });
+    }
+
+    drawMeterBar(g, x, y, w, h, frac, fillColor, trackColor = 0x1a1a22) {
+        const f = Phaser.Math.Clamp(frac, 0, 1);
+        g.fillStyle(trackColor, 0.95);
+        g.fillRoundedRect(x, y, w, h, 3);
+        if (f > 0.001) {
+            g.fillStyle(fillColor, 1);
+            g.fillRoundedRect(x + 1, y + 1, Math.max(2, (w - 2) * f), h - 2, 2);
+        }
+        g.lineStyle(1, 0xc9a227, 0.35);
+        g.strokeRoundedRect(x, y, w, h, 3);
+    }
+
+    drawPips(g, x, y, filled, total, onColor, offColor) {
+        for (let i = 0; i < total; i++) {
+            const px = x + i * 11;
+            g.fillStyle(i < filled ? onColor : offColor, i < filled ? 0.95 : 0.35);
+            g.fillCircle(px, y, 3.5);
+        }
+    }
+
+    updateStatusVisuals() {
+        if (!this.player || !this.statusGfx) return;
+        const p = this.player;
+        const g = this.statusGfx;
+        g.clear();
+
+        const left = 22;
+        const barW = 210;
+        const barH = 11;
+        let y = 172;
+
+        const shieldFrac = p.maxShields > 0 ? p.shields / p.maxShields : 0;
+        const hullFrac = p.maxHull > 0 ? p.hull / p.maxHull : 0;
+        const portFrac = p.sideReloadFrac('port');
+        const stbdFrac = p.sideReloadFrac('starboard');
+        const next = p.getNextUpgradeTarget();
+
+        // Ward
+        this.drawMeterBar(g, left + 54, y, barW, barH, shieldFrac, 0x44c8e8);
+        this.drawPips(g, left + 54 + barW + 12, y + 5, p.getIntegrityPips('shields', 10), 10, 0x66e0ff, 0x335566);
+        y += 22;
+        // Hull
+        this.drawMeterBar(g, left + 54, y, barW, barH, hullFrac, hullFrac < 0.35 ? 0xff5533 : 0xc9a227);
+        this.drawPips(g, left + 54 + barW + 12, y + 5, p.getIntegrityPips('hull', 10), 10, 0xffcc66, 0x554422);
+        y += 22;
+        // Guns — two shorter bars
+        const gunW = 96;
+        this.drawMeterBar(g, left + 54, y, gunW, barH, portFrac, portFrac >= 1 ? 0x66ff99 : 0x88aa66);
+        this.drawMeterBar(g, left + 54 + gunW + 18, y, gunW, barH, stbdFrac, stbdFrac >= 1 ? 0x66ff99 : 0x88aa66);
+        y += 22;
+        // Yard upgrade progress
+        if (next) {
+            const color = next.need <= 0 ? 0xffe08a : 0xaa8844;
+            this.drawMeterBar(g, left + 54, y, barW, barH, next.frac, color);
+        } else {
+            this.drawMeterBar(g, left + 54, y, barW, barH, 1, 0x668866);
+        }
+
+        const weapon = p.getWeapon();
+        const portReady = portFrac >= 1;
+        const stbdReady = stbdFrac >= 1;
+        const yardLine = next
+            ? `${next.label} Lv${next.level}→${next.level + 1}  ${next.have}/${next.cost}c` +
+              (next.need > 0 ? `  (−${next.need}c)` : '  READY')
+            : 'Yard: all upgrades MAX';
+
+        this.statusLabels.setText([
+            `WARD  ${Math.round(p.shields)}/${p.maxShields}   pips ${p.getIntegrityPips('shields', 10)}/10`,
+            `HULL  ${Math.round(p.hull)}/${p.maxHull}   pips ${p.getIntegrityPips('hull', 10)}/10`,
+            `GUNS  P ${portReady ? 'READY' : `${Math.round(portFrac * 100)}%`}   S ${stbdReady ? 'READY' : `${Math.round(stbdFrac * 100)}%`}   ${weapon.label} ×${p.getVolleyCount()}`,
+            `YARD  ${yardLine}`
+        ].join('\n'));
+
+        // World-space ring over ship
+        this.drawShipStatusOverlay();
+    }
+
+    drawShipStatusOverlay() {
+        if (!this.shipStatusGfx || !this.player) return;
+        const g = this.shipStatusGfx;
+        g.clear();
+        const x = this.player.getX();
+        const y = this.player.getY();
+        const p = this.player;
+        const shieldFrac = p.maxShields > 0 ? p.shields / p.maxShields : 0;
+        const hullFrac = p.maxHull > 0 ? p.hull / p.maxHull : 0;
+
+        // Shield arc
+        if (shieldFrac > 0.02) {
+            g.lineStyle(2.5, 0x44c8e8, 0.35 + shieldFrac * 0.5);
+            g.beginPath();
+            g.arc(x, y, 26, -Math.PI * 0.75, -Math.PI * 0.75 + Math.PI * 1.5 * shieldFrac, false);
+            g.strokePath();
+        }
+
+        // Hull pips under the keel
+        const total = 8;
+        const filled = p.getIntegrityPips('hull', total);
+        const startX = x - (total - 1) * 4;
+        for (let i = 0; i < total; i++) {
+            g.fillStyle(i < filled ? 0xc9a227 : 0x333018, i < filled ? 0.9 : 0.35);
+            g.fillCircle(startX + i * 8, y + 30, 2.4);
+        }
+
+        // Soft hull tint ring when damaged
+        if (hullFrac < 0.45) {
+            g.lineStyle(1.5, 0xff5533, 0.45 * (1 - hullFrac));
+            g.strokeCircle(x, y, 22);
+        }
     }
 
     fireWeapon() {
@@ -1540,7 +1746,19 @@ export default class GameScene extends Phaser.Scene {
 
     buyUpgrade(key) {
         const result = this.player.buyUpgrade(key);
-        this.showToast(result.message);
+        if (result.ok) {
+            const kind = result.kind || 'gear';
+            const title = kind === 'gun'
+                ? `GUN CREW Lv${result.level}`
+                : (kind === 'ship' ? `${result.label.toUpperCase()} UPGRADED` : result.label.toUpperCase());
+            this.showUpgradePopup({
+                title,
+                subtitle: result.message,
+                kind
+            });
+        } else {
+            this.showToast(result.message);
+        }
         this.rebuildStationBody();
     }
 
@@ -2336,8 +2554,13 @@ export default class GameScene extends Phaser.Scene {
         if (this.toastText.alpha > 0 && Date.now() > this.statusMessageUntil) {
             this.toastText.setAlpha(0);
         }
+        this.hideUpgradePopupIfExpired();
 
-        // HUD text at ~10Hz — setText every frame recreates canvas glyphs on Safari
+        // Status meters ~20Hz; text HUD ~10Hz (Safari glyph cost)
+        if (time - (this.lastStatusDraw || 0) > 50) {
+            this.lastStatusDraw = time;
+            this.updateStatusVisuals();
+        }
         if (time - this.lastHudUpdate > 100) {
             this.lastHudUpdate = time;
             this.updateHUD(inDockingRange, pad);
@@ -2382,21 +2605,23 @@ export default class GameScene extends Phaser.Scene {
         const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
         const weapon = this.player.getWeapon();
 
+        const next = p.getNextUpgradeTarget();
+        const yardHint = next
+            ? (next.need > 0 ? `Next yard: ${next.label} (−${next.need}c)` : `Next yard: ${next.label} AFFORDABLE`)
+            : 'Yard maxed';
+
         const lines = [
-            `build ${BUILD_ID} · shots ${this.projectiles.length}/${MAX_PLAYER_SHOTS}`,
-            `${system.name}   Purse: ${p.credits}   Prizes: ${p.kills}`,
+            `build ${BUILD_ID} · shots ${this.projectiles.length}/${MAX_PLAYER_SHOTS} · Power ${powerFromPlayer(p)}`,
+            `${system.name}   Purse: ${p.credits}c   Prizes: ${p.kills}`,
             room,
             pilotsOnline,
             padStatus,
-            `Ward: ${Math.round(p.shields)} / ${p.maxShields}`,
-            `Hull: ${Math.round(p.hull)} / ${p.maxHull}`,
-            `Battery: ${weapon.label} ×${p.getVolleyCount()}   Reload ${p.reloadMs}ms   Power ${powerFromPlayer(p)}`,
-            `PORT [${this.reloadBar(p.sideReloadFrac('port'))}]  STARBOARD [${this.reloadBar(p.sideReloadFrac('starboard'))}]`,
+            `Battery ${weapon.label} ×${p.getVolleyCount()} · ${p.reloadMs}ms   ${yardHint}`,
             `Hold ${p.getCargoUsed()}/${p.cargoCapacity}   Rig${u.engines} Ward${u.shields} Hull${u.hull} Guns${u.weapons} Hold${u.cargo}`,
             mission,
             foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
             `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'A/D turn · W/S thrust · mouse aims guns (no stern) · Space/click volley',
+            'A/D turn · W/S thrust · mouse aims · Space/click volley',
             this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 
@@ -2430,6 +2655,11 @@ export default class GameScene extends Phaser.Scene {
         if (this.fireButton) this.fireButton.setPosition(width / 2, height - 140);
         if (this.fireLabel) this.fireLabel.setPosition(width / 2, height - 140);
         if (this.toastText) this.toastText.setPosition(width / 2, 70);
+        if (this.upgradeBannerBg) {
+            this.upgradeBannerBg.setPosition(width / 2, height * 0.28);
+            this.upgradeBannerTitle?.setPosition(width / 2, height * 0.28 - 16);
+            this.upgradeBannerSub?.setPosition(width / 2, height * 0.28 + 18);
+        }
 
         if (this.mapOpen) this.showGalaxyMap();
         if (this.hyperspaceOpen) {

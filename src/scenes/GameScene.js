@@ -399,6 +399,9 @@ export default class GameScene extends Phaser.Scene {
     clearWorldObjects() {
         this.worldGraphics.forEach((obj) => obj?.destroy());
         this.worldGraphics = [];
+        this.waveOverlay = null;
+        this.wavePhase = 0;
+        this.starfield = null;
 
         if (this.station) {
             this.station.destroy();
@@ -616,39 +619,123 @@ export default class GameScene extends Phaser.Scene {
     }
 
     createStarField(worldSize, color = 0xffffff) {
-        // Aether-sea: deep navy wash + foam-spark stars + faint current lines
+        // Pirates-on-the-aether-sea: deep water blues, foam sparkles, living waves
+        this.cameras.main.setBackgroundColor('#0a3a62');
+
         const sea = this.add.graphics();
-        sea.setDepth(-110);
-        sea.fillStyle(0x061018, 1);
+        sea.setDepth(-120);
+        // Deep water body
+        sea.fillStyle(0x0a3a62, 1);
         sea.fillRect(0, 0, worldSize, worldSize);
-        // Soft current bands
-        for (let i = 0; i < 14; i++) {
-            const y = (i / 14) * worldSize + Phaser.Math.Between(-40, 40);
-            sea.lineStyle(2, 0x0e2a38, 0.22);
+        // Mid-depth wash patches (read as shoals / light through water)
+        for (let i = 0; i < 28; i++) {
+            const cx = Phaser.Math.Between(0, worldSize);
+            const cy = Phaser.Math.Between(0, worldSize);
+            const r = Phaser.Math.Between(180, 520);
+            sea.fillStyle(i % 3 === 0 ? 0x0e4a78 : 0x125a88, 0.22);
+            sea.fillEllipse(cx, cy, r * 1.6, r);
+        }
+        // Static deep-current ribbons (parallax world layer)
+        for (let i = 0; i < 18; i++) {
+            const y = (i / 18) * worldSize + Phaser.Math.Between(-60, 60);
+            sea.lineStyle(2, 0x1a6a9a, 0.2);
             sea.beginPath();
             sea.moveTo(0, y);
-            for (let x = 0; x < worldSize; x += 180) {
-                sea.lineTo(x, y + Math.sin(x * 0.01 + i) * 30);
+            for (let x = 0; x < worldSize; x += 160) {
+                sea.lineTo(x, y + Math.sin(x * 0.008 + i * 0.7) * 36);
             }
             sea.strokePath();
         }
         sea.setScrollFactor(0.02);
         this.worldGraphics.push(sea);
 
-        const stars = this.add.graphics();
-        stars.setDepth(-100);
-        for (let i = 0; i < 120; i++) {
+        // Foam / star-phosphorescence on the sea
+        const foam = this.add.graphics();
+        foam.setDepth(-105);
+        for (let i = 0; i < 160; i++) {
             const x = Phaser.Math.Between(0, worldSize);
             const y = Phaser.Math.Between(0, worldSize);
-            const size = Phaser.Math.FloatBetween(0.6, 2.0);
-            const foam = i % 7 === 0;
-            stars.fillStyle(foam ? color : (i % 5 === 0 ? 0xa8c8d8 : 0xffffff), Phaser.Math.FloatBetween(0.3, 0.85));
-            stars.fillCircle(x, y, size);
+            const size = Phaser.Math.FloatBetween(0.5, 2.2);
+            const bright = i % 6 === 0;
+            foam.fillStyle(
+                bright ? color : (i % 4 === 0 ? 0xd8f0ff : 0xffffff),
+                Phaser.Math.FloatBetween(0.25, 0.75)
+            );
+            foam.fillCircle(x, y, size);
         }
-        stars.setScrollFactor(0.05);
-        this.worldGraphics.push(stars);
-        this.starfield = stars;
-        return stars;
+        foam.setScrollFactor(0.05);
+        this.worldGraphics.push(foam);
+        this.starfield = foam;
+
+        // Screen-space animated wave overlay (cheap; follows camera)
+        if (this.waveOverlay) this.waveOverlay.destroy();
+        this.waveOverlay = this.add.graphics().setScrollFactor(0).setDepth(-90);
+        this.wavePhase = 0;
+        this.worldGraphics.push(this.waveOverlay);
+        this.drawWaveOverlay(0);
+
+        return foam;
+    }
+
+    /**
+     * Animated water surface — sine swells across the viewport.
+     * Keeps pirates-in-space: blue sea of stars, not a flat void.
+     */
+    drawWaveOverlay(phase) {
+        const g = this.waveOverlay;
+        if (!g) return;
+        g.clear();
+
+        const w = this.scale.width;
+        const h = this.scale.height;
+        if (w < 8 || h < 8) return;
+
+        // Soft sky-sea wash at top of view
+        g.fillStyle(0x146090, 0.08);
+        g.fillRect(0, 0, w, h * 0.35);
+
+        const bands = [
+            { spacing: 52, amp: 9, speed: 1.0, color: 0x5eb8e0, alpha: 0.16, step: 14 },
+            { spacing: 74, amp: 14, speed: 0.65, color: 0x8fd4f0, alpha: 0.12, step: 18 },
+            { spacing: 110, amp: 20, speed: 0.4, color: 0xffffff, alpha: 0.07, step: 22 }
+        ];
+
+        for (const band of bands) {
+            g.lineStyle(1.5, band.color, band.alpha);
+            for (let row = 0; row < h + band.spacing; row += band.spacing) {
+                const yBase = row + Math.sin(phase * band.speed * 0.35 + row * 0.02) * 6;
+                g.beginPath();
+                g.moveTo(0, yBase);
+                for (let x = 0; x <= w; x += band.step) {
+                    const y = yBase
+                        + Math.sin(x * 0.018 + phase * band.speed + row * 0.05) * band.amp
+                        + Math.sin(x * 0.007 - phase * band.speed * 0.6) * (band.amp * 0.45);
+                    g.lineTo(x, y);
+                }
+                g.strokePath();
+            }
+        }
+
+        // Occasional foam crests (bright short strokes)
+        g.lineStyle(2, 0xe8f6ff, 0.14);
+        for (let i = 0; i < 7; i++) {
+            const cx = ((phase * 40 + i * 137) % (w + 80)) - 40;
+            const cy = ((i * 97 + phase * 18) % h);
+            g.beginPath();
+            g.moveTo(cx, cy);
+            for (let t = 0; t < 60; t += 8) {
+                g.lineTo(cx + t, cy + Math.sin(t * 0.2 + phase + i) * 4);
+            }
+            g.strokePath();
+        }
+    }
+
+    updateAetherSea(delta) {
+        if (!this.waveOverlay) return;
+        this.wavePhase = (this.wavePhase || 0) + delta * 0.0018;
+        // ~30Hz redraw — enough motion, light on Safari
+        this._waveFrame = (this._waveFrame || 0) + 1;
+        if (this._waveFrame % 2 === 0) this.drawWaveOverlay(this.wavePhase);
     }
 
     createPlanet(x, y, planetDef) {
@@ -2192,6 +2279,8 @@ export default class GameScene extends Phaser.Scene {
         // Edge markers every other frame — labels don't need 60Hz
         this._markerFrame = (this._markerFrame || 0) + 1;
         if (this._markerFrame % 2 === 0) this.updateEdgeMarkers();
+
+        this.updateAetherSea(safeDelta);
 
         this.updateActionButtonVisibility(inDockingRange);
         this.sendState(time);

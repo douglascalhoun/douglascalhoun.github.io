@@ -46,30 +46,25 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Heavy sailing hull: slow to gather way, long coast
+        // Sailing hull: slow gather way, long coast
         this.body.setDrag(6);
-        this.body.setMaxVelocity(190);
+        this.body.setMaxVelocity(185);
         this.body.setCollideWorldBounds(true);
         this.body.useDamping = false;
 
         this.rotation = 0;
-        this.rotationSpeed = 0;
-        this.maxRotationSpeed = 1.4;
-        this.hullTurnRate = 1.55;      // rudder (A/D) turns the bow
-        this.gunTrainRate = 3.2;       // guns ease to cursor — full 360°, independent of hull
-        this.helmTrackRate = 2.4;
-        this.keyboardTurnRate = 1.55;
-        this.aimTurnRate = 3.2;
+        // Reticle = sail heading (slow turn) AND immediate fire bearing
+        this.hullTurnRate = 1.05;
+        this.aimTurnRate = 1.05;
+        this.keyboardTurnRate = 1.05;
 
-        // Low accel = inertia; ships gather way instead of snapping
-        this.thrustLerp = 1.25;
-        this.strafeLerp = 0.7;
-        this.coastDragExtra = 0;       // optional bleed when not under sail
+        this.thrustLerp = 1.2;
+        this.strafeLerp = 0.55;
 
-        this.baseMainThrust = 195;
-        this.baseReverseThrust = 110;
-        this.baseLateralThrust = 48;
-        this.baseMaxVelocity = 190;
+        this.baseMainThrust = 190;
+        this.baseReverseThrust = 100;
+        this.baseLateralThrust = 40;
+        this.baseMaxVelocity = 185;
         this.baseMaxShields = 80;
         this.baseMaxHull = 80;
         this.baseShieldRegen = 6;
@@ -77,20 +72,21 @@ export default class Player {
         this.baseCargoCapacity = 20;
 
         this.boostCooldownMs = 1400;
-        this.boostImpulse = 200;
+        this.boostImpulse = 190;
         this.lastBoostTime = -9999;
         this.boostUntil = 0;
         this._lastDodgeSide = 1;
 
-        // Free-aim battery: independent of hull, smoothed every frame
-        this.gunAim = 0;
-        this.desiredGunAim = 0;
-        this.desiredHelm = 0;
+        // One reticle bearing: fire now, sail eventually
+        this.reticleAngle = 0;
+        this.gunAim = 0;          // alias of reticleAngle (compat)
+        this.desiredHelm = 0;     // same as reticle — bow eases toward it
         this.cursorDist = 180;
         this.cursorX = x;
         this.cursorY = y;
         this.intendForward = 0;
         this.intendLateral = 0;
+        this._nextBattery = 'starboard';
 
         this.portReadyAt = 0;
         this.starboardReadyAt = 0;
@@ -197,14 +193,22 @@ export default class Player {
         return dot >= 0 ? 'starboard' : 'port';
     }
 
-    /** Which battery is best aligned with current gun train (for reload bookkeeping). */
+    /** Alternate batteries for reload pacing; fire always uses reticle angle. */
+    nextReadyBattery() {
+        const prefer = this._nextBattery;
+        const other = prefer === 'port' ? 'starboard' : 'port';
+        if (this.sideReady(prefer)) return prefer;
+        if (this.sideReady(other)) return other;
+        return null;
+    }
+
+    markVolleyFired(side) {
+        this.markSideFired(side);
+        this._nextBattery = side === 'port' ? 'starboard' : 'port';
+    }
+
     preferSideForGunAim() {
-        const rel = Phaser.Math.Angle.Wrap(this.gunAim - this.rotation);
-        // Forward / aft volleys still pick a side for the reload clock
-        if (Math.abs(rel) < Math.PI / 6 || Math.abs(rel) > (5 * Math.PI) / 6) {
-            return rel >= 0 ? 'starboard' : 'port';
-        }
-        return rel >= 0 ? 'starboard' : 'port';
+        return this._nextBattery || 'starboard';
     }
 
     getVelocityAngle() {
@@ -218,17 +222,18 @@ export default class Player {
         return Math.hypot(this.body.velocity.x, this.body.velocity.y);
     }
 
-    /**
-     * Free-aim state for HUD / volleys. Guns train to any bearing (including bow).
-     */
+    /** Reticle bearing used for immediate fire (full 360°). */
+    getFireAngle() {
+        return this.reticleAngle;
+    }
+
     getAimState() {
-        const rel = Phaser.Math.Angle.Wrap(this.gunAim - this.rotation);
+        const rel = Phaser.Math.Angle.Wrap(this.reticleAngle - this.rotation);
         return {
             side: this.preferSideForGunAim(),
-            aimAngle: this.gunAim,
-            desiredGunAim: this.desiredGunAim,
+            aimAngle: this.reticleAngle,
             desiredHelm: this.desiredHelm,
-            toCursor: this.desiredGunAim,
+            toCursor: this.reticleAngle,
             rel,
             inArc: true,
             dist: this.cursorDist,
@@ -241,24 +246,26 @@ export default class Player {
         };
     }
 
-    /** @deprecated — free aim replaced broadside clamps */
     getBroadsideAim(worldX, worldY) {
+        this.setReticleWorld(worldX, worldY);
+        return this.getAimState();
+    }
+
+    setReticleWorld(worldX, worldY) {
         this.cursorX = worldX;
         this.cursorY = worldY;
         const dx = worldX - this.getX();
         const dy = worldY - this.getY();
         this.cursorDist = Math.hypot(dx, dy);
-        if (this.cursorDist >= 8) {
-            this.desiredGunAim = Math.atan2(dx, -dy);
-            this.desiredHelm = this.desiredGunAim;
+        if (this.cursorDist >= 6) {
+            this.reticleAngle = Math.atan2(dx, -dy);
+            this.gunAim = this.reticleAngle;
+            this.desiredHelm = this.reticleAngle;
         }
-        return this.getAimState();
     }
 
-    clampAimToSide(_worldX, _worldY, side) {
-        // Free aim: still fire along the trained guns; side only picks the battery
-        void side;
-        return this.gunAim;
+    clampAimToSide(_worldX, _worldY, _side) {
+        return this.reticleAngle;
     }
 
     grantHarvestReward(reward) {
@@ -326,85 +333,73 @@ export default class Player {
     }
 
     /**
-     * Sailing helm + free-aim battery (full 360°).
-     * - Mouse / right-stick trains guns anywhere around the ship (independent of bow).
-     * - A/D (and arrows) are the rudder; W/S gather or kill way.
+     * Control scheme (clean start):
+     * - Reticle = immediate fire bearing (360°) AND eventual sail heading
+     * - Ship bow turns slowly toward the reticle
+     * - W/S = gather / kill way along the current bow
+     * - A/D = light lateral sheer; Shift = dodge
      */
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
         const now = this.scene.time.now;
 
-        // --- Gun desire from cursor / sticks (NOT tied to hull facing) --------
+        // --- Reticle bearing (instant) ----------------------------------------
         if (aim && aim.hasAim) {
             if (aim.cursorX != null) {
-                this.cursorX = aim.cursorX;
-                this.cursorY = aim.cursorY;
-                const dx = this.cursorX - this.getX();
-                const dy = this.cursorY - this.getY();
-                this.cursorDist = Math.hypot(dx, dy);
-                if (this.cursorDist >= 8) {
-                    this.desiredGunAim = Math.atan2(dx, -dy);
-                }
+                this.setReticleWorld(aim.cursorX, aim.cursorY);
             } else if (aim.angle != null) {
-                this.desiredGunAim = aim.angle;
+                this.reticleAngle = aim.angle;
+                this.gunAim = this.reticleAngle;
+                this.desiredHelm = this.reticleAngle;
+                this.cursorDist = 200;
             }
         } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.25) {
-            this.desiredGunAim = rightJoystick.getAngle() + Math.PI / 2;
+            this.reticleAngle = rightJoystick.getAngle() + Math.PI / 2;
+            this.gunAim = this.reticleAngle;
+            this.desiredHelm = this.reticleAngle;
             this.cursorDist = 200;
+            this.cursorX = this.getX() + Math.sin(this.reticleAngle) * 200;
+            this.cursorY = this.getY() + -Math.cos(this.reticleAngle) * 200;
         } else if (pad && pad.hasAim) {
-            this.desiredGunAim = pad.aimAngle;
+            this.reticleAngle = pad.aimAngle;
+            this.gunAim = this.reticleAngle;
+            this.desiredHelm = this.reticleAngle;
             this.cursorDist = 200;
             this.cursorX = this.getX() + Math.sin(pad.aimAngle) * 200;
             this.cursorY = this.getY() + -Math.cos(pad.aimAngle) * 200;
         }
 
-        // Smooth 360° gun train — shortest arc, no clamps
-        this.gunAim = Phaser.Math.Angle.RotateTo(
-            this.gunAim,
-            this.desiredGunAim,
-            this.gunTrainRate * dt
+        // Bow eases toward reticle — eventual sail direction
+        this.rotation = Phaser.Math.Angle.RotateTo(
+            this.rotation,
+            this.desiredHelm,
+            this.hullTurnRate * dt
         );
-
-        // --- Rudder: A/D + arrows turn the bow (mouse does not) ----------------
-        let rotInput = 0;
-        if (keys?.A?.isDown || keys?.LEFT?.isDown) rotInput -= 1;
-        if (keys?.D?.isDown || keys?.RIGHT?.isDown) rotInput += 1;
-        // Gamepad left-stick X as rudder when not using it purely for thrust
-        if (pad && Math.abs(pad.lateral) > 0.25 && Math.abs(pad.forward) < 0.35) {
-            rotInput += Math.sign(pad.lateral);
-        }
-        if (Math.abs(rotInput) > 0.01) {
-            this.rotation += rotInput * this.hullTurnRate * dt;
-            this.desiredHelm = this.rotation;
-        }
         this.container.setRotation(this.rotation);
 
-        // --- Sail input (W/S way-on; light lateral only from pad/touch) --------
+        // --- Sails ------------------------------------------------------------
         let forwardInput = 0;
         let lateralInput = 0;
 
         if (keys) {
             if (keys.W.isDown) forwardInput += 1;
             if (keys.S.isDown) forwardInput -= 1;
-            // J/K remain as light sheer / lateral shove
+            if (keys.A.isDown) lateralInput -= 1;
+            if (keys.D.isDown) lateralInput += 1;
             if (keys.J?.isDown) lateralInput += 1;
             if (keys.K?.isDown) lateralInput -= 1;
         }
 
         if (pad) {
             if (Math.abs(pad.forward) > 0.01) forwardInput += pad.forward;
-            // Only use stick X as lateral when also pushing forward (rudder handled above)
-            if (Math.abs(pad.forward) >= 0.35 && Math.abs(pad.lateral) > 0.01) {
-                lateralInput += pad.lateral * 0.45;
-            }
+            if (Math.abs(pad.lateral) > 0.01) lateralInput += pad.lateral * 0.5;
         }
 
         if (leftJoystick && leftJoystick.isActive()) {
             const force = leftJoystick.getForce();
             const angle = leftJoystick.getAngle();
             forwardInput += -Math.sin(angle) * force;
-            // Touch stick Y-dominant thrust; X contributes light lateral
-            lateralInput += Math.cos(angle) * force * 0.4;
+            lateralInput += Math.cos(angle) * force * 0.45;
         }
 
         forwardInput = Phaser.Math.Clamp(forwardInput, -1, 1);
@@ -417,7 +412,6 @@ export default class Player {
         const shipRightX = Math.cos(this.rotation);
         const shipRightY = Math.sin(this.rotation);
 
-        // Target velocity along the keel — ships don't skate sideways
         let forwardSpeed = 0;
         if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.62;
         else if (forwardInput < 0) forwardSpeed = forwardInput * this.reverseThrust * 0.4;
@@ -435,19 +429,17 @@ export default class Player {
             this.body.velocity.x += (targetVx - this.body.velocity.x) * lerpF;
             this.body.velocity.y += (targetVy - this.body.velocity.y) * lerpF;
         } else {
-            // Bleed a touch of way when sails are idle (still coasts a long time)
             const bleed = 1 - Math.min(0.35 * dt, 0.08);
             this.body.velocity.x *= bleed;
             this.body.velocity.y *= bleed;
         }
 
-        // Lateral slip decay — velocity wants to align with the keel over time
+        // Keel alignment — bleed sideways drift
         const spdNow = Math.hypot(this.body.velocity.x, this.body.velocity.y);
         if (spdNow > 8) {
             const along = this.body.velocity.x * shipForwardX + this.body.velocity.y * shipForwardY;
             const side = this.body.velocity.x * shipRightX + this.body.velocity.y * shipRightY;
-            const sideDecay = Math.exp(-1.1 * dt);
-            const newSide = side * sideDecay;
+            const newSide = side * Math.exp(-1.1 * dt);
             this.body.velocity.x = shipForwardX * along + shipRightX * newSide;
             this.body.velocity.y = shipForwardY * along + shipRightY * newSide;
         }

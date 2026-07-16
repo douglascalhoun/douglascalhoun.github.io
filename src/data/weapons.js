@@ -1,75 +1,74 @@
 /**
- * Naval battery kits — Age-of-Sail space combat.
- * Free-aim volleys with ripple fire; skill = lead, inertia, and the pass.
+ * Naval battery kits — slow, spreading volleys toward the reticle.
  */
 
 export const WEAPONS = {
     carronade: {
         id: 'carronade',
         label: 'Light Carronades',
-        description: 'Slow starter broadsides. Learn the pass.',
-        reloadMs: 2400,
-        guns: 3,
-        spread: 0.28,
-        speed: 145,
-        lifetime: 3400,
+        description: 'Slow spreading iron. Point the reticle and speak.',
+        reloadMs: 2200,
+        guns: 4,
+        spread: 0.42,
+        speed: 105,
+        lifetime: 4200,
         color: 0xffcc66,
         radius: 5,
         damage: 1,
-        muzzle: 28
+        muzzle: 30
     },
     twin_battery: {
         id: 'twin_battery',
         label: 'Twin Batteries',
-        description: 'More guns per volley, still deliberate.',
-        reloadMs: 2100,
-        guns: 5,
-        spread: 0.34,
-        speed: 155,
-        lifetime: 3400,
+        description: 'More guns, still deliberate.',
+        reloadMs: 2000,
+        guns: 6,
+        spread: 0.5,
+        speed: 110,
+        lifetime: 4200,
         color: 0x88ffcc,
         radius: 4.5,
         damage: 1,
-        muzzle: 30
+        muzzle: 32
     },
     long_nines: {
         id: 'long_nines',
         label: 'Long Nines',
-        description: 'Faster shot, tighter cone — rake from farther out.',
-        reloadMs: 2000,
+        description: 'Tighter cone, a bit more reach.',
+        reloadMs: 1900,
         guns: 4,
-        spread: 0.16,
-        speed: 210,
-        lifetime: 3800,
+        spread: 0.22,
+        speed: 145,
+        lifetime: 4500,
         color: 0xaaffff,
         radius: 4,
         damage: 1,
-        muzzle: 32
+        muzzle: 34
     },
     grape_chain: {
         id: 'grape_chain',
         label: 'Grape + Chain',
-        description: 'Wide grape volley plus a slow chain shot that drags foes.',
+        description: 'Wide grape cloud plus a dragging chain shot.',
         reloadMs: 2300,
-        guns: 6,
-        spread: 0.48,
-        speed: 140,
-        lifetime: 3000,
+        guns: 7,
+        spread: 0.62,
+        speed: 95,
+        lifetime: 3800,
         color: 0xffaa66,
         radius: 3.5,
         damage: 1,
         muzzle: 30,
-        chain: { speed: 110, lifetime: 4200, seek: true, color: 0xff6644, radius: 6 }
+        chain: { speed: 85, lifetime: 4800, seek: true, color: 0xff6644, radius: 6 }
     },
     mortar_deck: {
         id: 'mortar_deck',
         label: 'Mortar Deck',
-        description: 'Arcing nova shells with blast — punish clustered foes.',
+        description: 'Slow nova shells with blast.',
         reloadMs: 2800,
         guns: 2,
-        spread: 0.2,
-        speed: 120,
-        lifetime: 3600,
+        spread: 0.28,
+        speed: 90,
+        lifetime: 4200,
         color: 0xff5566,
         radius: 8,
         damage: 1,
@@ -79,7 +78,6 @@ export const WEAPONS = {
     }
 };
 
-// Map old salvage ids → naval kits so existing saves don't break
 export const WEAPON_ALIASES = {
     cannon: 'carronade',
     double_laser: 'twin_battery',

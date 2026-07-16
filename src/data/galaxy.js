@@ -1,7 +1,11 @@
 /**
- * The Archipelago — systems are islands in the aether-sea.
- * Leave an island's gravity well (outer ring) to catch deep hyperspace lanes (EV Nova).
+ * The Archipelago — chill island lakes linked by spooky deep-space lanes.
+ * Sail freely; no hyperspace menu. Danger rises with distance from the nearest isle.
  */
+
+const SCALE = 58;
+const ORIGIN_X = 16000;
+const ORIGIN_Y = 16000;
 
 export const SYSTEMS = {
     sol: {
@@ -12,20 +16,16 @@ export const SYSTEMS = {
         mapY: 0,
         planet: {
             name: 'Terra Isle',
-            color: 0x2f6b4f,
-            water: 0x2a5a8a,
-            radius: 300,
+            color: 0x2f8b5a,
+            water: 0x3db8e8,
+            beach: 0xe8d5a3,
+            radius: 320,
             kind: 'isle'
         },
-        station: { name: 'King\'s Quay', dx: 600, dy: -400 },
+        station: { name: 'King\'s Quay', dx: 520, dy: -360 },
         links: ['vega', 'sirius'],
-        prices: {
-            food: { buy: 12, sell: 8 },
-            ore: { buy: 22, sell: 15 },
-            tech: { buy: 45, sell: 30 }
-        },
         danger: 1,
-        blurb: 'Home island. Safe harbor under the lighthouse.'
+        blurb: 'Palm beaches and calm blue water. Home lake.'
     },
     vega: {
         id: 'vega',
@@ -35,20 +35,16 @@ export const SYSTEMS = {
         mapY: -40,
         planet: {
             name: 'Vega Atoll',
-            color: 0x3a7a9a,
-            water: 0x1a4a6a,
-            radius: 260,
+            color: 0x2a9a7a,
+            water: 0x2aa8d8,
+            beach: 0xf0e0b0,
+            radius: 280,
             kind: 'atoll'
         },
-        station: { name: 'Exchange Wharf', dx: -500, dy: 350 },
+        station: { name: 'Exchange Wharf', dx: -480, dy: 320 },
         links: ['sol', 'altair', 'rigel'],
-        prices: {
-            food: { buy: 18, sell: 11 },
-            ore: { buy: 16, sell: 10 },
-            tech: { buy: 55, sell: 38 }
-        },
         danger: 2,
-        blurb: 'Busy trade current. Ore washes cheap onto the quay.'
+        blurb: 'Busy trade lake. Merchants cut wakes between the palms.'
     },
     sirius: {
         id: 'sirius',
@@ -58,20 +54,16 @@ export const SYSTEMS = {
         mapY: 70,
         planet: {
             name: 'Sirius Spit',
-            color: 0x8a9aaa,
-            water: 0x4a5a6a,
-            radius: 220,
+            color: 0x6aaa8a,
+            water: 0x4ab0d0,
+            beach: 0xe0d0a8,
+            radius: 260,
             kind: 'spit'
         },
-        station: { name: 'Drydock Row', dx: 450, dy: 500 },
+        station: { name: 'Drydock Row', dx: 420, dy: 460 },
         links: ['sol', 'procyon'],
-        prices: {
-            food: { buy: 10, sell: 6 },
-            ore: { buy: 28, sell: 18 },
-            tech: { buy: 40, sell: 26 }
-        },
         danger: 2,
-        blurb: 'Shipwrights\' isle. Food surplus, timber scarce.'
+        blurb: 'Shipwrights\' lagoon. Safe shallows for tired traders.'
     },
     altair: {
         id: 'altair',
@@ -81,20 +73,16 @@ export const SYSTEMS = {
         mapY: 80,
         planet: {
             name: 'Red Cay',
-            color: 0xa05030,
-            water: 0x5a3040,
-            radius: 280,
+            color: 0xc07040,
+            water: 0x3a98c0,
+            beach: 0xe8c090,
+            radius: 290,
             kind: 'cay'
         },
-        station: { name: 'Corsair Port', dx: 700, dy: -200 },
+        station: { name: 'Corsair Port', dx: 620, dy: -180 },
         links: ['vega', 'rigel'],
-        prices: {
-            food: { buy: 25, sell: 16 },
-            ore: { buy: 30, sell: 20 },
-            tech: { buy: 35, sell: 22 }
-        },
         danger: 3,
-        blurb: 'Lawless cay. Privateers ride the gravity well.'
+        blurb: 'Warm cay on the edge of the dark. Watch the deep.'
     },
     rigel: {
         id: 'rigel',
@@ -104,20 +92,16 @@ export const SYSTEMS = {
         mapY: -160,
         planet: {
             name: 'Frost Holm',
-            color: 0xb0c8e0,
-            water: 0x6080a0,
-            radius: 320,
+            color: 0x80b090,
+            water: 0x50b0d8,
+            beach: 0xd8e0e8,
+            radius: 300,
             kind: 'holm'
         },
-        station: { name: 'Frost Haven', dx: -650, dy: -300 },
+        station: { name: 'Frost Haven', dx: -580, dy: -280 },
         links: ['vega', 'altair'],
-        prices: {
-            food: { buy: 30, sell: 20 },
-            ore: { buy: 20, sell: 12 },
-            tech: { buy: 60, sell: 42 }
-        },
         danger: 3,
-        blurb: 'Cold outer holm. Charts and chronometers fetch gold.'
+        blurb: 'Cool blue lagoon. Trade lanes stretch into the black.'
     },
     procyon: {
         id: 'procyon',
@@ -127,67 +111,21 @@ export const SYSTEMS = {
         mapY: -40,
         planet: {
             name: 'Far Reef',
-            color: 0xc09040,
-            water: 0x6a5030,
-            radius: 240,
+            color: 0xa09050,
+            water: 0x2a90b8,
+            beach: 0xd8c898,
+            radius: 250,
             kind: 'reef'
         },
-        station: { name: 'Relay Buoy', dx: 200, dy: -550 },
+        station: { name: 'Relay Buoy', dx: 180, dy: -500 },
         links: ['sirius'],
-        prices: {
-            food: { buy: 14, sell: 9 },
-            ore: { buy: 35, sell: 24 },
-            tech: { buy: 50, sell: 34 }
-        },
         danger: 4,
-        blurb: 'Remote reef. Pirates hunt the deep lanes beyond the well.'
+        blurb: 'Lonely reef. Beyond the lake the demons hunt.'
     }
 };
 
-export const MISSION_TEMPLATES = [
-    {
-        id: 'haul_food',
-        type: 'haul',
-        title: 'Provision Run',
-        desc: 'Buy provisions here and sell them at {dest}.',
-        good: 'food',
-        amount: 5,
-        reward: 180
-    },
-    {
-        id: 'haul_ore',
-        type: 'haul',
-        title: 'Ore Charter',
-        desc: 'Deliver ore to the quay at {dest}.',
-        good: 'ore',
-        amount: 4,
-        reward: 220
-    },
-    {
-        id: 'haul_tech',
-        type: 'haul',
-        title: 'Chronometer Run',
-        desc: 'Smuggle navigation tech to {dest}.',
-        good: 'tech',
-        amount: 3,
-        reward: 320
-    },
-    {
-        id: 'bounty',
-        type: 'bounty',
-        title: 'Privateer Bounty',
-        desc: 'Disable {count} hostile sails. Any island.',
-        count: 2,
-        reward: 250
-    },
-    {
-        id: 'scout',
-        type: 'scout',
-        title: 'Chart the Lane',
-        desc: 'Ride hyperspace to {dest} and make harbor.',
-        reward: 150
-    }
-];
+/** World size for the continuous archipelago. */
+export const ARCHIPELAGO_SIZE = 32000;
 
 export function getSystem(id) {
     return SYSTEMS[id] || SYSTEMS.sol;
@@ -195,32 +133,58 @@ export function getSystem(id) {
 
 export function linkedSystems(id) {
     const sys = getSystem(id);
-    return sys.links.map((lid) => SYSTEMS[lid]).filter(Boolean);
+    return (sys.links || []).map((lid) => SYSTEMS[lid]).filter(Boolean);
 }
 
-export function pickMission(fromSystemId) {
-    const from = getSystem(fromSystemId);
-    const template = MISSION_TEMPLATES[Math.floor(Math.random() * MISSION_TEMPLATES.length)];
-    const destOptions = Object.keys(SYSTEMS).filter((id) => id !== fromSystemId);
-    const destId = destOptions[Math.floor(Math.random() * destOptions.length)];
-    const dest = getSystem(destId);
+export function allSystems() {
+    return Object.values(SYSTEMS);
+}
 
-    if (template.type === 'bounty') {
-        return {
-            ...template,
-            from: fromSystemId,
-            progress: 0,
-            active: true
-        };
-    }
-
+/** Place an island in continuous world space from chart coords. */
+export function islandWorldPos(sys) {
     return {
-        ...template,
-        from: fromSystemId,
-        dest: destId,
-        destName: dest.name,
-        desc: template.desc.replace('{dest}', dest.name).replace('{count}', String(template.count || 0)),
-        progress: 0,
-        active: true
+        x: ORIGIN_X + (sys.mapX || 0) * SCALE,
+        y: ORIGIN_Y + (sys.mapY || 0) * SCALE
+    };
+}
+
+export function lakeRadius(sys) {
+    return 2400 + (sys.planet?.radius || 260);
+}
+
+/**
+ * @returns {{ system: object, dist: number, wx: number, wy: number, lakeR: number }}
+ */
+export function nearestIsland(x, y) {
+    let best = null;
+    for (const sys of allSystems()) {
+        const { x: wx, y: wy } = islandWorldPos(sys);
+        const dist = Math.hypot(x - wx, y - wy);
+        if (!best || dist < best.dist) {
+            best = { system: sys, dist, wx, wy, lakeR: lakeRadius(sys) };
+        }
+    }
+    return best;
+}
+
+/**
+ * 0 = on the lake beach, 1 = deep black between isles.
+ */
+export function openSeaThreat(x, y) {
+    const n = nearestIsland(x, y);
+    if (!n) return 1;
+    const inner = n.lakeR * 0.72;
+    const outer = n.lakeR * 1.55;
+    if (n.dist <= inner) return 0;
+    if (n.dist >= outer) return 1;
+    return (n.dist - inner) / (outer - inner);
+}
+
+export function harborPos(sys) {
+    const { x, y } = islandWorldPos(sys);
+    return {
+        x: x + (sys.station?.dx || 0),
+        y: y + (sys.station?.dy || 0),
+        name: sys.station?.name || 'Harbor'
     };
 }

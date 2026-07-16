@@ -6,14 +6,19 @@ import Projectile from '../entities/Projectile.js';
 import VirtualJoystick from '../utils/VirtualJoystick.js';
 import GamepadControls from '../utils/GamepadControls.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
-import { getSystem, linkedSystems, pickMission, SYSTEMS } from '../data/galaxy.js';
+import {
+    getSystem, linkedSystems, SYSTEMS, allSystems,
+    ARCHIPELAGO_SIZE, nearestIsland, openSeaThreat, islandWorldPos, lakeRadius, harborPos
+} from '../data/galaxy.js';
 import { DEFEND_WAVES } from '../data/defendWaves.js';
 import { HARVEST_REWARDS } from '../data/weapons.js';
 import { ensureGameTextures } from '../utils/Textures.js';
 import MultiplayerClient, { WORLD_ROOM } from '../net/MultiplayerClient.js';
+import VoiceChat from '../net/VoiceChat.js';
 import { powerFromPlayer, summarizeFleet, recipeForFleet, targetHostileCount } from '../net/WorldDirector.js';
 import { BUILD_ID, BUILD_LABEL } from '../buildInfo.js';
 import { resetQuoteCycle, QUOTE_TOTAL } from '../data/enemyQuotes.js';
+import { paintDeepVoid, paintIslandLake } from '../world/IslandBuilder.js';
 
 const MAX_PLAYER_SHOTS = 8;
 
@@ -38,7 +43,7 @@ export default class GameScene extends Phaser.Scene {
         // Fresh no-repeat pirate shout decks for this session
         resetQuoteCycle();
 
-        this.worldSize = 10000;
+        this.worldSize = ARCHIPELAGO_SIZE;
         this.center = this.worldSize / 2;
         this.physics.world.setBounds(0, 0, this.worldSize, this.worldSize);
 
@@ -57,6 +62,13 @@ export default class GameScene extends Phaser.Scene {
         this.lastHudKey = '';
         this.markerPool = [];
         this.shipMarkerLabels = [];
+        this.islands = [];
+        this.stations = [];
+        this.collabPings = [];
+        this.voice = null;
+        this.ambientThreat = 0;
+        this._lastAmbientSpawn = 0;
+        this._allyBonusUntil = 0;
 
         this.worldGraphics = [];
         this.npcs = [];
@@ -75,7 +87,7 @@ export default class GameScene extends Phaser.Scene {
         this.hyperspaceUI = null;
         this.mapUI = null;
 
-        // Defend the Station mission state
+        // Harbor raids still exist near Sol; deep space uses ambient pirates
         this.defendMode = true;
         this.defendWaveIndex = 0;
         this.defendWaveIds = new Set();
@@ -84,7 +96,8 @@ export default class GameScene extends Phaser.Scene {
         this.harvestQueue = [];
         this.mines = [];
 
-        this.player = new Player(this, this.center - 800, this.center);
+        const solPos = islandWorldPos(SYSTEMS.sol);
+        this.player = new Player(this, solPos.x - 220, solPos.y + 40);
         this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
         this.cameras.main.setBounds(0, 0, this.worldSize, this.worldSize);
         this.cameras.main.setZoom(1);
@@ -96,13 +109,15 @@ export default class GameScene extends Phaser.Scene {
         this.createActionButtons();
         this.createEdgeMarkers();
 
-        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,Q,R,SPACE,H,M,SHIFT,LEFT,RIGHT');
+        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,E,Q,R,SPACE,H,M,SHIFT,LEFT,RIGHT,V,T');
         this.dockKey = this.keys.E;
         this.fireKey = this.keys.SPACE;
         this.portKey = this.keys.Q;
         this.starboardKey = this.keys.R;
         this.hyperspaceKey = this.keys.H;
         this.mapKey = this.keys.M;
+        this.voiceKey = this.keys.V;
+        this.pingKey = this.keys.T;
 
         // Mouse aim + click-to-fire (desktop dogfight scheme)
         this._pointerFire = false;
@@ -132,8 +147,8 @@ export default class GameScene extends Phaser.Scene {
         this.scale.on('resize', this.onResize, this);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
 
-        this.loadSystem('sol');
-        this.showToast(`${BUILD_LABEL} · ${QUOTE_TOTAL.toLocaleString()} pirate shouts · no mid-fight repeats`, 5200);
+        this.buildArchipelago();
+        this.showToast(`${BUILD_LABEL} · sail the lakes · deep space bites · V voice · T ping`, 5600);
 
         if (this.mp) {
             this.setupMultiplayer();
@@ -214,20 +229,30 @@ export default class GameScene extends Phaser.Scene {
     setupMultiplayer() {
         if (!this.mp) return;
 
+        if (!this.voice) {
+            this.voice = new VoiceChat(this.mp, {
+                onStatus: (msg) => this.showToast(msg, 2200)
+            });
+        } else {
+            this.voice.mp = this.mp;
+        }
+
         this.mp.onData = (data) => this.handleNetMessage(data);
         this.mp.onPeer = (info) => {
             const n = info?.pilotCount || this.mp.pilotCount();
             this.showToast(`Sail sighted · ${n} in these waters`, 2200);
             this.broadcastHello();
             this.retuneFleetEncounters(true);
+            if (info?.peerId) this.voice?.onPeerJoined(info.peerId);
         };
         this.mp.onPeerLeave = (peerId) => {
             const remote = this.remotePlayers.get(peerId);
             if (remote) {
-                this.showToast(`${remote.name} left Sol`, 2000);
+                this.showToast(`${remote.name} left the archipelago`, 2000);
                 remote.destroy();
                 this.remotePlayers.delete(peerId);
             }
+            this.voice?.onPeerLeft(peerId);
             this.retuneFleetEncounters(true);
         };
         this.mp.onClose = async (info) => {
@@ -336,66 +361,242 @@ export default class GameScene extends Phaser.Scene {
         this.sendNet({ type: 'fleet', fleet, wave: this.fleetWaveIndex, announce: recipe.announce });
     }
 
-    loadSystem(systemId) {
-        const system = getSystem(systemId);
-        const center = this.worldSize / 2;
-
+    /**
+     * Continuous archipelago: chill blue lakes + spooky deep void between.
+     * No hyperspace menu — sail out and follow edge beacons to the next isle.
+     */
+    buildArchipelago() {
         this.hideStationUI();
         this.hideHyperspaceMenu();
         this.clearWorldObjects();
 
-        this.currentSystemId = system.id;
-        this.visitedSystems.add(system.id);
-        this.enemyTier = Math.max(1, system.danger || 1);
-        this.pendingSpawn = null;
-        this.pendingWaveSpawn = null;
-        this.defendWaveIndex = 0;
-        this.defendWaveIds = new Set();
-        this.defendComplete = false;
-        this.harvestQueue = [];
-        this.clearMines();
+        this.islands = [];
+        this.stations = [];
         this.physics.world.setBounds(0, 0, this.worldSize, this.worldSize);
+        this.cameras.main.setBounds(0, 0, this.worldSize, this.worldSize);
 
-        this.createStarField(this.worldSize, system.color);
-        this.createPlanet(center, center, system.planet);
-        this.createSystemBoundary(center, center, this.worldSize * 0.45, system.color);
+        paintDeepVoid(this, this.worldSize);
+        // Screen-space waves (tint later by threat)
+        if (this.waveOverlay) this.waveOverlay.destroy();
+        this.waveOverlay = this.add.graphics().setScrollFactor(0).setDepth(-90);
+        this.wavePhase = 0;
+        this.worldGraphics.push(this.waveOverlay);
+        this.drawWaveOverlay(0);
 
-        this.station = new Station(
-            this,
-            center + system.station.dx,
-            center + system.station.dy,
-            system.station.name,
-            system.prices
-        );
+        for (const sys of allSystems()) {
+            const lake = paintIslandLake(this, sys);
+            this.islands.push(lake);
+            const h = harborPos(sys);
+            const st = new Station(this, h.x, h.y, h.name, null);
+            this.stations.push({ station: st, systemId: sys.id });
+            if (sys.id === 'sol') this.station = st;
+        }
 
-        // Sol: solo tutorial waves, or online fleet-scaled raids
-        if (this.defendMode && system.id === 'sol') {
-            this.spawnDefendTraders();
-            this.placePlayerNearStation();
-            if (this.online) {
-                this.fleetWaveIndex = 0;
-                this.queueFleetWave(1600);
-            } else {
-                this.startDefendWave(0, 1800);
-            }
+        this.currentSystemId = 'sol';
+        this.visitedSystems.add('sol');
+        this.enemyTier = 1;
+        this.spawnTradeRouteFleet();
+        this.placePlayerNearStation();
+
+        // Light Sol harbor pressure so co-op has something to shoot near home
+        if (this.online) {
+            this.fleetWaveIndex = 0;
+            this.queueFleetWave(2200);
         } else {
-            this.spawnNPCs(system.danger);
-            this.placePlayerAtSpawn();
+            this.startDefendWave(0, 2200);
         }
 
         for (const remote of this.remotePlayers.values()) {
-            remote.setInSystem(remote.systemId === this.currentSystemId);
+            remote.setInSystem(true);
         }
 
-        const toast = system.id === 'sol'
-            ? (this.online ? `Making ${system.name} — shared aether sea` : `Making ${system.name} — defend the harbor`)
-            : `Making ${system.name} — ${system.blurb}`;
-        this.showToast(toast, 3200);
+        this.showToast('Archipelago open — blue lakes are safe; the black between is not.', 4200);
         this.sendNet({
             type: 'system',
             systemId: this.currentSystemId,
             name: this.pilotName,
             power: powerFromPlayer(this.player)
+        });
+    }
+
+    /** @deprecated — world is continuous; keep name for any leftover callers. */
+    loadSystem(systemId) {
+        const target = getSystem(systemId);
+        const pos = islandWorldPos(target);
+        if (this.player) {
+            this.player.container.setPosition(pos.x - 200, pos.y + 40);
+            this.player.body?.setVelocity(0, 0);
+        }
+        this.currentSystemId = target.id;
+        this.visitedSystems.add(target.id);
+        this.showToast(`Charted course toward ${target.name}`, 2200);
+    }
+
+    spawnTradeRouteFleet() {
+        // Traders ply the lakes; pirates / demons come from the deep
+        for (const sys of allSystems()) {
+            const { x, y } = islandWorldPos(sys);
+            const r = lakeRadius(sys) * 0.55;
+            const ang = Math.random() * Math.PI * 2;
+            this.npcs.push(new NPCShip(this, x + Math.cos(ang) * r, y + Math.sin(ang) * r, 'trader'));
+        }
+        // A couple extra merchants on the Sol–Vega lane
+        const a = islandWorldPos(SYSTEMS.sol);
+        const b = islandWorldPos(SYSTEMS.vega);
+        this.npcs.push(new NPCShip(this, (a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 'trader'));
+    }
+
+    getNearestStation() {
+        if (!this.player) return this.station;
+        let best = this.station;
+        let bestD = Infinity;
+        for (const entry of this.stations) {
+            const st = entry.station;
+            const d = Phaser.Math.Distance.Between(
+                this.player.getX(), this.player.getY(), st.getX(), st.getY()
+            );
+            if (d < bestD) {
+                bestD = d;
+                best = st;
+            }
+        }
+        return best;
+    }
+
+    updateAmbientSea(time, delta) {
+        if (!this.player || this.gameOver) return;
+        const px = this.player.getX();
+        const py = this.player.getY();
+        const nearest = nearestIsland(px, py);
+        if (nearest) {
+            this.currentSystemId = nearest.system.id;
+            this.visitedSystems.add(nearest.system.id);
+            this.station = this.stations.find((s) => s.systemId === nearest.system.id)?.station || this.station;
+        }
+        this.ambientThreat = openSeaThreat(px, py);
+
+        // Harbor auto-mend when calm
+        if (this.ambientThreat < 0.08 && this.station) {
+            const d = Phaser.Math.Distance.Between(px, py, this.station.getX(), this.station.getY());
+            if (d < (this.station.dockingRadius || 240)) {
+                this.player.shields = Math.min(this.player.maxShields, this.player.shields + 8 * (delta / 1000));
+                this.player.hull = Math.min(this.player.maxHull, this.player.hull + 3 * (delta / 1000));
+            }
+        }
+
+        // Darken / cool the wave wash in deep space
+        if (this.waveOverlay) {
+            const t = this.ambientThreat;
+            this.waveOverlay.setAlpha(1 - t * 0.55);
+        }
+        const bg = Phaser.Display.Color.Interpolate.ColorWithColor(
+            Phaser.Display.Color.ValueToColor(0x0a3a62),
+            Phaser.Display.Color.ValueToColor(0x040812),
+            100,
+            Math.floor(t * 100)
+        );
+        this.cameras.main.setBackgroundColor(
+            Phaser.Display.Color.GetColor(bg.r, bg.g, bg.b)
+        );
+
+        // Spawn deep-space hunters
+        this.tickDeepSpaceHostiles(time);
+
+        // Wingman tactics — nearby allies tighten the noose
+        this.updateWingmanTactics(time);
+    }
+
+    tickDeepSpaceHostiles(time) {
+        const threat = this.ambientThreat;
+        if (threat < 0.35) return;
+        if (time - this._lastAmbientSpawn < Phaser.Math.Linear(9000, 2800, threat)) return;
+
+        const fighters = this.npcs.filter((n) => n.alive && n.type === 'fighter' && !n.disabled);
+        const cap = 2 + Math.floor(threat * 5);
+        if (fighters.length >= cap) return;
+
+        this._lastAmbientSpawn = time;
+        const px = this.player.getX();
+        const py = this.player.getY();
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 520 + Math.random() * 280;
+        const x = Phaser.Math.Clamp(px + Math.cos(ang) * dist, 200, this.worldSize - 200);
+        const y = Phaser.Math.Clamp(py + Math.sin(ang) * dist, 200, this.worldSize - 200);
+
+        // Demons in the true black; corsairs on the fringe
+        const demon = threat > 0.72 && Math.random() < 0.55;
+        const archetypes = demon
+            ? ['ace', 'warmaster', 'flanker']
+            : ['scout', 'raider', 'weaver', 'flanker'];
+        const arch = archetypes[Math.floor(Math.random() * archetypes.length)];
+        const foe = new NPCShip(this, x, y, 'fighter', {
+            archetype: arch,
+            tier: demon ? 4 : 1 + Math.floor(threat * 3)
+        });
+        if (demon) {
+            foe.label = foe.label || 'Deep Demon';
+            foe.sprite?.setTint(0xff6688);
+            foe.speak?.('aggressive');
+        }
+        this.npcs.push(foe);
+        if (threat > 0.55 && Math.random() < 0.35) {
+            this.showToast(demon ? 'Something hungry found you in the black…' : 'Pirates cut you off from the lakes!', 2200);
+        }
+    }
+
+    updateWingmanTactics(time) {
+        if (!this.player || this.remotePlayers.size === 0) {
+            this._wingmanCount = 0;
+            return;
+        }
+        let near = 0;
+        const px = this.player.getX();
+        const py = this.player.getY();
+        for (const remote of this.remotePlayers.values()) {
+            if (!remote.container?.active) continue;
+            const d = Phaser.Math.Distance.Between(px, py, remote.container.x, remote.container.y);
+            if (d < 260) near += 1;
+        }
+        this._wingmanCount = near;
+        if (near > 0) {
+            // Shared discipline: faster battery when fighting as a pack
+            this._allyBonusUntil = time + 400;
+            if (!this._wingmanToastAt || time - this._wingmanToastAt > 8000) {
+                this._wingmanToastAt = time;
+                this.showToast(near === 1 ? 'Wingman close — crossfire ready!' : `Pack of ${near + 1} — rake them together!`, 2000);
+            }
+        }
+    }
+
+    fireCollabPing() {
+        if (!this.player || this.gameOver) return;
+        const x = this.player.getX();
+        const y = this.player.getY();
+        const now = this.time.now;
+        this.spawnCollabPing(x, y, this.pilotName, now + 6000, true);
+        this.sendNet({ type: 'ping', x, y, name: this.pilotName, ttl: 6000 });
+        this.showToast('Signal flare — crew, on me!', 1400);
+    }
+
+    spawnCollabPing(x, y, name, until, local = false) {
+        const ring = this.add.circle(x, y, 16, 0x66ffcc, 0).setStrokeStyle(3, 0x66ffcc, 0.95).setDepth(130);
+        const tag = this.add.text(x, y - 28, local ? 'HERE' : (name || 'PING'), {
+            fontSize: '12px',
+            fill: '#66ffcc',
+            stroke: '#041018',
+            strokeThickness: 3
+        }).setOrigin(0.5).setDepth(131);
+        this.tweens.add({
+            targets: ring,
+            scale: 4,
+            alpha: 0,
+            duration: 900,
+            onComplete: () => ring.destroy()
+        });
+        this.collabPings.push({ x, y, name, until, tag });
+        this.time.delayedCall(Math.max(500, until - this.time.now), () => {
+            tag.destroy();
+            this.collabPings = this.collabPings.filter((p) => p.tag !== tag);
         });
     }
 
@@ -406,8 +607,12 @@ export default class GameScene extends Phaser.Scene {
         this.wavePhase = 0;
         this.starfield = null;
 
+        for (const entry of this.stations || []) {
+            entry.station?.destroy();
+        }
+        this.stations = [];
         if (this.station) {
-            this.station.destroy();
+            // may already be destroyed via stations list
             this.station = null;
         }
 
@@ -416,21 +621,21 @@ export default class GameScene extends Phaser.Scene {
         this.clearAllProjectiles();
         this.clearMines();
         this.harvestQueue = [];
+        for (const p of this.collabPings || []) p.tag?.destroy();
+        this.collabPings = [];
     }
 
     placePlayerAtSpawn() {
-        if (!this.player) return;
-        this.player.container.setPosition(this.center - 800, this.center);
-        this.player.rotation = 0;
-        this.player.rotationSpeed = 0;
-        this.player.container.setRotation(0);
-        this.player.body.setVelocity(0, 0);
-        this.player.body.setAcceleration(0, 0);
+        this.placePlayerNearStation();
     }
 
     placePlayerNearStation() {
-        if (!this.player || !this.station) return;
-        this.player.container.setPosition(this.station.getX() - 220, this.station.getY() + 40);
+        if (!this.player) return;
+        const st = this.getNearestStation?.() || this.station;
+        const sol = islandWorldPos(SYSTEMS.sol);
+        const x = st ? st.getX() - 220 : sol.x - 220;
+        const y = st ? st.getY() + 40 : sol.y + 40;
+        this.player.container.setPosition(x, y);
         this.player.rotation = -Math.PI / 2;
         this.player.rotationSpeed = 0;
         this.player.container.setRotation(this.player.rotation);
@@ -439,8 +644,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     spawnDefendTraders() {
-        const c = this.worldSize / 2;
-        this.npcs.push(new NPCShip(this, c + 900, c + 700, 'trader'));
+        // Traders already seeded in spawnTradeRouteFleet
     }
 
     spawnNPCs(danger = 1) {
@@ -538,13 +742,14 @@ export default class GameScene extends Phaser.Scene {
     }
 
     processHarvestQueue() {
-        if (!this.station || this.isDocked) return;
+        if (!this.getNearestStation() && !this.station) return;
         const now = Date.now();
         this.harvestQueue = this.harvestQueue.filter((job) => {
             if (!job.npc || !job.npc.alive || !job.npc.disabled) return false;
             if (now < job.at) return true;
 
             const npc = job.npc;
+            this.station = this.getNearestStation() || this.station;
             this.playHarvestBeam(npc.getX(), npc.getY());
             const reward = HARVEST_REWARDS[this.player.harvestIndex % HARVEST_REWARDS.length];
             const prevWeapon = this.player.weaponId;
@@ -1330,6 +1535,13 @@ export default class GameScene extends Phaser.Scene {
         this.trimPlayerShots();
 
         this.player.markVolleyFired(resolved);
+        // Wingman discipline: pack fighting reloads the silent battery faster
+        if (this._wingmanCount > 0 && this.time.now < (this._allyBonusUntil || 0)) {
+            const boost = Math.min(0.35, 0.12 * this._wingmanCount);
+            const shave = Math.round(this.player.reloadMs * boost);
+            if (resolved === 'port') this.player.portReadyAt = Math.max(0, this.player.portReadyAt - shave);
+            else this.player.starboardReadyAt = Math.max(0, this.player.starboardReadyAt - shave);
+        }
         this.spawnBroadsideFlash(resolved, fireAngle);
 
         this.sendNet({
@@ -1603,17 +1815,20 @@ export default class GameScene extends Phaser.Scene {
     }
 
     attemptDocking() {
-        if (this.gameOver || !this.station) return;
-        if (this.isDocked) {
-            this.undock();
-            return;
-        }
+        // No trade menus — harbors are NPC rest stops; you mend by sailing close.
+        if (this.gameOver) return;
+        const st = this.getNearestStation();
+        if (!st) return;
         const distance = Phaser.Math.Distance.Between(
             this.player.getX(), this.player.getY(),
-            this.station.getX(), this.station.getY()
+            st.getX(), st.getY()
         );
-        if (distance < this.station.dockingRadius) {
-            this.dock();
+        if (distance < st.dockingRadius) {
+            this.showToast(`${st.getName()} — traders rest here. You protect the lanes.`, 2800);
+            this.player.shields = this.player.maxShields;
+            this.player.hull = Math.min(this.player.maxHull, this.player.hull + 20);
+        } else {
+            this.showToast('Sail closer to a blue-lake harbor to mend.', 2000);
         }
     }
 
@@ -1959,12 +2174,25 @@ export default class GameScene extends Phaser.Scene {
     }
 
     attemptHyperspace() {
-        if (this.gameOver || this.isDocked) return;
-        if (!this.isNearHyperspaceEdge()) {
-            this.showToast('Sail beyond the gravity well (outer brass ring) to catch a deep lane.', 2800);
+        if (this.gameOver) return;
+        const n = nearestIsland(this.player.getX(), this.player.getY());
+        if (!n) return;
+        const links = linkedSystems(n.system.id);
+        if (!links.length) {
+            this.showToast('No lanes charted from this lake.', 2000);
             return;
         }
-        this.openHyperspaceMenu();
+        // Beacon the farthest linked isle as a deep-lane hint
+        let dest = links[0];
+        let best = -1;
+        for (const d of links) {
+            const p = islandWorldPos(d);
+            const dist = Math.hypot(p.x - n.wx, p.y - n.wy);
+            if (dist > best) { best = dist; dest = d; }
+        }
+        const pos = islandWorldPos(dest);
+        this.showToast(`Deep lane toward ${dest.name} — follow the screen-edge beacon.`, 2800);
+        this.spawnCollabPing(pos.x, pos.y, dest.name, this.time.now + 10000, false);
     }
 
     openHyperspaceMenu() {
@@ -2537,7 +2765,38 @@ export default class GameScene extends Phaser.Scene {
             }
         }
 
+        // Directional beacons to other island lakes (and linked lanes)
         let labelIdx = 0;
+        const here = nearestIsland(this.player.getX(), this.player.getY());
+        const linkIds = new Set((here?.system?.links) || []);
+        for (const sys of allSystems()) {
+            if (here && sys.id === here.system.id) continue;
+            const { x: ix, y: iy } = islandWorldPos(sys);
+            if (this.isOnScreen(ix, iy, 80)) continue;
+            const linked = linkIds.has(sys.id);
+            const edge = this.projectToEdge(ix, iy);
+            this.placeEdgeMarker(edge.x, edge.y, edge.angle, linked ? 0xffe08a : 0x66ccee, linked ? 14 : 10);
+            if (!this.shipMarkerLabels[labelIdx]) {
+                this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
+                    fontSize: '10px',
+                    fill: '#ffffff'
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+            }
+            const lbl = this.shipMarkerLabels[labelIdx];
+            lbl.setText((sys.name || sys.id).toUpperCase().slice(0, 10));
+            lbl.setColor(linked ? '#ffe08a' : '#88ddee');
+            lbl.setPosition(edge.x - Math.cos(edge.angle) * 20, edge.y - Math.sin(edge.angle) * 20);
+            lbl.setAlpha(linked ? 1 : 0.75);
+            labelIdx += 1;
+        }
+
+        // Collab pings
+        for (const ping of this.collabPings || []) {
+            if (this.isOnScreen(ping.x, ping.y, 40)) continue;
+            const edge = this.projectToEdge(ping.x, ping.y);
+            this.placeEdgeMarker(edge.x, edge.y, edge.angle, 0x66ffcc, 12);
+        }
+
         for (const npc of this.npcs) {
             if (!npc.alive) continue;
             if (this.isOnScreen(npc.getX(), npc.getY(), 50)) continue;
@@ -2616,6 +2875,17 @@ export default class GameScene extends Phaser.Scene {
         if (data.type === 'fire') {
             this.ensureRemotePlayer(data);
             this.spawnRemoteProjectile(data);
+            return;
+        }
+
+        if (data.type === 'ping') {
+            this.spawnCollabPing(
+                data.x, data.y,
+                data.name || 'PILOT',
+                this.time.now + (data.ttl || 6000),
+                false
+            );
+            this.showToast(`${data.name || 'Pilot'} flared a signal!`, 1600);
             return;
         }
 
@@ -2713,35 +2983,31 @@ export default class GameScene extends Phaser.Scene {
         const kills = this.player.kills;
         const loadout = Player.basicLoadout(credits, kills);
 
-        // Prefer current system's station berth
-        const berthX = this.station ? this.station.getX() - 180 : this.center - 220;
-        const berthY = this.station ? this.station.getY() + 40 : this.center;
+        // Prefer nearest lake harbor
+        this.station = this.getNearestStation() || this.station;
+        const sol = islandWorldPos(SYSTEMS.sol);
+        const berthX = this.station ? this.station.getX() - 180 : sol.x - 180;
+        const berthY = this.station ? this.station.getY() + 40 : sol.y + 40;
 
         this.player.destroy();
         this.player = new Player(this, berthX, berthY, loadout);
         this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
         this.gameOver = false;
+        this.isDocked = false;
         this._lastMortalityLevel = 'ok';
         if (this.dangerBanner) this.dangerBanner.setAlpha(0);
         if (this.dangerVignette) {
             this.dangerVignette.clear();
             this.dangerVignette.setAlpha(0);
         }
-
-        // Auto-berth so you're safe at port
-        this.isDocked = false;
-        if (this.station) {
-            this.dock();
-        } else {
-            this.dockButton.setText('DOCK');
-        }
+        if (this.dockButton) this.dockButton.setText('MEND');
 
         this.showUpgradePopup({
             title: 'REFIT AT HARBOR',
-            subtitle: 'Light Carronade · stock hull · yard upgrades lost',
+            subtitle: 'Light Carronade · stock hull — back to the blue lake',
             kind: 'ship'
         });
-        this.showToast('Respawned at port with a basic ship & guns. Purse kept.', 3600);
+        this.showToast('Respawned at a calm lake with basic guns. Protect the lanes.', 3600);
     }
 
     update(time, delta) {
@@ -2766,22 +3032,30 @@ export default class GameScene extends Phaser.Scene {
             if (this.reticle) this.reticle.setVisible(false);
         }
 
-        const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
-
-        if (!this.isDocked) {
-            for (let i = 0; i < this.npcs.length; i++) {
-                this.npcs[i].update(time, safeDelta, this.player);
+        let inDockingRange = false;
+        for (const entry of this.stations || []) {
+            if (entry.station?.update?.(this.player.getX(), this.player.getY())) {
+                inDockingRange = true;
             }
-            if (!this.gameOver) {
-                this.handleCombat();
-                this.updateMines();
-            }
-            this.maybeRespawnNPCs();
-        } else {
-            this.processHarvestQueue();
+        }
+        if (!inDockingRange && this.station?.update) {
+            inDockingRange = this.station.update(this.player.getX(), this.player.getY());
         }
 
+        this.updateAmbientSea(time, safeDelta);
+
+        for (let i = 0; i < this.npcs.length; i++) {
+            this.npcs[i].update(time, safeDelta, this.player);
+        }
+        if (!this.gameOver) {
+            this.handleCombat();
+            this.updateMines();
+        }
+        this.maybeRespawnNPCs();
+        this.processHarvestQueue();
+
         for (const remote of this.remotePlayers.values()) {
+            remote.setInSystem?.(true);
             remote.update(safeDelta);
         }
 
@@ -2803,6 +3077,12 @@ export default class GameScene extends Phaser.Scene {
         if (Phaser.Input.Keyboard.JustDown(this.mapKey) || (pad && this.gamepad.just.map)) {
             this.toggleGalaxyMap();
         }
+        if (this.voiceKey && Phaser.Input.Keyboard.JustDown(this.voiceKey)) {
+            this.voice?.toggle();
+        }
+        if (this.pingKey && Phaser.Input.Keyboard.JustDown(this.pingKey)) {
+            this.fireCollabPing();
+        }
 
         if (this.toastText.alpha > 0 && Date.now() > this.statusMessageUntil) {
             this.toastText.setAlpha(0);
@@ -2821,61 +3101,45 @@ export default class GameScene extends Phaser.Scene {
     }
 
     updateActionButtonVisibility(inDockingRange) {
-        if (inDockingRange || this.isDocked) {
-            this.dockButton.setAlpha(1);
-        } else {
-            this.dockButton.setAlpha(0);
+        // Harbor mend when close; DEEP becomes lane beacon
+        if (this.dockButton) {
+            this.dockButton.setText('MEND');
+            this.dockButton.setAlpha(inDockingRange ? 1 : 0.35);
         }
-
-        if (this.isNearHyperspaceEdge() && !this.isDocked && !this.gameOver) {
-            this.hyperspaceButton.setAlpha(1);
-        } else {
-            this.hyperspaceButton.setAlpha(0);
+        if (this.hyperspaceButton) {
+            this.hyperspaceButton.setText('LANE');
+            this.hyperspaceButton.setAlpha(this.ambientThreat > 0.2 ? 1 : 0.4);
+        }
+        if (this.fireLabel && this.touchEnabled) {
+            this.fireLabel.setText('FIRE');
         }
     }
 
     updateHUD(inDockingRange, pad = null) {
         const p = this.player;
-        const u = p.upgrades;
         const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
         const system = getSystem(this.currentSystemId);
         const fleet = this.online ? this.getFleet() : null;
-        const mission = this.defendMode && this.currentSystemId === 'sol'
-            ? (this.online
-                ? `Sol Online · fleet wave ${this.fleetWaveIndex || 1} · target ${fleet ? targetHostileCount(fleet) : 1} hostiles`
-                : (this.defendComplete
-                    ? 'Charter: Harbor held — salvage & chart the lanes!'
-                    : `Charter: DEFEND THE HARBOR — Wave ${Math.min(this.defendWaveIndex + 1, DEFEND_WAVES.length)}/${DEFEND_WAVES.length}`))
-            : (this.activeMission
-                ? `Charter: ${this.activeMission.title} ${this.activeMission.type === 'bounty' ? `${this.activeMission.progress || 0}/${this.activeMission.count}` : `→ ${this.activeMission.destName || getSystem(this.activeMission.dest).name}`}`
-                : 'Charter: none');
+        const threatPct = Math.round((this.ambientThreat || 0) * 100);
+        const zone = threatPct < 20 ? 'CALM LAKE' : (threatPct < 55 ? 'OPEN LANE' : (threatPct < 80 ? 'DARK SEA' : 'DEEP BLACK'));
         const pilotsOnline = this.isMultiplayer()
-            ? `Sails: ${1 + this.remotePlayers.size}${fleet ? ` · Fleet P${Math.round(fleet.power)} (avg ${fleet.avg.toFixed(1)})` : ''}`
+            ? `Crew: ${1 + this.remotePlayers.size}${fleet ? ` · Fleet P${Math.round(fleet.power)}` : ''}${this._wingmanCount ? ` · wing×${this._wingmanCount}` : ''}`
             : '';
         const room = this.isMultiplayer()
             ? `${this.online ? 'Sea' : 'Squadron'}: ${this.roomCode}${this.mode === 'host' ? ' [ANCHOR]' : ''}`
             : '';
-        const padStatus = pad?.connected ? 'Pad: Xbox connected' : 'Pad: press any stick/button to connect';
         const weapon = this.player.getWeapon();
-
-        const next = p.getNextUpgradeTarget();
-        const yardHint = next
-            ? (next.need > 0 ? `Next yard: ${next.label} (−${next.need}c)` : `Next yard: ${next.label} AFFORDABLE`)
-            : 'Yard maxed';
+        const voiceLine = this.voice ? this.voice.statusLabel() : 'Voice: OFF [V]';
 
         const lines = [
-            `build ${BUILD_ID} · shots ${this.projectiles.length}/${MAX_PLAYER_SHOTS} · Power ${powerFromPlayer(p)}`,
-            `${system.name}   Purse: ${p.credits}c   Prizes: ${p.kills}`,
+            `build ${BUILD_ID} · ${zone} ${threatPct}% · shots ${this.projectiles.length}/${MAX_PLAYER_SHOTS}`,
+            `${system.name}   Prizes: ${p.kills}   ${weapon.label} ×${p.getVolleyCount()}`,
             room,
             pilotsOnline,
-            padStatus,
-            `Battery ${weapon.label} ×${p.getVolleyCount()} · ${p.reloadMs}ms   ${yardHint}`,
-            `Hold ${p.getCargoUsed()}/${p.cargoCapacity}   Rig${u.engines} Ward${u.shields} Hull${u.hull} Guns${u.weapons} Hold${u.cargo}`,
-            mission,
-            foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
-            `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'A/D turn · W/S thrust · mouse aims · Space fire · bow-ram for melee',
-            this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
+            voiceLine,
+            foe ? `Hunt: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : 'Trade lanes — escort merchants, sink hunters',
+            `Sheer ${this.player.canBoost() ? 'READY' : '…'} · ${inDockingRange ? 'Harbor mend [E]' : 'E mend at lake'} · H lane beacon · T flare`,
+            'Protect traders · sail with crew · crossfire when wingmen close'
         ].filter(Boolean).join('\n');
 
         if (lines === this.lastHudKey) return;
@@ -2927,6 +3191,8 @@ export default class GameScene extends Phaser.Scene {
         this.hideStationUI();
         this.hideHyperspaceMenu();
         this.hideGalaxyMap();
+        this.voice?.destroy();
+        this.voice = null;
         this.clearWorldObjects();
         for (const r of this.remotePlayers.values()) r.destroy();
         this.remotePlayers.clear();

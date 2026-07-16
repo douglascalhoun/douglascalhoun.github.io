@@ -55,13 +55,14 @@ export default class RemotePlayer {
         if (state.fromId) this.id = state.fromId;
         this.label.setText(this._labelText());
         this.lastUpdate = Date.now();
-        this.setInSystem((state.systemId || this.systemId) === this.scene.currentSystemId);
+        // Continuous archipelago — all pilots share one sea
+        this.setInSystem(true);
     }
 
     setInSystem(yes) {
-        this.visibleInSystem = yes;
-        this.container.setVisible(yes);
-        this.label.setVisible(yes);
+        this.visibleInSystem = yes !== false;
+        this.container.setVisible(this.visibleInSystem);
+        this.label.setVisible(this.visibleInSystem);
     }
 
     update(delta) {

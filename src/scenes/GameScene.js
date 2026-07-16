@@ -12,6 +12,9 @@ import { HARVEST_REWARDS } from '../data/weapons.js';
 import { ensureGameTextures } from '../utils/Textures.js';
 import MultiplayerClient, { WORLD_ROOM } from '../net/MultiplayerClient.js';
 import { powerFromPlayer, summarizeFleet, recipeForFleet, targetHostileCount } from '../net/WorldDirector.js';
+import { BUILD_ID, BUILD_LABEL } from '../buildInfo.js';
+
+const MAX_PLAYER_SHOTS = 3;
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -127,7 +130,7 @@ export default class GameScene extends Phaser.Scene {
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
 
         this.loadSystem('sol');
-        this.showToast('Casting off into Sol Haven — shared aether sea…', 4200);
+        this.showToast(`${BUILD_LABEL} · casting off — single ball, max ${MAX_PLAYER_SHOTS} aloft`, 5200);
 
         if (this.mp) {
             this.setupMultiplayer();
@@ -918,6 +921,7 @@ export default class GameScene extends Phaser.Scene {
             projectile.setScale(1.35);
         }
         this.projectiles.push(projectile);
+        this.trimPlayerShots();
 
         this.player.markVolleyFired(resolved);
         this.spawnBroadsideFlash(resolved, fireAngle);
@@ -932,6 +936,15 @@ export default class GameScene extends Phaser.Scene {
             weaponId: this.player.weaponId,
             side: resolved
         });
+    }
+
+    /** Keep at most MAX_PLAYER_SHOTS aloft — oldest balls expire first. */
+    trimPlayerShots() {
+        while (this.projectiles.length > MAX_PLAYER_SHOTS) {
+            const oldest = this.projectiles.shift();
+            if (oldest && typeof oldest.destroyBolt === 'function') oldest.destroyBolt();
+            else if (oldest && typeof oldest.destroy === 'function') oldest.destroy();
+        }
     }
 
     spawnBroadsideFlash(_side, angle) {
@@ -1136,13 +1149,10 @@ export default class GameScene extends Phaser.Scene {
         g.lineStyle(2, 0xffffff, 0.3);
         g.lineBetween(x - bow.dx * 18, y - bow.dy * 18, x + bow.dx * 50, y + bow.dy * 50);
 
-        // Single-shot fire path
+        // Single-shot fire path (one thin ray — not a spread fan)
         const rayColor = ready ? 0xc9a227 : 0x886622;
         const d = dir(fireAng);
-        g.lineStyle(2.5, rayColor, ready ? 0.9 : 0.35);
-        g.lineBetween(x + d.dx * 18, y + d.dy * 18, x + d.dx * range, y + d.dy * range);
-        // Soft corridor hint (thin) so the ball path reads without a spread fan
-        g.lineStyle(8, rayColor, ready ? 0.08 : 0.04);
+        g.lineStyle(2, rayColor, ready ? 0.85 : 0.35);
         g.lineBetween(x + d.dx * 18, y + d.dy * 18, x + d.dx * range, y + d.dy * range);
 
         const rx = cursorX != null ? cursorX : x + sail.dx * sailLen;
@@ -2246,6 +2256,7 @@ export default class GameScene extends Phaser.Scene {
         const weapon = this.player.getWeapon();
 
         const lines = [
+            `build ${BUILD_ID} · shots ${this.projectiles.length}/${MAX_PLAYER_SHOTS}`,
             `${system.name}   Purse: ${p.credits}   Prizes: ${p.kills}`,
             room,
             pilotsOnline,

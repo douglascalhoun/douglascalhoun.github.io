@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import { ARCHETYPES } from '../data/defendWaves.js';
+import { pickQuote, moodColor } from '../data/enemyQuotes.js';
 
 /**
  * NPC ship — traders or archetype fighters.
  * Uses baked sprites (no per-frame Graphics) for Safari smoothness.
+ * Moods drive colored philosophy barks beside the hull.
  */
 export default class NPCShip {
     constructor(scene, x, y, type = 'trader', options = {}) {
@@ -18,6 +20,13 @@ export default class NPCShip {
         this.hasFled = false;
         this.fleeNotified = false;
         this.harvestQueued = false;
+
+        this.mood = type === 'fighter' ? 'aggressive' : 'pensive';
+        this.prevMood = this.mood;
+        this.nextBarkAt = 0;
+        this.barkCooldownMs = Phaser.Math.Between(5200, 9000);
+        this.barkTexts = [];
+        this.upsetUntil = 0;
 
         if (this.archetype) {
             this.applyArchetype(this.archetype);
@@ -82,6 +91,106 @@ export default class NPCShip {
         this.mode = 'patrol';
 
         this.pickNewTarget();
+
+        // Opening thought shortly after appearing
+        this.nextBarkAt = scene.time.now + Phaser.Math.Between(400, 1400);
+    }
+
+    /**
+     * Map combat circumstance → mood.
+     * aggressive: hunting / in a duel
+     * pensive: patrol, traders, lulls
+     * fearful: fleeing when critically hurt
+     * upset: just wounded (short burst), or a wreck's last mutter
+     */
+    resolveMood(time) {
+        if (this.disabled) return 'upset';
+        if (time < this.upsetUntil) return 'upset';
+        if (this.mode === 'flee' || this.hits === 1) return 'fearful';
+        if (this.mode === 'attack') return 'aggressive';
+        if (this.type === 'trader') return 'pensive';
+        return 'pensive';
+    }
+
+    maybeBark(time, force = false) {
+        if (!this.alive || !this.container?.active) return;
+        const mood = this.resolveMood(time);
+        const moodChanged = mood !== this.prevMood;
+        if (!force && !moodChanged && time < this.nextBarkAt) {
+            this.mood = mood;
+            return;
+        }
+        this.mood = mood;
+        this.prevMood = mood;
+        this.speak(mood);
+        // Upset / fearful bark more often; pensive less
+        const base = mood === 'upset' ? 2800
+            : mood === 'fearful' ? 4000
+                : mood === 'aggressive' ? 5500
+                    : 7500;
+        this.barkCooldownMs = base + Phaser.Math.Between(0, 2500);
+        this.nextBarkAt = time + this.barkCooldownMs;
+    }
+
+    speak(mood = this.mood) {
+        if (!this.scene || !this.container?.active) return;
+        // Cap simultaneous barks per ship
+        this.barkTexts = this.barkTexts.filter((t) => t.active);
+        if (this.barkTexts.length >= 2) {
+            const old = this.barkTexts.shift();
+            old?.destroy();
+        }
+
+        const quote = pickQuote(mood);
+        const color = moodColor(mood);
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const text = this.scene.add.text(
+            this.container.x + side * 36,
+            this.container.y - 28,
+            `"${quote}"`,
+            {
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                fontSize: '12px',
+                color,
+                wordWrap: { width: 200 },
+                align: side > 0 ? 'left' : 'right',
+                stroke: '#061018',
+                strokeThickness: 3
+            }
+        ).setOrigin(side > 0 ? 0 : 1, 1).setDepth(140).setAlpha(0);
+
+        this.barkTexts.push(text);
+
+        this.scene.tweens.add({
+            targets: text,
+            alpha: 1,
+            y: text.y - 10,
+            duration: 220,
+            ease: 'Quad.out',
+            onComplete: () => {
+                this.scene.tweens.add({
+                    targets: text,
+                    alpha: 0,
+                    y: text.y - 28,
+                    delay: 2200,
+                    duration: 700,
+                    onComplete: () => {
+                        text.destroy();
+                        this.barkTexts = this.barkTexts.filter((t) => t !== text && t.active);
+                    }
+                });
+            }
+        });
+    }
+
+    updateBarkPositions() {
+        if (!this.barkTexts.length || !this.container) return;
+        for (const t of this.barkTexts) {
+            if (!t.active) continue;
+            // Drift with the ship a little so quotes stay "beside" them
+            const ox = t.originX < 0.5 ? -36 : 36;
+            t.x = this.container.x + ox;
+        }
     }
 
     applyArchetype(arch) {
@@ -137,6 +246,10 @@ export default class NPCShip {
         if (this.fleeNotified) return;
         this.fleeNotified = true;
         this.hasFled = true;
+        this.mood = 'fearful';
+        this.prevMood = 'fearful';
+        this.speak('fearful');
+        this.nextBarkAt = this.scene.time.now + Phaser.Math.Between(3000, 5000);
         if (this.scene.onEnemyFled) this.scene.onEnemyFled(this);
     }
 
@@ -150,6 +263,8 @@ export default class NPCShip {
                 this.sparkTimer = 0;
                 this.container.setAlpha(0.55 + Math.random() * 0.35);
             }
+            this.maybeBark(time);
+            this.updateBarkPositions();
             return;
         }
 
@@ -192,15 +307,21 @@ export default class NPCShip {
 
         if (this.mode === 'attack' && player) {
             this.updateDuel(time, delta, player);
+            this.maybeBark(time);
+            this.updateBarkPositions();
             return;
         }
 
         if (this.mode === 'flee') {
             this.updateFlee();
+            this.maybeBark(time);
+            this.updateBarkPositions();
             return;
         }
 
         this.moveToward(this.targetX, this.targetY, this.speed, 50, true);
+        this.maybeBark(time);
+        this.updateBarkPositions();
     }
 
     updateDuel(time, delta, player) {
@@ -335,6 +456,14 @@ export default class NPCShip {
             towardPlayer: true,
             speed: 145
         });
+
+        // Battle cry when loosing a ball
+        if (Math.random() < 0.45) {
+            this.mood = 'aggressive';
+            this.prevMood = 'aggressive';
+            this.speak('aggressive');
+            this.nextBarkAt = time + Phaser.Math.Between(3500, 6000);
+        }
     }
 
     updateFlee() {
@@ -372,6 +501,13 @@ export default class NPCShip {
             this.scene.spawnHitSpark(this.container.x, this.container.y);
         }
 
+        const now = this.scene.time.now;
+        this.upsetUntil = now + 2200;
+        this.mood = 'upset';
+        this.prevMood = 'upset';
+        this.speak('upset');
+        this.nextBarkAt = now + Phaser.Math.Between(2400, 4000);
+
         if (this.hits <= 0) {
             this.disable();
             return 'disabled';
@@ -380,6 +516,14 @@ export default class NPCShip {
             this.mode = 'flee';
             this.body.setMaxVelocity(this.fleeSpeed);
             this.notifyFlee();
+            // Fear overrides upset on the next bark beat
+            this.scene.time.delayedCall(500, () => {
+                if (this.alive && !this.disabled && this.mode === 'flee') {
+                    this.speak('fearful');
+                    this.mood = 'fearful';
+                    this.prevMood = 'fearful';
+                }
+            });
             return 'critical';
         }
         return 'hit';
@@ -395,11 +539,17 @@ export default class NPCShip {
         this.refreshDamageVisual();
         this.container.setAlpha(0.75);
         this.container.setDepth(40);
+        this.speak('upset');
+        this.nextBarkAt = this.scene.time.now + 5000;
         if (this.scene.onEnemyDisabled) this.scene.onEnemyDisabled(this);
     }
 
     destroy() {
         this.alive = false;
+        for (const t of this.barkTexts) {
+            try { t.destroy(); } catch (_) { /* ignore */ }
+        }
+        this.barkTexts = [];
         if (this.container) this.container.destroy();
     }
 

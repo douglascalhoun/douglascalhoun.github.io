@@ -24,7 +24,7 @@ const UPGRADE_DEFS = {
         label: 'Gun Crew',
         maxLevel: 5,
         costs: [220, 450, 800, 1200, 1800],
-        describe: (level) => `Broadside reload −${level * 8}%`
+        describe: (level) => `Cannon reload −${level * 8}%`
     },
     cargo: {
         label: 'Hold',

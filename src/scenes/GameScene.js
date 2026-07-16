@@ -950,6 +950,21 @@ export default class GameScene extends Phaser.Scene {
         // World-space integrity ring over the ship
         this.shipStatusGfx = this.add.graphics().setDepth(105);
         this.lastStatusDraw = 0;
+
+        // Near-death / mortality banner + screen edge vignette
+        this.dangerVignette = this.add.graphics().setScrollFactor(0).setDepth(3050).setAlpha(0);
+        this.dangerBanner = this.add.text(this.scale.width / 2, this.scale.height - 96, '', {
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: '22px',
+            fill: '#ff6644',
+            stroke: '#1a0505',
+            strokeThickness: 5,
+            align: 'center',
+            backgroundColor: '#200808cc',
+            padding: { x: 16, y: 8 }
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(3051).setAlpha(0);
+        this._lastMortalityLevel = 'ok';
+        this._dangerPulse = 0;
     }
 
     createActionButtons() {
@@ -1090,19 +1105,30 @@ export default class GameScene extends Phaser.Scene {
         const barH = 11;
         let y = 172;
 
-        const shieldFrac = p.maxShields > 0 ? p.shields / p.maxShields : 0;
-        const hullFrac = p.maxHull > 0 ? p.hull / p.maxHull : 0;
+        const mort = p.getMortality();
+        const shieldFrac = mort.shieldFrac;
+        const hullFrac = mort.hullFrac;
         const portFrac = p.sideReloadFrac('port');
         const stbdFrac = p.sideReloadFrac('starboard');
         const next = p.getNextUpgradeTarget();
+        const pulse = 0.55 + Math.sin(this.time.now * 0.012) * 0.45;
 
         // Ward
-        this.drawMeterBar(g, left + 54, y, barW, barH, shieldFrac, 0x44c8e8);
+        this.drawMeterBar(g, left + 54, y, barW, barH, shieldFrac, shieldFrac < 0.05 ? 0x445566 : 0x44c8e8);
         this.drawPips(g, left + 54 + barW + 12, y + 5, p.getIntegrityPips('shields', 10), 10, 0x66e0ff, 0x335566);
         y += 22;
-        // Hull
-        this.drawMeterBar(g, left + 54, y, barW, barH, hullFrac, hullFrac < 0.35 ? 0xff5533 : 0xc9a227);
-        this.drawPips(g, left + 54 + barW + 12, y + 5, p.getIntegrityPips('hull', 10), 10, 0xffcc66, 0x554422);
+        // Hull — reddens and pulses as death nears
+        let hullColor = 0xc9a227;
+        if (mort.level === 'hurt') hullColor = 0xff9944;
+        if (mort.level === 'critical') hullColor = 0xff5533;
+        if (mort.level === 'dying') hullColor = Phaser.Display.Color.GetColor(255, Math.floor(40 + 80 * pulse), 40);
+        this.drawMeterBar(g, left + 54, y, barW, barH, hullFrac, hullColor);
+        this.drawPips(
+            g, left + 54 + barW + 12, y + 5,
+            p.getIntegrityPips('hull', 10), 10,
+            mort.level === 'dying' || mort.level === 'critical' ? 0xff4422 : 0xffcc66,
+            0x554422
+        );
         y += 22;
         // Guns — two shorter bars
         const gunW = 96;
@@ -1126,25 +1152,81 @@ export default class GameScene extends Phaser.Scene {
             : 'Yard: all upgrades MAX';
 
         this.statusLabels.setText([
-            `WARD  ${Math.round(p.shields)}/${p.maxShields}   pips ${p.getIntegrityPips('shields', 10)}/10`,
-            `HULL  ${Math.round(p.hull)}/${p.maxHull}   pips ${p.getIntegrityPips('hull', 10)}/10`,
+            `WARD  ${Math.round(p.shields)}/${p.maxShields}   pips ${p.getIntegrityPips('shields', 10)}/10` +
+                (shieldFrac < 0.05 ? '  · DOWN' : ''),
+            `HULL  ${Math.round(p.hull)}/${p.maxHull}   pips ${p.getIntegrityPips('hull', 10)}/10` +
+                (mort.level !== 'ok' ? `  · ${mort.level.toUpperCase()}` : ''),
             `GUNS  P ${portReady ? 'READY' : `${Math.round(portFrac * 100)}%`}   S ${stbdReady ? 'READY' : `${Math.round(stbdFrac * 100)}%`}   ${weapon.label} ×${p.getVolleyCount()}`,
-            `YARD  ${yardLine}`
-        ].join('\n'));
+            `YARD  ${yardLine}`,
+            mort.level === 'ok' ? '' : `⚠ ${mort.label}`
+        ].filter(Boolean).join('\n'));
 
-        // World-space ring over ship
-        this.drawShipStatusOverlay();
+        this.updateDangerBanner(mort);
+        this.drawShipStatusOverlay(mort);
     }
 
-    drawShipStatusOverlay() {
+    updateDangerBanner(mort) {
+        if (!this.dangerBanner || !this.dangerVignette) return;
+        const w = this.scale.width;
+        const h = this.scale.height;
+        this.dangerBanner.setPosition(w / 2, h - 96);
+
+        if (!mort || mort.level === 'ok' || this.gameOver || this.isDocked) {
+            this.dangerBanner.setAlpha(0);
+            this.dangerVignette.clear();
+            this.dangerVignette.setAlpha(0);
+            this._lastMortalityLevel = mort?.level || 'ok';
+            return;
+        }
+
+        const pulse = 0.5 + Math.sin(this.time.now * (mort.level === 'dying' ? 0.018 : 0.01)) * 0.5;
+        const colors = {
+            hurt: '#ffaa66',
+            critical: '#ff6644',
+            dying: '#ff2222'
+        };
+        this.dangerBanner.setColor(colors[mort.level] || '#ff6644');
+        this.dangerBanner.setText(
+            mort.level === 'dying'
+                ? `☠ ${mort.label}`
+                : mort.level === 'critical'
+                    ? `⚠ ${mort.label}`
+                    : mort.label
+        );
+        this.dangerBanner.setAlpha(0.55 + pulse * 0.45);
+
+        // Edge vignette intensifies near death
+        const vig = this.dangerVignette;
+        vig.clear();
+        const alpha = mort.level === 'dying' ? 0.35 + pulse * 0.25
+            : mort.level === 'critical' ? 0.18 + pulse * 0.12
+                : 0.08;
+        vig.fillStyle(0x660000, alpha);
+        vig.fillRect(0, 0, w, 18);
+        vig.fillRect(0, h - 18, w, 18);
+        vig.fillRect(0, 0, 14, h);
+        vig.fillRect(w - 14, 0, 14, h);
+        vig.setAlpha(1);
+
+        // Toast once when crossing into critical / dying
+        if (mort.level !== this._lastMortalityLevel) {
+            if (mort.level === 'critical') this.showToast('Hull critical — make harbor or die!', 2200);
+            if (mort.level === 'dying') this.showToast('NEAR DEATH — one more hit may finish you!', 2400);
+            this._lastMortalityLevel = mort.level;
+        }
+    }
+
+    drawShipStatusOverlay(mort = null) {
         if (!this.shipStatusGfx || !this.player) return;
         const g = this.shipStatusGfx;
         g.clear();
         const x = this.player.getX();
         const y = this.player.getY();
         const p = this.player;
-        const shieldFrac = p.maxShields > 0 ? p.shields / p.maxShields : 0;
-        const hullFrac = p.maxHull > 0 ? p.hull / p.maxHull : 0;
+        const m = mort || p.getMortality();
+        const shieldFrac = m.shieldFrac;
+        const hullFrac = m.hullFrac;
+        const pulse = 0.5 + Math.sin(this.time.now * 0.014) * 0.5;
 
         // Shield arc
         if (shieldFrac > 0.02) {
@@ -1152,21 +1234,36 @@ export default class GameScene extends Phaser.Scene {
             g.beginPath();
             g.arc(x, y, 26, -Math.PI * 0.75, -Math.PI * 0.75 + Math.PI * 1.5 * shieldFrac, false);
             g.strokePath();
+        } else {
+            // Ward down marker
+            g.lineStyle(1.5, 0x668899, 0.35);
+            g.strokeCircle(x, y, 26);
         }
 
-        // Hull pips under the keel
+        // Hull pips under the keel — turn red when critical
         const total = 8;
         const filled = p.getIntegrityPips('hull', total);
         const startX = x - (total - 1) * 4;
+        const pipOn = m.level === 'dying' || m.level === 'critical' ? 0xff4422 : 0xc9a227;
         for (let i = 0; i < total; i++) {
-            g.fillStyle(i < filled ? 0xc9a227 : 0x333018, i < filled ? 0.9 : 0.35);
-            g.fillCircle(startX + i * 8, y + 30, 2.4);
+            g.fillStyle(i < filled ? pipOn : 0x333018, i < filled ? 0.95 : 0.35);
+            g.fillCircle(startX + i * 8, y + 30, 2.6);
         }
 
-        // Soft hull tint ring when damaged
-        if (hullFrac < 0.45) {
-            g.lineStyle(1.5, 0xff5533, 0.45 * (1 - hullFrac));
-            g.strokeCircle(x, y, 22);
+        // Danger rings
+        if (m.level === 'hurt' || m.level === 'critical' || m.level === 'dying') {
+            const a = m.level === 'dying' ? 0.35 + pulse * 0.4
+                : m.level === 'critical' ? 0.3 + pulse * 0.25
+                    : 0.2;
+            g.lineStyle(m.level === 'dying' ? 3 : 2, 0xff3322, a);
+            g.strokeCircle(x, y, 22 + (m.level === 'dying' ? pulse * 4 : 0));
+        }
+
+        // Floating % over the bow when hurt+
+        if (m.level !== 'ok') {
+            // drawn via danger banner; keep ship clean except a tiny tag
+            g.fillStyle(0xff2200, m.level === 'dying' ? 0.35 + pulse * 0.3 : 0.2);
+            g.fillCircle(x, y - 34, 3);
         }
     }
 
@@ -2590,26 +2687,61 @@ export default class GameScene extends Phaser.Scene {
         this.gameOver = true;
         this.player.body.setVelocity(0, 0);
         this.player.body.setAcceleration(0, 0);
-        this.showToast('Ship destroyed. Respawning...', 2000);
-        this.time.delayedCall(1600, () => this.respawnPlayer());
+        this.spawnExplosion(this.player.getX(), this.player.getY());
+        this.cameras.main.shake(280, 0.012);
+        this.player.container.setAlpha(0.25);
+        if (this.dangerBanner) {
+            this.dangerBanner.setText('☠ SHIP DESTROYED — returning to harbor…');
+            this.dangerBanner.setColor('#ff4444');
+            this.dangerBanner.setAlpha(1);
+        }
+        this.showToast('Ship destroyed! Refitting a basic hull at port…', 2800);
+        this.time.delayedCall(1800, () => this.respawnPlayer());
     }
 
+    /**
+     * Respawn at the local harbor in a stock Light Carronade fit.
+     * Keeps purse & prizes; strips yard upgrades, salvage bonuses, cargo, and guns.
+     */
     respawnPlayer() {
         this.hideStationUI();
         this.hideHyperspaceMenu();
-        this.isDocked = false;
+        this.hideGalaxyMap?.();
         this.clearAllProjectiles();
 
-        const snapshot = this.player.getSnapshot();
-        snapshot.shields = undefined;
-        snapshot.hull = undefined;
+        const credits = this.player.credits;
+        const kills = this.player.kills;
+        const loadout = Player.basicLoadout(credits, kills);
+
+        // Prefer current system's station berth
+        const berthX = this.station ? this.station.getX() - 180 : this.center - 220;
+        const berthY = this.station ? this.station.getY() + 40 : this.center;
 
         this.player.destroy();
-        this.player = new Player(this, this.worldSize / 2 - 800, this.worldSize / 2, snapshot);
+        this.player = new Player(this, berthX, berthY, loadout);
         this.cameras.main.startFollow(this.player.container, true, 0.08, 0.08);
         this.gameOver = false;
-        this.dockButton.setText('DOCK');
-        this.showToast('Respawned. Upgrades and cargo retained.');
+        this._lastMortalityLevel = 'ok';
+        if (this.dangerBanner) this.dangerBanner.setAlpha(0);
+        if (this.dangerVignette) {
+            this.dangerVignette.clear();
+            this.dangerVignette.setAlpha(0);
+        }
+
+        // Auto-berth so you're safe at port
+        this.isDocked = false;
+        if (this.station) {
+            this.dock();
+        } else {
+            this.dockButton.setText('DOCK');
+        }
+
+        this.showUpgradePopup({
+            title: 'REFIT AT HARBOR',
+            subtitle: 'Light Carronade · stock hull · yard upgrades lost',
+            kind: 'ship'
+        });
+        this.showToast('Respawned at port with a basic ship & guns. Purse kept.', 3600);
     }
 
     update(time, delta) {
@@ -2781,6 +2913,7 @@ export default class GameScene extends Phaser.Scene {
             this.upgradeBannerTitle?.setPosition(width / 2, height * 0.28 - 16);
             this.upgradeBannerSub?.setPosition(width / 2, height * 0.28 + 18);
         }
+        if (this.dangerBanner) this.dangerBanner.setPosition(width / 2, height - 96);
 
         if (this.mapOpen) this.showGalaxyMap();
         if (this.hyperspaceOpen) {

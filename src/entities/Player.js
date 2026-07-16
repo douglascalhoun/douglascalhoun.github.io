@@ -361,6 +361,47 @@ export default class Player {
     }
 
     /**
+     * How close to wrecking — for danger UI.
+     * @returns {{ level: 'ok'|'hurt'|'critical'|'dying', hullFrac: number, shieldFrac: number, hullPips: number, label: string }}
+     */
+    getMortality() {
+        const hullFrac = this.maxHull > 0 ? this.hull / this.maxHull : 0;
+        const shieldFrac = this.maxShields > 0 ? this.shields / this.maxShields : 0;
+        const hullPips = this.getIntegrityPips('hull', 10);
+        let level = 'ok';
+        let label = 'Hull sound';
+        if (hullFrac <= 0.12 || hullPips <= 1) {
+            level = 'dying';
+            label = `NEAR DEATH — ${Math.max(0, Math.ceil(this.hull))} hull left`;
+        } else if (hullFrac <= 0.28 || hullPips <= 3) {
+            level = 'critical';
+            label = `HULL CRITICAL — ${hullPips}/10 pips`;
+        } else if (hullFrac <= 0.55 || shieldFrac <= 0.01) {
+            level = 'hurt';
+            label = shieldFrac <= 0.01
+                ? `WARD DOWN — hull ${Math.round(hullFrac * 100)}%`
+                : `Hull strained — ${Math.round(hullFrac * 100)}%`;
+        }
+        return { level, hullFrac, shieldFrac, hullPips, label };
+    }
+
+    /** Stock starter fit for harbor respawn. */
+    static basicLoadout(credits = 500, kills = 0) {
+        return {
+            credits,
+            cargo: { food: 0, ore: 0, tech: 0 },
+            upgrades: { engines: 0, shields: 0, hull: 0, weapons: 0, cargo: 0 },
+            kills,
+            weaponId: 'carronade',
+            harvestIndex: 0,
+            bonusShields: 0,
+            bonusHull: 0,
+            shields: undefined,
+            hull: undefined
+        };
+    }
+
+    /**
      * Next yard spend target — Gun Crew first, else cheapest available.
      * @returns {{ key: string, label: string, level: number, cost: number, have: number, need: number, frac: number } | null}
      */

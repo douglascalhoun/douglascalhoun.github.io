@@ -309,35 +309,31 @@ export default class NPCShip {
             }
         }
 
-        // Fire a broadside only when the player sits in that beam's arc
-        this.tryNavalVolley(time, player, angleToPlayer, dist);
+        // Single slow ball when the foe is roughly on a beam (duel / lead / juke)
+        this.tryNavalShot(time, player, angleToPlayer, dist);
     }
 
-    tryNavalVolley(time, player, angleToPlayer, dist) {
+    tryNavalShot(time, player, angleToPlayer, dist) {
         if (dist > this.fireRange) return;
+        if (time < this.lastFireTime + this.fireRate) return;
 
         const facing = this.container.rotation;
-        // Vector to player in ship space
         const localAngle = Phaser.Math.Angle.Wrap(angleToPlayer - facing);
-        // Starboard ≈ +PI/2, port ≈ -PI/2
         const starboardErr = Math.abs(Phaser.Math.Angle.Wrap(localAngle - Math.PI / 2));
         const portErr = Math.abs(Phaser.Math.Angle.Wrap(localAngle + Math.PI / 2));
-        const arc = 0.55; // ~31° half-width — must present the beam
+        // Wider arc than old volleys — one ball, easier to present
+        const arc = 0.85;
+        if (starboardErr > arc && portErr > arc) return;
 
-        let side = null;
-        if (starboardErr < arc && time >= this.starboardReadyAt) side = 'starboard';
-        else if (portErr < arc && time >= this.portReadyAt) side = 'port';
-        if (!side) return;
-
-        const guns = this.abilities.includes('burst') ? 5 : (this.archetypeId === 'scout' ? 2 : 3);
-        const reload = this.fireRate;
-        if (side === 'starboard') this.starboardReadyAt = time + reload;
-        else this.portReadyAt = time + reload;
+        this.lastFireTime = time;
+        const side = starboardErr <= portErr ? 'starboard' : 'port';
+        if (side === 'starboard') this.starboardReadyAt = time + this.fireRate;
+        else this.portReadyAt = time + this.fireRate;
 
         this.scene.spawnEnemyProjectile(this, {
             side,
-            count: guns,
-            spread: this.abilities.includes('burst') ? 0.4 : 0.28
+            towardPlayer: true,
+            speed: 145
         });
     }
 

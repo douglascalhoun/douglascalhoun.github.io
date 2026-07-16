@@ -876,7 +876,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Immediate volley toward the reticle (full 360°). Slow spreading shot.
+     * Single slow cannonball toward the reticle (full 360°).
+     * Lead the foe; juke their return fire.
      * @param {'port'|'starboard'|'auto'} side  reload battery only — direction is always reticle
      */
     fireBroadside(side = 'auto') {
@@ -894,61 +895,29 @@ export default class GameScene extends Phaser.Scene {
         const kit = this.player.getWeapon();
         const originX = this.player.getX();
         const originY = this.player.getY();
-        const muzzle = kit.muzzle || 28;
-        const guns = kit.guns || 4;
-        const spread = kit.spread || 0.4;
+        const muzzle = kit.muzzle || 32;
         const aimFx = Math.sin(fireAngle);
         const aimFy = -Math.cos(fireAngle);
-        const acrossX = Math.cos(fireAngle);
-        const acrossY = Math.sin(fireAngle);
+        const sx = originX + aimFx * muzzle;
+        const sy = originY + aimFy * muzzle;
 
-        const rippleMs = 55;
-        for (let i = 0; i < guns; i++) {
-            const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
-            const across = t * 30;
-            const sx = originX + aimFx * muzzle + acrossX * across;
-            const sy = originY + aimFy * muzzle + acrossY * across;
-            const shotAngle = fireAngle + t * spread;
-
-            this.time.delayedCall(i * rippleMs, () => {
-                if (this.gameOver || !this.player) return;
-                const projectile = new Projectile(this, sx, sy, shotAngle, {
-                    speed: kit.speed,
-                    color: kit.color,
-                    radius: kit.radius,
-                    lifetime: kit.lifetime,
-                    damage: kit.damage || 1,
-                    friendly: true,
-                    blast: kit.blast || 0,
-                    kind: kit.kind || 'bomb',
-                });
-                if (this.textures.exists('boltBall')) {
-                    projectile.setTexture('boltBall');
-                    projectile.setTint(kit.color);
-                    projectile.setScale(1.15);
-                }
-                this.projectiles.push(projectile);
-            });
+        const projectile = new Projectile(this, sx, sy, fireAngle, {
+            speed: kit.speed,
+            color: kit.color,
+            radius: kit.radius,
+            lifetime: kit.lifetime,
+            damage: kit.damage || 1,
+            friendly: true,
+            blast: kit.blast || 0,
+            kind: kit.kind || 'bomb',
+            seek: Boolean(kit.seek)
+        });
+        if (this.textures.exists('boltBall')) {
+            projectile.setTexture('boltBall');
+            projectile.setTint(kit.color);
+            projectile.setScale(1.35);
         }
-
-        if (kit.chain) {
-            this.projectiles.push(new Projectile(
-                this,
-                originX + aimFx * muzzle,
-                originY + aimFy * muzzle,
-                fireAngle,
-                {
-                    speed: kit.chain.speed,
-                    color: kit.chain.color,
-                    radius: kit.chain.radius,
-                    lifetime: kit.chain.lifetime,
-                    damage: 1,
-                    friendly: true,
-                    seek: true,
-                    kind: 'missile'
-                }
-            ));
-        }
+        this.projectiles.push(projectile);
 
         this.player.markVolleyFired(resolved);
         this.spawnBroadsideFlash(resolved, fireAngle);
@@ -1000,45 +969,49 @@ export default class GameScene extends Phaser.Scene {
     }
 
     spawnEnemyProjectile(npc, opts = {}) {
-        const side = opts.side || 'starboard';
-        const guns = opts.count || 3;
-        const spread = opts.spread ?? 0.3;
-        const facing = npc.getRotation();
-        const broadsideAngle = side === 'port' ? facing - Math.PI / 2 : facing + Math.PI / 2;
-        const shotSpeed = opts.speed || Math.min(150, 110 + (npc.speed || 80) * 0.25);
-        const muzzle = 22;
-        const fx = Math.sin(facing);
-        const fy = -Math.cos(facing);
-        const rx = Math.cos(facing);
-        const ry = Math.sin(facing);
-        const sideSign = side === 'port' ? -1 : 1;
-
-        for (let i = 0; i < guns; i++) {
-            const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
-            const along = t * 28;
-            const sx = npc.getX() + fx * along + rx * sideSign * muzzle;
-            const sy = npc.getY() + fy * along + ry * sideSign * muzzle;
-            const projectile = new Projectile(
-                this,
-                sx,
-                sy,
-                broadsideAngle + t * spread,
-                {
-                    speed: shotSpeed,
-                    damage: Math.max(4, Math.round((npc.shotDamage || 8) * 0.45)),
-                    friendly: false,
-                    lifetime: 3200,
-                    color: npc.color || 0xff6644,
-                    radius: 5,
-                    kind: 'bomb'
-                }
-            );
-            if (this.textures.exists('boltBall')) {
-                projectile.setTexture('boltBall');
-                projectile.setTint(npc.color || 0xff6644);
-            }
-            this.enemyProjectiles.push(projectile);
+        // Single slow ball — same duel language as the player (lead / juke)
+        const player = this.player;
+        let fireAngle;
+        if (player && opts.towardPlayer !== false) {
+            const dx = player.getX() - npc.getX();
+            const dy = player.getY() - npc.getY();
+            fireAngle = Math.atan2(dx, -dy);
+            // Light lead based on player velocity
+            const lead = 0.35;
+            const dist = Math.hypot(dx, dy);
+            const shotSpeed = opts.speed || 145;
+            const tta = dist / Math.max(80, shotSpeed);
+            const lx = player.getX() + (player.body?.velocity?.x || 0) * tta * lead;
+            const ly = player.getY() + (player.body?.velocity?.y || 0) * tta * lead;
+            fireAngle = Math.atan2(lx - npc.getX(), -(ly - npc.getY()));
+        } else {
+            const facing = npc.getRotation();
+            const side = opts.side || 'starboard';
+            fireAngle = side === 'port' ? facing - Math.PI / 2 : facing + Math.PI / 2;
         }
+
+        const shotSpeed = opts.speed || 145;
+        const muzzle = 26;
+        const aimFx = Math.sin(fireAngle);
+        const aimFy = -Math.cos(fireAngle);
+        const sx = npc.getX() + aimFx * muzzle;
+        const sy = npc.getY() + aimFy * muzzle;
+
+        const projectile = new Projectile(this, sx, sy, fireAngle, {
+            speed: shotSpeed,
+            damage: Math.max(5, Math.round((npc.shotDamage || 8) * 0.55)),
+            friendly: false,
+            lifetime: 4200,
+            color: npc.color || 0xff6644,
+            radius: 6,
+            kind: 'bomb'
+        });
+        if (this.textures.exists('boltBall')) {
+            projectile.setTexture('boltBall');
+            projectile.setTint(npc.color || 0xff6644);
+            projectile.setScale(1.3);
+        }
+        this.enemyProjectiles.push(projectile);
     }
 
     /**
@@ -1105,9 +1078,9 @@ export default class GameScene extends Phaser.Scene {
 
     /**
      * Reticle cues:
-     * - brass fan = immediate fire (volley spread toward reticle)
-     * - cream dashed = eventual sail (bow turning toward reticle)
-     * - teal = actual way through the water
+     * - brass line = single-shot fire path
+     * - cream dashed = eventual sail heading
+     * - teal = actual way
      * - white = current bow
      */
     drawReticleCues(cursorX, cursorY) {
@@ -1121,9 +1094,7 @@ export default class GameScene extends Phaser.Scene {
         const y = p.getY();
         const facing = p.getRotation();
         const fireAng = p.getFireAngle();
-        const range = Math.min(400, (kit.speed || 105) * ((kit.lifetime || 4200) / 1000) * 0.65);
-        const guns = kit.guns || 4;
-        const spread = kit.spread || 0.4;
+        const range = Math.min(420, (kit.speed || 155) * ((kit.lifetime || 4500) / 1000) * 0.7);
         const ready = Boolean(p.nextReadyBattery());
         const dir = (ang) => ({ dx: Math.sin(ang), dy: -Math.cos(ang) });
 
@@ -1146,7 +1117,7 @@ export default class GameScene extends Phaser.Scene {
             );
         }
 
-        // Eventual sail — dashed line toward reticle (where bow is turning)
+        // Eventual sail — dashed toward reticle
         const sail = dir(fireAng);
         g.lineStyle(2, 0xe8dcc0, 0.5);
         let drawn = 30;
@@ -1165,31 +1136,15 @@ export default class GameScene extends Phaser.Scene {
         g.lineStyle(2, 0xffffff, 0.3);
         g.lineBetween(x - bow.dx * 18, y - bow.dy * 18, x + bow.dx * 50, y + bow.dy * 50);
 
-        // Immediate fire spread fan
-        const halfFan = spread * 0.5;
+        // Single-shot fire path
         const rayColor = ready ? 0xc9a227 : 0x886622;
-        g.fillStyle(rayColor, ready ? 0.18 : 0.08);
-        g.beginPath();
-        g.moveTo(x, y);
-        for (let i = 0; i <= 14; i++) {
-            const t = i / 14;
-            const a = fireAng - halfFan + spread * t;
-            const d = dir(a);
-            g.lineTo(x + d.dx * range, y + d.dy * range);
-        }
-        g.closePath();
-        g.fillPath();
+        const d = dir(fireAng);
+        g.lineStyle(2.5, rayColor, ready ? 0.9 : 0.35);
+        g.lineBetween(x + d.dx * 18, y + d.dy * 18, x + d.dx * range, y + d.dy * range);
+        // Soft corridor hint (thin) so the ball path reads without a spread fan
+        g.lineStyle(8, rayColor, ready ? 0.08 : 0.04);
+        g.lineBetween(x + d.dx * 18, y + d.dy * 18, x + d.dx * range, y + d.dy * range);
 
-        for (let i = 0; i < guns; i++) {
-            const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
-            const a = fireAng + t * spread;
-            const d = dir(a);
-            const isCenter = Math.abs(t) < 0.01;
-            g.lineStyle(isCenter ? 2.5 : 1.15, rayColor, isCenter ? (ready ? 1 : 0.4) : (ready ? 0.55 : 0.22));
-            g.lineBetween(x + d.dx * 16, y + d.dy * 16, x + d.dx * range, y + d.dy * range);
-        }
-
-        // Reticle sits on the cursor — fire & sail point here
         const rx = cursorX != null ? cursorX : x + sail.dx * sailLen;
         const ry = cursorY != null ? cursorY : y + sail.dy * sailLen;
         g.lineStyle(2, rayColor, ready ? 0.95 : 0.4);
@@ -2303,7 +2258,7 @@ export default class GameScene extends Phaser.Scene {
             mission,
             foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
             `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'Reticle = fire now + sail heading · W/S way · click/Space volley',
+            'Reticle = aim & sail · single slow ball · lead & juke · click/Space',
             this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 

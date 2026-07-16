@@ -1,11 +1,10 @@
 import Phaser from 'phaser';
 import { ARCHETYPES } from '../data/defendWaves.js';
 import { pickQuote, moodColor } from '../data/enemyQuotes.js';
+import { routeWaypoints, getRoute } from '../data/tradeRoutes.js';
 
 /**
- * NPC ship — traders or archetype fighters.
- * Uses baked sprites (no per-frame Graphics) for Safari smoothness.
- * Moods drive colored philosophy barks beside the hull.
+ * NPC ship — traders ply profitable lanes; fighters ambush those lanes.
  */
 export default class NPCShip {
     constructor(scene, x, y, type = 'trader', options = {}) {
@@ -15,11 +14,13 @@ export default class NPCShip {
         this.archetype = this.archetypeId ? ARCHETYPES[this.archetypeId] : null;
         this.tier = options.tier || 1;
         this.waveId = options.waveId ?? null;
+        this.routeId = options.routeId || null;
         this.alive = true;
         this.disabled = false;
         this.hasFled = false;
         this.fleeNotified = false;
         this.harvestQueued = false;
+        this.arrivedThisTrip = false;
 
         this.mood = type === 'fighter' ? 'aggressive' : 'pensive';
         this.prevMood = this.mood;
@@ -46,7 +47,12 @@ export default class NPCShip {
             this.color = type === 'trader' ? 0x4a7cff : 0xff6622;
             this.pattern = 'strafe';
             this.abilities = [];
-            this.label = type === 'trader' ? 'Trader' : `Fighter T${this.tier}`;
+            this.label = type === 'trader' ? 'Merchant' : `Fighter T${this.tier}`;
+        }
+
+        if (this.routeId && type === 'trader') {
+            const route = getRoute(this.routeId);
+            if (route) this.label = `Merchant · ${route.label}`;
         }
 
         this.lastFireTime = 0;
@@ -90,11 +96,54 @@ export default class NPCShip {
         this.wanderTimer = 0;
         this.wanderInterval = Phaser.Math.Between(3000, 6000);
         this.mode = 'patrol';
+        this.waypointIndex = 0;
+        this.waypointDir = 1;
+        this.waypoints = [];
 
-        this.pickNewTarget();
+        if (this.routeId) this.assignRoute(this.routeId, options.routeT);
+        else this.pickNewTarget();
 
         // Opening thought shortly after appearing
         this.nextBarkAt = scene.time.now + Phaser.Math.Between(400, 1400);
+    }
+
+    assignRoute(routeId, startT = null) {
+        const route = getRoute(routeId);
+        if (!route) return;
+        this.routeId = route.id;
+        this.waypoints = routeWaypoints(route, 6);
+        if (!this.waypoints.length) return;
+        if (startT == null) startT = Math.random();
+        this.waypointIndex = Math.max(0, Math.min(this.waypoints.length - 1, Math.round(startT * (this.waypoints.length - 1))));
+        this.waypointDir = Math.random() > 0.5 ? 1 : -1;
+        const wp = this.waypoints[this.waypointIndex];
+        this.targetX = wp.x;
+        this.targetY = wp.y;
+        if (this.type === 'trader') this.label = `Merchant · ${route.label}`;
+    }
+
+    advanceRouteWaypoint() {
+        if (!this.waypoints.length) {
+            this.pickNewTarget();
+            return;
+        }
+        this.waypointIndex += this.waypointDir;
+        if (this.waypointIndex >= this.waypoints.length) {
+            this.waypointIndex = this.waypoints.length - 1;
+            this.waypointDir = -1;
+            if (this.type === 'trader' && this.scene.onMerchantArrived) {
+                this.scene.onMerchantArrived(this);
+            }
+        } else if (this.waypointIndex < 0) {
+            this.waypointIndex = 0;
+            this.waypointDir = 1;
+            if (this.type === 'trader' && this.scene.onMerchantArrived) {
+                this.scene.onMerchantArrived(this);
+            }
+        }
+        const wp = this.waypoints[this.waypointIndex];
+        this.targetX = wp.x + (Math.random() - 0.5) * 40;
+        this.targetY = wp.y + (Math.random() - 0.5) * 40;
     }
 
     /**
@@ -229,18 +278,26 @@ export default class NPCShip {
     }
 
     pickNewTarget() {
+        if (this.routeId && this.waypoints?.length) {
+            this.advanceRouteWaypoint();
+            return;
+        }
+        const world = this.scene.worldSize || 32000;
+        const cx = world * 0.5;
+        const cy = world * 0.5;
         const angle = Math.random() * Math.PI * 2;
-        const distance = Math.random() * 2000;
-        this.targetX = 5000 + Math.cos(angle) * distance;
-        this.targetY = 5000 + Math.sin(angle) * distance;
+        const distance = 800 + Math.random() * 2400;
+        this.targetX = Phaser.Math.Clamp(cx + Math.cos(angle) * distance, 300, world - 300);
+        this.targetY = Phaser.Math.Clamp(cy + Math.sin(angle) * distance, 300, world - 300);
     }
 
     pickFleeTarget(player) {
+        const world = this.scene.worldSize || 32000;
         const dx = this.container.x - player.getX();
         const dy = this.container.y - player.getY();
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        this.targetX = Phaser.Math.Clamp(this.container.x + (dx / len) * 1400, 200, 9800);
-        this.targetY = Phaser.Math.Clamp(this.container.y + (dy / len) * 1400, 200, 9800);
+        this.targetX = Phaser.Math.Clamp(this.container.x + (dx / len) * 1400, 200, world - 200);
+        this.targetY = Phaser.Math.Clamp(this.container.y + (dy / len) * 1400, 200, world - 200);
     }
 
     notifyFlee() {
@@ -297,9 +354,20 @@ export default class NPCShip {
             }
         }
 
+        // Lane raiders: prefer merchants on the same profitable route when the player is nearby
+        if (this.type === 'fighter' && this.mode === 'patrol' && this.routeId && player) {
+            const merchant = this.findRouteMerchantPrey(player);
+            if (merchant) {
+                this.mode = 'attack';
+                this._huntTarget = merchant;
+                this.body.setMaxVelocity(this.speed * 1.2);
+            }
+        }
+
         if (this.mode === 'patrol') {
             this.wanderTimer += delta;
-            if (this.wanderTimer > this.wanderInterval) {
+            const interval = this.routeId ? 900 : this.wanderInterval;
+            if (this.wanderTimer > interval) {
                 this.pickNewTarget();
                 this.wanderTimer = 0;
                 this.wanderInterval = Phaser.Math.Between(3000, 6000);
@@ -307,7 +375,13 @@ export default class NPCShip {
         }
 
         if (this.mode === 'attack' && player) {
-            this.updateDuel(time, delta, player);
+            // If hunting a merchant, close on them; otherwise duel the player
+            if (this._huntTarget?.alive && !this._huntTarget.disabled) {
+                this.updateHuntMerchant(delta, player);
+            } else {
+                this._huntTarget = null;
+                this.updateDuel(time, delta, player);
+            }
             this.maybeBark(time);
             this.updateBarkPositions();
             return;
@@ -323,6 +397,81 @@ export default class NPCShip {
         this.moveToward(this.targetX, this.targetY, this.speed, 50, true);
         this.maybeBark(time);
         this.updateBarkPositions();
+    }
+
+    findRouteMerchantPrey() {
+        if (!this.routeId || !this.scene.npcs) return null;
+        let best = null;
+        let bestD = Infinity;
+        for (const n of this.scene.npcs) {
+            if (!n || n === this || !n.alive || n.disabled) continue;
+            if (n.type !== 'trader') continue;
+            if (n.routeId !== this.routeId) continue;
+            const d = Phaser.Math.Distance.Between(
+                this.container.x, this.container.y,
+                n.container.x, n.container.y
+            );
+            if (d < bestD && d < 3200) {
+                bestD = d;
+                best = n;
+            }
+        }
+        return best;
+    }
+
+    updateHuntMerchant(delta, player) {
+        const prey = this._huntTarget;
+        if (!prey?.alive || prey.disabled) {
+            this._huntTarget = null;
+            return;
+        }
+        const px = prey.container.x;
+        const py = prey.container.y;
+        const dx = px - this.container.x;
+        const dy = py - this.container.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const angleTo = Math.atan2(dy, dx);
+        const time = this.scene.time.now;
+
+        // Close the merchant; rake them once in gun range
+        if (dist > this.idealRange) {
+            this.moveToward(px, py, this.speed * 1.05, 40, true);
+        } else {
+            const broadsideSign = this.preferredBroadside;
+            const desiredFacing = angleTo - broadsideSign * (Math.PI / 2);
+            this.container.setRotation(
+                Phaser.Math.Angle.RotateTo(this.container.rotation, desiredFacing, 2.0 * (delta / 1000))
+            );
+            const alongX = -Math.sin(angleTo);
+            const alongY = Math.cos(angleTo);
+            this.container.x += alongX * this.speed * 0.55 * (delta / 1000);
+            this.container.y += alongY * this.speed * 0.55 * (delta / 1000);
+            const duck = {
+                getX: () => px,
+                getY: () => py,
+                body: prey.body
+            };
+            this.tryNavalShot(time, duck, angleTo, dist);
+            // Boarding bite — enemy balls only hit the player, so clinch for hull
+            if (!this._huntBiteAt || time >= this._huntBiteAt) {
+                this._huntBiteAt = time + 1100;
+                const result = prey.takeDamage(1);
+                if (result === 'disabled') {
+                    this.scene.onMerchantLost?.(prey);
+                    this._huntTarget = null;
+                }
+            }
+        }
+
+        // Player intervening nearby? peel off to duel them
+        if (player) {
+            const pd = Phaser.Math.Distance.Between(
+                this.container.x, this.container.y, player.getX(), player.getY()
+            );
+            if (pd < 520) {
+                this._huntTarget = null;
+            }
+        }
     }
 
     updateDuel(time, delta, player) {

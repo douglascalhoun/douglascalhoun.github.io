@@ -8,8 +8,12 @@ import GamepadControls from '../utils/GamepadControls.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
 import {
     getSystem, linkedSystems, SYSTEMS, allSystems,
-    ARCHIPELAGO_SIZE, nearestIsland, openSeaThreat, islandWorldPos, lakeRadius, harborPos
+    ARCHIPELAGO_SIZE, nearestIsland, openSeaThreat, islandWorldPos, harborPos
 } from '../data/galaxy.js';
+import {
+    ROUTES, getRoute, hottestRoutes, nearestRoute, pointOnRoute,
+    routeEndpoints, distToRoute, stars
+} from '../data/tradeRoutes.js';
 import { DEFEND_WAVES } from '../data/defendWaves.js';
 import { HARVEST_REWARDS } from '../data/weapons.js';
 import { ensureGameTextures } from '../utils/Textures.js';
@@ -410,7 +414,7 @@ export default class GameScene extends Phaser.Scene {
             remote.setInSystem(true);
         }
 
-        this.showToast('Archipelago open — blue lakes are safe; the black between is not.', 4200);
+        this.showToast('Protect the trade lanes — richest routes pay the fattest purses.', 4200);
         this.sendNet({
             type: 'system',
             systemId: this.currentSystemId,
@@ -433,17 +437,111 @@ export default class GameScene extends Phaser.Scene {
     }
 
     spawnTradeRouteFleet() {
-        // Traders ply the lakes; pirates / demons come from the deep
-        for (const sys of allSystems()) {
-            const { x, y } = islandWorldPos(sys);
-            const r = lakeRadius(sys) * 0.55;
-            const ang = Math.random() * Math.PI * 2;
-            this.npcs.push(new NPCShip(this, x + Math.cos(ang) * r, y + Math.sin(ang) * r, 'trader'));
+        // Seed merchants (and a few raiders) on every profitable well-to-well lane
+        for (const route of ROUTES) {
+            route.hunters = 0;
+            route.merchants = 0;
+            route.heat = 0;
+            const merchantCount = 1 + Math.floor(route.value / 2);
+            for (let i = 0; i < merchantCount; i++) {
+                const t = (i + 0.35) / (merchantCount + 0.2);
+                const pt = pointOnRoute(route, t, 70);
+                this.npcs.push(new NPCShip(this, pt.x, pt.y, 'trader', {
+                    routeId: route.id,
+                    routeT: t
+                }));
+            }
+            if (route.value >= 3) {
+                const pt = pointOnRoute(route, 0.45 + Math.random() * 0.1, 140);
+                const foe = new NPCShip(this, pt.x, pt.y, 'fighter', {
+                    routeId: route.id,
+                    routeT: 0.5,
+                    archetype: 'raider',
+                    tier: Math.min(4, route.value)
+                });
+                foe.label = `Lane Raider · ${route.label}`;
+                this.npcs.push(foe);
+            }
         }
-        // A couple extra merchants on the Sol–Vega lane
-        const a = islandWorldPos(SYSTEMS.sol);
-        const b = islandWorldPos(SYSTEMS.vega);
-        this.npcs.push(new NPCShip(this, (a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 'trader'));
+        this.syncRouteCensus();
+    }
+
+    syncRouteCensus() {
+        for (const route of ROUTES) {
+            route.merchants = 0;
+            route.hunters = 0;
+        }
+        for (const n of this.npcs) {
+            if (!n?.alive || n.disabled || !n.routeId) continue;
+            const route = getRoute(n.routeId);
+            if (!route) continue;
+            if (n.type === 'trader') route.merchants += 1;
+            else if (n.type === 'fighter') route.hunters += 1;
+        }
+    }
+
+    /** Merchant reaches a planetary well — escort nearby? collect lane purse. */
+    onMerchantArrived(npc) {
+        if (!npc?.routeId || !this.player || this.gameOver) return;
+        const now = this.time.now;
+        if (npc._lastArrivalPay && now - npc._lastArrivalPay < 9000) return;
+        const route = getRoute(npc.routeId);
+        if (!route) return;
+        const d = distToRoute(this.player.getX(), this.player.getY(), route);
+        if (d.dist > 1700) return;
+        npc._lastArrivalPay = now;
+        const pay = Math.floor(route.purse * (0.28 + route.value * 0.04));
+        this.player.credits += pay;
+        route.heat = Math.max(0, route.heat - 0.25);
+        this.showToast(`Lane purse · ${route.label} ${stars(route.value)} +${pay}c`, 2800);
+        this.syncRouteCensus();
+    }
+
+    /** Hunter stove a merchant — lane heats up. */
+    onMerchantLost(npc) {
+        if (!npc?.routeId) return;
+        const route = getRoute(npc.routeId);
+        if (!route) return;
+        route.heat = Math.min(3, route.heat + 0.55);
+        route.piratePressure = Math.min(0.95, route.piratePressure + 0.06);
+        this.showToast(`Merchant lost on ${route.label} — lane heats up!`, 2800);
+        this.syncRouteCensus();
+    }
+
+    /** Player cleared a lane hunter — cut of the route purse. */
+    awardLaneClear(npc) {
+        if (!npc?.routeId || npc.type !== 'fighter' || !this.player) return;
+        const route = getRoute(npc.routeId);
+        if (!route) return;
+        const pay = Math.floor(route.purse * 0.22 + route.value * 18);
+        this.player.credits += pay;
+        route.heat = Math.max(0, route.heat - 0.4);
+        route.piratePressure = Math.max(0.18, route.piratePressure - 0.025);
+        this.showToast(`Lane cleared · ${route.label} +${pay}c`, 2400);
+        this.syncRouteCensus();
+    }
+
+    updateLaneRibbon() {
+        if (!this.player) return;
+        if (!this.laneRibbon) {
+            this.laneRibbon = this.add.graphics().setDepth(6);
+            this.worldGraphics.push(this.laneRibbon);
+        }
+        this.laneRibbon.clear();
+        const near = nearestRoute(this.player.getX(), this.player.getY());
+        if (!near || near.dist > 2400) return;
+        const { ax, ay, bx, by } = routeEndpoints(near.route);
+        const alpha = Phaser.Math.Clamp(1 - near.dist / 2400, 0.12, 0.35);
+        const color = near.route.heat > 1 ? 0xff6644 : 0xc9a227;
+        this.laneRibbon.lineStyle(3, color, alpha);
+        this.laneRibbon.beginPath();
+        this.laneRibbon.moveTo(ax, ay);
+        this.laneRibbon.lineTo(bx, by);
+        this.laneRibbon.strokePath();
+        // Mid-lane purse buoy
+        const mid = pointOnRoute(near.route, 0.5, 0);
+        this.laneRibbon.fillStyle(color, alpha + 0.15);
+        this.laneRibbon.fillCircle(mid.x, mid.y, 6);
     }
 
     getNearestStation() {
@@ -499,15 +597,60 @@ export default class GameScene extends Phaser.Scene {
             Phaser.Display.Color.GetColor(bg.r, bg.g, bg.b)
         );
 
-        // Spawn deep-space hunters
+        // Spawn lane hunters on profitable routes (and deep-void strays)
         this.tickDeepSpaceHostiles(time);
+        this.updateLaneRibbon();
+        if (!this._lastCensusAt || time - this._lastCensusAt > 1500) {
+            this._lastCensusAt = time;
+            this.syncRouteCensus();
+        }
 
         // Wingman tactics — nearby allies tighten the noose
         this.updateWingmanTactics(time);
     }
 
     tickDeepSpaceHostiles(time) {
+        const px = this.player.getX();
+        const py = this.player.getY();
         const threat = this.ambientThreat;
+        const near = nearestRoute(px, py);
+
+        // Prefer ambushing the profitable lane the player is escorting
+        if (near && near.dist < 1500) {
+            const route = near.route;
+            const hunters = this.npcs.filter(
+                (n) => n.alive && n.type === 'fighter' && !n.disabled && n.routeId === route.id
+            );
+            const pressure = Math.min(1, route.piratePressure + route.heat * 0.25);
+            const cap = 1 + Math.floor(route.value * 0.7 + pressure * 2);
+            const interval = Phaser.Math.Linear(11000, 3200, pressure);
+            if (hunters.length < cap && time - this._lastAmbientSpawn >= interval) {
+                this._lastAmbientSpawn = time;
+                const ang = Math.random() * Math.PI * 2;
+                const dist = 500 + Math.random() * 260;
+                const x = Phaser.Math.Clamp(px + Math.cos(ang) * dist, 200, this.worldSize - 200);
+                const y = Phaser.Math.Clamp(py + Math.sin(ang) * dist, 200, this.worldSize - 200);
+                const arch = route.value >= 4
+                    ? (['ace', 'flanker', 'raider'][Math.floor(Math.random() * 3)])
+                    : (['scout', 'raider', 'weaver', 'flanker'][Math.floor(Math.random() * 4)]);
+                const foe = new NPCShip(this, x, y, 'fighter', {
+                    archetype: arch,
+                    tier: Math.min(5, route.value + Math.floor(route.heat)),
+                    routeId: route.id,
+                    routeT: near.t
+                });
+                foe.label = `Lane Hunter · ${route.label}`;
+                this.npcs.push(foe);
+                route.heat = Math.min(3, route.heat + 0.12);
+                if (Math.random() < 0.4) {
+                    this.showToast(`Hunters cut the ${route.label} lane!`, 2200);
+                }
+                this.syncRouteCensus();
+            }
+            return;
+        }
+
+        // Far from charted lanes — classic deep-void pressure
         if (threat < 0.35) return;
         if (time - this._lastAmbientSpawn < Phaser.Math.Linear(9000, 2800, threat)) return;
 
@@ -516,14 +659,11 @@ export default class GameScene extends Phaser.Scene {
         if (fighters.length >= cap) return;
 
         this._lastAmbientSpawn = time;
-        const px = this.player.getX();
-        const py = this.player.getY();
         const ang = Math.random() * Math.PI * 2;
         const dist = 520 + Math.random() * 280;
         const x = Phaser.Math.Clamp(px + Math.cos(ang) * dist, 200, this.worldSize - 200);
         const y = Phaser.Math.Clamp(py + Math.sin(ang) * dist, 200, this.worldSize - 200);
 
-        // Demons in the true black; corsairs on the fringe
         const demon = threat > 0.72 && Math.random() < 0.55;
         const archetypes = demon
             ? ['ace', 'warmaster', 'flanker']
@@ -2174,25 +2314,22 @@ export default class GameScene extends Phaser.Scene {
     }
 
     attemptHyperspace() {
-        if (this.gameOver) return;
-        const n = nearestIsland(this.player.getX(), this.player.getY());
-        if (!n) return;
-        const links = linkedSystems(n.system.id);
-        if (!links.length) {
-            this.showToast('No lanes charted from this lake.', 2000);
+        if (this.gameOver || !this.player) return;
+        const px = this.player.getX();
+        const py = this.player.getY();
+        const near = nearestRoute(px, py);
+        const hot = hottestRoutes(1)[0];
+        const route = (near && near.dist < 2200) ? near.route : hot;
+        if (!route) {
+            this.showToast('No profitable lanes charted.', 2000);
             return;
         }
-        // Beacon the farthest linked isle as a deep-lane hint
-        let dest = links[0];
-        let best = -1;
-        for (const d of links) {
-            const p = islandWorldPos(d);
-            const dist = Math.hypot(p.x - n.wx, p.y - n.wy);
-            if (dist > best) { best = dist; dest = d; }
-        }
-        const pos = islandWorldPos(dest);
-        this.showToast(`Deep lane toward ${dest.name} — follow the screen-edge beacon.`, 2800);
-        this.spawnCollabPing(pos.x, pos.y, dest.name, this.time.now + 10000, false);
+        const mid = pointOnRoute(route, 0.5, 0);
+        this.showToast(
+            `Hot lane ${route.label} ${stars(route.value)} · purse ${route.purse}c — follow the beacon.`,
+            3000
+        );
+        this.spawnCollabPing(mid.x, mid.y, route.label, this.time.now + 12000, false);
     }
 
     openHyperspaceMenu() {
@@ -2410,6 +2547,8 @@ export default class GameScene extends Phaser.Scene {
                     this.showToast(`${npc.label || npc.type} disabled! Station inbound for salvage.`, 2400);
                     this.spawnExplosion(npc.getX(), npc.getY());
                     this.recordBountyKill(npc);
+                    if (npc.type === 'fighter') this.awardLaneClear(npc);
+                    if (npc.type === 'trader') this.onMerchantLost(npc);
                     if (!this.defendMode && npc.type === 'fighter') {
                         this.queueTougherFighter(npc.tier);
                     }
@@ -2547,6 +2686,8 @@ export default class GameScene extends Phaser.Scene {
                     this.showToast(`${npc.label || npc.type} stove in by the ram!`, 2400);
                     this.spawnExplosion(npc.getX(), npc.getY());
                     this.recordBountyKill(npc);
+                    if (npc.type === 'fighter') this.awardLaneClear(npc);
+                    if (npc.type === 'trader') this.onMerchantLost(npc);
                     if (!this.defendMode && npc.type === 'fighter') {
                         this.queueTougherFighter(npc.tier);
                     }
@@ -2618,17 +2759,20 @@ export default class GameScene extends Phaser.Scene {
             return;
         }
 
-        const traders = this.npcs.filter((n) => n.alive && n.type === 'trader' && !n.disabled);
-        if (traders.length < 2) {
-            const c = this.worldSize / 2;
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 700 + Math.random() * 1000;
-            this.npcs.push(new NPCShip(
-                this,
-                c + Math.cos(angle) * dist,
-                c + Math.sin(angle) * dist,
-                'trader'
-            ));
+        // Refill underfilled profitable lanes from their harbors
+        for (const route of ROUTES) {
+            const traders = this.npcs.filter(
+                (n) => n.alive && n.type === 'trader' && !n.disabled && n.routeId === route.id
+            );
+            const want = 1 + Math.floor(route.value / 3);
+            if (traders.length < want) {
+                const endT = Math.random() > 0.5 ? 0.02 : 0.98;
+                const spawn = pointOnRoute(route, endT, 36);
+                this.npcs.push(new NPCShip(this, spawn.x, spawn.y, 'trader', {
+                    routeId: route.id,
+                    routeT: endT
+                }));
+            }
         }
 
         if (this.pendingSpawn && Date.now() >= this.pendingSpawn.at) {
@@ -2640,6 +2784,7 @@ export default class GameScene extends Phaser.Scene {
         }
 
         this.npcs = this.npcs.filter((n) => n.alive);
+        this.syncRouteCensus();
     }
 
     spawnFighterNearPlayer(tier) {
@@ -2787,6 +2932,27 @@ export default class GameScene extends Phaser.Scene {
             lbl.setColor(linked ? '#ffe08a' : '#88ddee');
             lbl.setPosition(edge.x - Math.cos(edge.angle) * 20, edge.y - Math.sin(edge.angle) * 20);
             lbl.setAlpha(linked ? 1 : 0.75);
+            labelIdx += 1;
+        }
+
+        // Hottest trade-lane midpoints (purse beacons)
+        for (const route of hottestRoutes(2)) {
+            const mid = pointOnRoute(route, 0.5, 0);
+            if (this.isOnScreen(mid.x, mid.y, 60)) continue;
+            const edge = this.projectToEdge(mid.x, mid.y);
+            const hotColor = route.heat > 1 ? 0xff6644 : 0xe8c76a;
+            this.placeEdgeMarker(edge.x, edge.y, edge.angle, hotColor, 13);
+            if (!this.shipMarkerLabels[labelIdx]) {
+                this.shipMarkerLabels[labelIdx] = this.add.text(0, 0, '', {
+                    fontSize: '10px',
+                    fill: '#ffffff'
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(1801);
+            }
+            const lbl = this.shipMarkerLabels[labelIdx];
+            lbl.setText(`${route.label} ${stars(route.value)}`.slice(0, 14));
+            lbl.setColor(route.heat > 1 ? '#ff8866' : '#e8d080');
+            lbl.setPosition(edge.x - Math.cos(edge.angle) * 20, edge.y - Math.sin(edge.angle) * 20);
+            lbl.setAlpha(0.95);
             labelIdx += 1;
         }
 
@@ -3130,16 +3296,24 @@ export default class GameScene extends Phaser.Scene {
             : '';
         const weapon = this.player.getWeapon();
         const voiceLine = this.voice ? this.voice.statusLabel() : 'Voice: OFF [V]';
+        const near = nearestRoute(p.getX(), p.getY());
+        const hot = hottestRoutes(3);
+        const laneLine = near && near.dist < 1800
+            ? `Lane: ${near.route.label} ${stars(near.route.value)} · M${near.route.merchants}/H${near.route.hunters} · purse ${near.route.purse}c${near.route.heat > 0.4 ? ' · HOT' : ''}`
+            : `Hot: ${hot.map((r) => `${r.label}${stars(r.value)}`).join(' · ')}`;
+        const huntLine = foe
+            ? `Hunt: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]`
+            : 'Escort merchants · sink lane hunters · collect purses';
 
         const lines = [
             `build ${BUILD_ID} · ${zone} ${threatPct}% · shots ${this.projectiles.length}/${MAX_PLAYER_SHOTS}`,
-            `${system.name}   Prizes: ${p.kills}   ${weapon.label} ×${p.getVolleyCount()}`,
+            `${system.name}   Purse: ${p.credits}   Prizes: ${p.kills}   ${weapon.label} ×${p.getVolleyCount()}`,
             room,
             pilotsOnline,
             voiceLine,
-            foe ? `Hunt: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : 'Trade lanes — escort merchants, sink hunters',
-            `Sheer ${this.player.canBoost() ? 'READY' : '…'} · ${inDockingRange ? 'Harbor mend [E]' : 'E mend at lake'} · H lane beacon · T flare`,
-            'Protect traders · sail with crew · crossfire when wingmen close'
+            laneLine,
+            huntLine,
+            `Sheer ${this.player.canBoost() ? 'READY' : '…'} · ${inDockingRange ? 'Harbor mend [E]' : 'E mend at lake'} · H hot-lane · T flare`
         ].filter(Boolean).join('\n');
 
         if (lines === this.lastHudKey) return;

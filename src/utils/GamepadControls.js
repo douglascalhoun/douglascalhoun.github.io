@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 
 /**
- * Twin-stick gamepad:
- * - Left stick  → move (forward/back + strafe) relative to aim
- * - Right stick → aim
- * - A / RT      → fire
- * - LB / LS     → dodge boost
- * - X           → dock
- * - Y           → hyperspace
- * - B           → map
+ * Escape Velocity–style gamepad:
+ * - Left stick X → turn · Y → thrust / reverse
+ * - Right stick  → turn assist (face stick)
+ * - A / RT       → fire along bow
+ * - LB / LS      → sheer (dodge)
+ * - X            → dock
+ * - Y            → hyperspace
+ * - B            → map
  */
 export default class GamepadControls {
     constructor(scene) {
@@ -164,8 +164,9 @@ export default class GamepadControls {
         this.prev = { fire, dock, hyperspace, map, boost };
 
         return {
-            // Left stick: forward/back + strafe (dodge on X)
+            // Left stick: X = turn, Y = thrust (EV Nova)
             forward: -ly,
+            turn: lx,
             lateral: lx,
             fire,
             dock,

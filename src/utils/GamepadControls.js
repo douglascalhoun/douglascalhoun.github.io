@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
 
 /**
- * Escape Velocity–style gamepad:
+ * Helm + gun aim gamepad:
  * - Left stick X → turn · Y → thrust / reverse
- * - Right stick  → turn assist (face stick)
- * - A / RT       → fire along bow
+ * - Right stick  → gun aim (clamped out of rear quadrant)
+ * - A / RT       → side volley toward aim
  * - LB / LS      → sheer (dodge)
  * - X            → dock
  * - Y            → hyperspace

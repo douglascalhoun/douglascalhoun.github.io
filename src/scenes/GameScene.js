@@ -14,7 +14,7 @@ import MultiplayerClient, { WORLD_ROOM } from '../net/MultiplayerClient.js';
 import { powerFromPlayer, summarizeFleet, recipeForFleet, targetHostileCount } from '../net/WorldDirector.js';
 import { BUILD_ID, BUILD_LABEL } from '../buildInfo.js';
 
-const MAX_PLAYER_SHOTS = 16;
+const MAX_PLAYER_SHOTS = 20;
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -130,7 +130,7 @@ export default class GameScene extends Phaser.Scene {
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
 
         this.loadSystem('sol');
-        this.showToast(`${BUILD_LABEL} · A/D turn · W/S thrust · fire off the bow`, 5200);
+        this.showToast(`${BUILD_LABEL} · mouse aims guns · no stern shots · side volleys`, 5200);
 
         if (this.mp) {
             this.setupMultiplayer();
@@ -874,7 +874,7 @@ export default class GameScene extends Phaser.Scene {
         this.rightLabel = this.add.text(
             this.scale.width - margin - joystickRadius,
             this.scale.height - bottomMargin - joystickRadius - 70,
-            'TURN',
+            'AIM',
             { fontSize: '12px', fill: '#777' }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
     }
@@ -966,9 +966,9 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Forward volley along the bow (Escape Velocity style).
-     * Upgrades / better kits = more balls in a spread fan.
-     * @param {'port'|'starboard'|'auto'} side  reload battery only
+     * Side volley toward the mouse/stick — anywhere but the rear quadrant.
+     * Balls spawn along the keel on the aimed beam (broadside rail).
+     * @param {'port'|'starboard'|'auto'} side  reload battery; auto picks aimed side
      */
     fireBroadside(side = 'auto') {
         if (this.gameOver || this.isDocked) return;
@@ -987,20 +987,24 @@ export default class GameScene extends Phaser.Scene {
         const spread = this.player.getVolleySpread();
         const originX = this.player.getX();
         const originY = this.player.getY();
-        const muzzle = kit.muzzle || 32;
+        const muzzle = kit.muzzle || 28;
+        const keelSpacing = kit.keelSpacing || 10;
         const mid = (guns - 1) / 2;
+        const facing = this.player.getRotation();
+        const beamFx = Math.sin(facing);
+        const beamFy = -Math.cos(facing);
+        // Which rail: toward the fire bearing
+        const rel = Phaser.Math.Angle.Wrap(fireAngle - facing);
+        const sideSign = rel >= 0 ? 1 : -1;
+        const sideFx = Math.cos(facing) * sideSign;
+        const sideFy = Math.sin(facing) * sideSign;
 
         for (let i = 0; i < guns; i++) {
             const offset = guns === 1 ? 0 : (i - mid) * spread;
             const shotAngle = fireAngle + offset;
-            const aimFx = Math.sin(shotAngle);
-            const aimFy = -Math.cos(shotAngle);
-            // Slight lateral stagger so the fan reads as a volley
-            const lat = guns === 1 ? 0 : (i - mid) * 5;
-            const latX = Math.cos(fireAngle) * lat;
-            const latY = Math.sin(fireAngle) * lat;
-            const sx = originX + aimFx * muzzle + latX;
-            const sy = originY + aimFy * muzzle + latY;
+            const along = guns === 1 ? 0 : (i - mid) * keelSpacing;
+            const sx = originX + beamFx * along + sideFx * muzzle;
+            const sy = originY + beamFy * along + sideFy * muzzle;
 
             const projectile = new Projectile(this, sx, sy, shotAngle, {
                 speed: kit.speed,
@@ -1125,7 +1129,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Mouse only tracks a range marker — helm is A/D + W/S (EV Nova).
+     * Mouse / stick gun aim — legal everywhere except the rear quadrant.
      */
     getNavalAim(pad = null) {
         if (this.isDocked || this.mapOpen || this.hyperspaceOpen || this.gameOver) {
@@ -1141,6 +1145,7 @@ export default class GameScene extends Phaser.Scene {
 
         let worldX = null;
         let worldY = null;
+        let angle = null;
 
         if (!this.touchEnabled) {
             const pointer = this.input.activePointer;
@@ -1148,20 +1153,42 @@ export default class GameScene extends Phaser.Scene {
                 const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
                 worldX = world.x;
                 worldY = world.y;
+                const dx = worldX - this.player.getX();
+                const dy = worldY - this.player.getY();
+                if (dx * dx + dy * dy >= 64) {
+                    angle = Math.atan2(dx, -dy);
+                }
             }
+        }
+
+        if (angle == null && pad && pad.hasAim) {
+            const reach = 240;
+            angle = pad.aimAngle;
+            worldX = this.player.getX() + Math.sin(angle) * reach;
+            worldY = this.player.getY() + -Math.cos(angle) * reach;
+        }
+
+        if (angle != null) {
+            this.player.setGunAimAngle(angle);
+            if (worldX != null) this.player.setReticleWorld(worldX, worldY);
         }
 
         this.batteryAim = this.player.getAimState();
 
         if (!this.touchEnabled) {
             this.drawReticleCues(worldX, worldY);
-        } else if (this.aimGfx) {
-            this.aimGfx.clear();
-            if (this.reticle) this.reticle.setVisible(false);
+        } else {
+            // Touch: still show a light fan when aiming with right stick
+            if (this.rightJoystick?.isActive?.() && this.rightJoystick.getForce() > 0.28) {
+                this.drawReticleCues(this.player.cursorX, this.player.cursorY);
+            } else if (this.aimGfx) {
+                this.aimGfx.clear();
+                if (this.reticle) this.reticle.setVisible(false);
+            }
         }
 
         return {
-            hasAim: false,
+            hasAim: angle != null,
             angle: this.player.getFireAngle(),
             cursorX: worldX,
             cursorY: worldY
@@ -1173,10 +1200,10 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Helm cues (EV Nova):
-     * - brass fan = volley fire cone off the bow
-     * - teal = velocity
-     * - white = bow
+     * Aim cues:
+     * - brass fan = side volley toward cursor (clamped out of stern)
+     * - dim wedge = forbidden rear quadrant
+     * - teal = velocity · white = bow
      */
     drawReticleCues(cursorX, cursorY) {
         if (!this.aimGfx || !this.player) return;
@@ -1189,11 +1216,33 @@ export default class GameScene extends Phaser.Scene {
         const y = p.getY();
         const facing = p.getRotation();
         const fireAng = p.getFireAngle();
+        const aim = p.getAimState();
         const range = Math.min(420, (kit.speed || 155) * ((kit.lifetime || 4500) / 1000) * 0.7);
         const ready = Boolean(p.nextReadyBattery());
         const guns = p.getVolleyCount();
         const spread = p.getVolleySpread();
         const dir = (ang) => ({ dx: Math.sin(ang), dy: -Math.cos(ang) });
+        const arc = Math.PI * 0.75;
+
+        // Forbidden rear quadrant (stern ±45°)
+        const stern = facing + Math.PI;
+        g.fillStyle(0xff3355, 0.08);
+        g.beginPath();
+        g.moveTo(x, y);
+        const steps = 10;
+        for (let i = 0; i <= steps; i++) {
+            const a = stern - Math.PI / 4 + (Math.PI / 2) * (i / steps);
+            g.lineTo(x + Math.sin(a) * 70, y + -Math.cos(a) * 70);
+        }
+        g.closePath();
+        g.fillPath();
+
+        // Arc edge ticks
+        for (const edge of [-arc, arc]) {
+            const e = dir(facing + edge);
+            g.lineStyle(1, 0xff6688, 0.35);
+            g.lineBetween(x + e.dx * 24, y + e.dy * 24, x + e.dx * 64, y + e.dy * 64);
+        }
 
         // Actual travel
         const spd = p.getSpeed();
@@ -1202,46 +1251,43 @@ export default class GameScene extends Phaser.Scene {
             const vLen = Phaser.Math.Clamp(40 + spd * 0.9, 50, 150);
             g.lineStyle(3, 0x5ec8c0, 0.7);
             g.lineBetween(x, y, x + v.dx * vLen, y + v.dy * vLen);
-            const hx = x + v.dx * vLen;
-            const hy = y + v.dy * vLen;
-            const px = -v.dy;
-            const py = v.dx;
-            g.fillStyle(0x5ec8c0, 0.75);
-            g.fillTriangle(
-                hx + v.dx * 9, hy + v.dy * 9,
-                hx - px * 5 - v.dx * 2, hy - py * 5 - v.dy * 2,
-                hx + px * 5 - v.dx * 2, hy + py * 5 - v.dy * 2
-            );
         }
 
         // Bow
         const bow = dir(facing);
-        g.lineStyle(2, 0xffffff, 0.45);
-        g.lineBetween(x - bow.dx * 18, y - bow.dy * 18, x + bow.dx * 56, y + bow.dy * 56);
+        g.lineStyle(2, 0xffffff, 0.4);
+        g.lineBetween(x - bow.dx * 18, y - bow.dy * 18, x + bow.dx * 52, y + bow.dy * 52);
 
-        // Volley fan off the bow
-        const rayColor = ready ? 0xc9a227 : 0x886622;
+        // Side volley fan toward clamped aim
+        const rayColor = aim.clamped ? 0xaa6644 : (ready ? 0xc9a227 : 0x886622);
         const mid = (guns - 1) / 2;
         for (let i = 0; i < guns; i++) {
             const offset = guns === 1 ? 0 : (i - mid) * spread;
             const d = dir(fireAng + offset);
-            const alpha = ready ? (i === mid || guns === 1 ? 0.9 : 0.45) : 0.25;
-            g.lineStyle(guns === 1 ? 2.5 : 1.5, rayColor, alpha);
-            g.lineBetween(x + d.dx * 20, y + d.dy * 20, x + d.dx * range, y + d.dy * range);
+            const alpha = ready ? (i === mid || guns === 1 ? 0.9 : 0.5) : 0.28;
+            g.lineStyle(guns <= 2 ? 2.5 : 1.5, rayColor, alpha);
+            g.lineBetween(x + d.dx * 18, y + d.dy * 18, x + d.dx * range, y + d.dy * range);
         }
 
-        // Range pip along bow (not a free-aim reticle)
-        const pip = dir(fireAng);
-        const pipDist = Math.min(range * 0.55, 180);
-        const rx = x + pip.dx * pipDist;
-        const ry = y + pip.dy * pipDist;
-        g.lineStyle(2, rayColor, ready ? 0.85 : 0.35);
-        g.strokeCircle(rx, ry, 8);
+        // Cursor reticle (shows clamp pull when in rear)
+        const rx = cursorX != null ? cursorX : p.cursorX;
+        const ry = cursorY != null ? cursorY : p.cursorY;
+        if (rx != null && ry != null) {
+            g.lineStyle(2, rayColor, ready ? 0.95 : 0.4);
+            g.strokeCircle(rx, ry, aim.clamped ? 10 : 12);
+            g.lineBetween(rx - 9, ry, rx + 9, ry);
+            g.lineBetween(rx, ry - 9, rx, ry + 9);
+            if (aim.clamped) {
+                const c = dir(fireAng);
+                g.lineStyle(1, 0xff8866, 0.55);
+                g.lineBetween(rx, ry, x + c.dx * 80, y + c.dy * 80);
+            }
+        }
 
         if (this.reticle) {
             this.reticle.setVisible(true);
             this.reticle.setPosition(rx, ry);
-            this.reticle.setStrokeStyle(2, ready ? 0xc9a227 : 0x665522, 0.9);
+            this.reticle.setStrokeStyle(2, rayColor, 0.95);
         }
     }
 
@@ -2350,7 +2396,7 @@ export default class GameScene extends Phaser.Scene {
             mission,
             foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
             `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'A/D turn · W/S thrust · Space/click fire off bow · Shift sheer',
+            'A/D turn · W/S thrust · mouse aims guns (no stern) · Space/click volley',
             this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 

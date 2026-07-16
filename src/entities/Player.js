@@ -197,22 +197,13 @@ export default class Player {
         return dot >= 0 ? 'starboard' : 'port';
     }
 
-    /** Alternate batteries for reload pacing only — fire is always off the bow. */
-    nextReadyBattery() {
-        const prefer = this._nextBattery;
-        const other = prefer === 'port' ? 'starboard' : 'port';
-        if (this.sideReady(prefer)) return prefer;
-        if (this.sideReady(other)) return other;
-        return null;
-    }
-
     markVolleyFired(side) {
         this.markSideFired(side);
         this._nextBattery = side === 'port' ? 'starboard' : 'port';
     }
 
     preferSideForGunAim() {
-        return this._nextBattery || 'starboard';
+        return this.getAimState().side || this._nextBattery || 'starboard';
     }
 
     getVelocityAngle() {
@@ -226,9 +217,27 @@ export default class Player {
         return Math.hypot(this.body.velocity.x, this.body.velocity.y);
     }
 
-    /** Fire along the bow — Escape Velocity style. */
+    /** Half-width of legal fire arc from the bow (±135°). Rear 90° is blocked. */
+    static get FIRE_ARC_HALF() {
+        return Math.PI * 0.75;
+    }
+
+    /** Clamp a world bearing into the forward/side fire arc (not the stern). */
+    clampFireAngle(rawAngle) {
+        const rel = Phaser.Math.Angle.Wrap(rawAngle - this.rotation);
+        const max = Player.FIRE_ARC_HALF;
+        const clampedRel = Phaser.Math.Clamp(rel, -max, max);
+        return Phaser.Math.Angle.Wrap(this.rotation + clampedRel);
+    }
+
+    isAimInRear(rawAngle) {
+        const rel = Math.abs(Phaser.Math.Angle.Wrap(rawAngle - this.rotation));
+        return rel > Player.FIRE_ARC_HALF + 0.001;
+    }
+
+    /** Mouse / stick bearing, clamped out of the rear quadrant. */
     getFireAngle() {
-        return this.rotation;
+        return this.clampFireAngle(this.reticleAngle);
     }
 
     getVolleyCount() {
@@ -240,13 +249,18 @@ export default class Player {
     }
 
     getAimState() {
+        const raw = this.reticleAngle;
+        const fire = this.getFireAngle();
+        const rel = Phaser.Math.Angle.Wrap(fire - this.rotation);
+        const inArc = !this.isAimInRear(raw);
         return {
-            side: this.preferSideForGunAim(),
-            aimAngle: this.rotation,
+            side: rel >= 0 ? 'starboard' : 'port',
+            aimAngle: fire,
             desiredHelm: this.rotation,
-            toCursor: this.rotation,
-            rel: 0,
-            inArc: true,
+            toCursor: raw,
+            rel,
+            inArc,
+            clamped: !inArc,
             dist: this.cursorDist,
             cursorX: this.cursorX,
             cursorY: this.cursorY,
@@ -269,14 +283,33 @@ export default class Player {
         const dx = worldX - this.getX();
         const dy = worldY - this.getY();
         this.cursorDist = Math.hypot(dx, dy);
-        // Mouse no longer steers — keep cursor for UI range marker only
-        this.reticleAngle = this.rotation;
-        this.gunAim = this.rotation;
+        if (this.cursorDist >= 8) {
+            this.reticleAngle = Math.atan2(dx, -dy);
+            this.gunAim = this.getFireAngle();
+        }
         this.desiredHelm = this.rotation;
     }
 
+    setGunAimAngle(angle) {
+        this.reticleAngle = angle;
+        this.gunAim = this.getFireAngle();
+        this.cursorDist = Math.max(this.cursorDist, 200);
+        this.cursorX = this.getX() + Math.sin(this.gunAim) * this.cursorDist;
+        this.cursorY = this.getY() + -Math.cos(this.gunAim) * this.cursorDist;
+    }
+
     clampAimToSide(_worldX, _worldY, _side) {
-        return this.rotation;
+        return this.getFireAngle();
+    }
+
+    /** Prefer the battery on the side the cursor is on. */
+    nextReadyBattery() {
+        const aim = this.getAimState();
+        const prefer = aim.side || this._nextBattery;
+        const other = prefer === 'port' ? 'starboard' : 'port';
+        if (this.sideReady(prefer)) return prefer;
+        if (this.sideReady(other)) return other;
+        return null;
     }
 
     grantHarvestReward(reward) {
@@ -344,12 +377,11 @@ export default class Player {
     }
 
     /**
-     * Escape Velocity / Asteroids helm:
-     * - A/D or ←/→ = turn the bow
-     * - W/S = thrust / reverse along the bow
-     * - Space / click = fire along the bow
-     * - Shift = sheer (dodge)
-     * Touch: left stick X = turn, Y = thrust. Right stick also turns.
+     * Helm + gun aim:
+     * - A/D or ←/→ = turn the bow · W/S = thrust
+     * - Mouse / right stick = fire bearing (anywhere but the rear quadrant)
+     * - Space / click = side volley toward the cursor
+     * - Shift = sheer
      */
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
@@ -364,7 +396,6 @@ export default class Player {
             if (keys.D?.isDown || keys.RIGHT?.isDown) turnInput += 1;
             if (keys.W?.isDown) forwardInput += 1;
             if (keys.S?.isDown) forwardInput -= 1;
-            // J/K remain as alternate turn
             if (keys.J?.isDown) turnInput += 1;
             if (keys.K?.isDown) turnInput -= 1;
         }
@@ -380,20 +411,9 @@ export default class Player {
             const force = leftJoystick.getForce();
             if (force > 0.12) {
                 const angle = leftJoystick.getAngle();
-                // VirtualJoystick angle: 0 = right, increases CW in screen space
                 turnInput += Math.cos(angle) * force;
                 forwardInput += -Math.sin(angle) * force;
             }
-        }
-
-        // Right stick: turn toward stick (optional assist), no free-aim guns
-        if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.28) {
-            const stickAng = rightJoystick.getAngle() + Math.PI / 2;
-            const deltaAng = Phaser.Math.Angle.Wrap(stickAng - this.rotation);
-            turnInput += Phaser.Math.Clamp(deltaAng * 1.8, -1, 1);
-        } else if (pad && pad.hasAim) {
-            const deltaAng = Phaser.Math.Angle.Wrap(pad.aimAngle - this.rotation);
-            turnInput += Phaser.Math.Clamp(deltaAng * 1.6, -1, 1);
         }
 
         turnInput = Phaser.Math.Clamp(turnInput, -1, 1);
@@ -404,18 +424,20 @@ export default class Player {
 
         this.rotation = Phaser.Math.Angle.Wrap(this.rotation + turnInput * this.hullTurnRate * dt);
         this.container.setRotation(this.rotation);
-        this.reticleAngle = this.rotation;
-        this.gunAim = this.rotation;
         this.desiredHelm = this.rotation;
-        this.cursorDist = 220;
-        this.cursorX = this.getX() + Math.sin(this.rotation) * this.cursorDist;
-        this.cursorY = this.getY() + -Math.cos(this.rotation) * this.cursorDist;
 
-        // Mouse cursor only updates range marker position (does not steer)
-        if (aim && aim.cursorX != null) {
-            this.cursorX = aim.cursorX;
-            this.cursorY = aim.cursorY;
-            this.cursorDist = Math.hypot(aim.cursorX - this.getX(), aim.cursorY - this.getY());
+        // --- Gun aim: mouse / right stick (clamped out of rear quadrant) ------
+        if (aim && aim.cursorX != null && aim.cursorY != null) {
+            this.setReticleWorld(aim.cursorX, aim.cursorY);
+        } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.28) {
+            this.setGunAimAngle(rightJoystick.getAngle() + Math.PI / 2);
+        } else if (pad && pad.hasAim) {
+            this.setGunAimAngle(pad.aimAngle);
+        } else if (aim && aim.angle != null && aim.hasAim) {
+            this.setGunAimAngle(aim.angle);
+        } else {
+            // Keep last aim bearing; refresh gunAim after hull turn
+            this.gunAim = this.getFireAngle();
         }
 
         // --- Sails along the keel --------------------------------------------

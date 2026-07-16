@@ -35,13 +35,13 @@ export default class NPCShip {
             this.maxHits = options.hits ?? (baseHits + Math.max(0, this.tier - 1));
             this.hits = this.maxHits;
             this.hitDamage = 1;
-            this.speed = type === 'trader' ? 55 : 95 + (this.tier - 1) * 10;
+            this.speed = type === 'trader' ? 34 : 58 + (this.tier - 1) * 6;
             this.fleeSpeed = this.speed * 1.25;
             this.bounty = type === 'trader' ? 75 : 120 + this.tier * 40;
             this.aggroRange = type === 'fighter' ? 900 + this.tier * 60 : 0;
-            this.fireRange = 420;
+            this.fireRange = 400;
             this.idealRange = 220;
-            this.fireRate = Math.max(420, 780 - this.tier * 40);
+            this.fireRate = Math.max(900, 1600 - this.tier * 50);
             this.shotDamage = 8 + this.tier * 2;
             this.color = type === 'trader' ? 0x4a7cff : 0xff6622;
             this.pattern = 'strafe';
@@ -60,6 +60,7 @@ export default class NPCShip {
         this.abilityCooldown = 0;
         this.mineCooldown = 0;
         this.sparkTimer = 0;
+        this._ramCooldownUntil = 0;
 
         const tex = type === 'trader' ? 'shipTrader' : 'shipFighter';
         this.sprite = scene.add.image(0, 0, tex);
@@ -534,7 +535,7 @@ export default class NPCShip {
         this.scene.spawnEnemyProjectile(this, {
             side,
             towardPlayer: true,
-            speed: 145
+            speed: 105
         });
 
         // Battle cry when loosing a ball

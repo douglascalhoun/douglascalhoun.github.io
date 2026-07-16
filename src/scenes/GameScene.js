@@ -130,7 +130,7 @@ export default class GameScene extends Phaser.Scene {
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
 
         this.loadSystem('sol');
-        this.showToast(`${BUILD_LABEL} · mouse aims guns · no stern shots · side volleys`, 5200);
+        this.showToast(`${BUILD_LABEL} · slow sail · bow-ram foes · lead every shot`, 5200);
 
         if (this.mp) {
             this.setupMultiplayer();
@@ -1302,7 +1302,7 @@ export default class GameScene extends Phaser.Scene {
             // Light lead based on player velocity
             const lead = 0.35;
             const dist = Math.hypot(dx, dy);
-            const shotSpeed = opts.speed || 145;
+            const shotSpeed = opts.speed || 105;
             const tta = dist / Math.max(80, shotSpeed);
             const lx = player.getX() + (player.body?.velocity?.x || 0) * tta * lead;
             const ly = player.getY() + (player.body?.velocity?.y || 0) * tta * lead;
@@ -1313,7 +1313,7 @@ export default class GameScene extends Phaser.Scene {
             fireAngle = side === 'port' ? facing - Math.PI / 2 : facing + Math.PI / 2;
         }
 
-        const shotSpeed = opts.speed || 145;
+        const shotSpeed = opts.speed || 105;
         const muzzle = 26;
         const aimFx = Math.sin(fireAngle);
         const aimFy = -Math.cos(fireAngle);
@@ -2126,6 +2126,124 @@ export default class GameScene extends Phaser.Scene {
         });
 
         this.remoteProjectiles = this.remoteProjectiles.filter((proj) => proj.update(undefined, dt));
+
+        this.handleRamming();
+    }
+
+    /**
+     * Hull-on-hull ramming: bow contact + closing speed deals damage and knockback.
+     * Glancing scrapes shove ships apart with light shield sting.
+     */
+    handleRamming() {
+        if (!this.player?.body || this.isDocked || this.gameOver) return;
+        const now = this.time.now;
+        const px = this.player.getX();
+        const py = this.player.getY();
+        const pvx = this.player.body.velocity.x;
+        const pvy = this.player.body.velocity.y;
+        const pSpeed = Math.hypot(pvx, pvy);
+        const pFwdX = Math.sin(this.player.rotation);
+        const pFwdY = -Math.cos(this.player.rotation);
+
+        for (const npc of this.npcs) {
+            if (!npc?.body || !npc.isCombatTarget()) continue;
+            const nx = npc.getX();
+            const ny = npc.getY();
+            const dist = Math.hypot(nx - px, ny - py);
+            if (dist > 36 || dist < 0.5) continue;
+
+            const dx = (nx - px) / dist;
+            const dy = (ny - py) / dist;
+            const nvx = npc.body.velocity.x;
+            const nvy = npc.body.velocity.y;
+            const closing = (pvx - nvx) * dx + (pvy - nvy) * dy;
+
+            // Always ease overlapping hulls apart
+            if (dist < 30) {
+                const push = (30 - dist) * 2.2;
+                this.player.body.velocity.x -= dx * push * 0.55;
+                this.player.body.velocity.y -= dy * push * 0.55;
+                npc.body.velocity.x += dx * push * 0.7;
+                npc.body.velocity.y += dy * push * 0.7;
+            }
+
+            if (closing < 32) continue;
+            if (npc._ramCooldownUntil && now < npc._ramCooldownUntil) continue;
+            if (this.player.ramCooldownUntil && now < this.player.ramCooldownUntil) continue;
+
+            const nFacing = typeof npc.getRotation === 'function' ? npc.getRotation() : npc.container.rotation;
+            const nFwdX = Math.sin(nFacing);
+            const nFwdY = -Math.cos(nFacing);
+            const playerBow = pFwdX * dx + pFwdY * dy;
+            const enemyBow = nFwdX * (-dx) + nFwdY * (-dy);
+            const impact = Phaser.Math.Clamp(closing / 100, 0.4, 1.5);
+
+            let playerDmg = 0;
+            let enemyHits = 0;
+            let bowRam = false;
+
+            if (playerBow > 0.42 && pSpeed > 28) {
+                enemyHits = 1;
+                playerDmg += 5 * impact;
+                bowRam = true;
+            }
+            if (enemyBow > 0.42) {
+                playerDmg += 12 * impact;
+            }
+            if (!bowRam && enemyBow <= 0.42) {
+                // Broadside scrape
+                playerDmg = Math.max(playerDmg, 4 * impact);
+            }
+
+            npc._ramCooldownUntil = now + 950;
+            this.player.ramCooldownUntil = now + 550;
+
+            const knock = 100 + closing * 0.45;
+            this.player.body.velocity.x -= dx * knock * 0.6;
+            this.player.body.velocity.y -= dy * knock * 0.6;
+            npc.body.velocity.x += dx * knock * 0.75;
+            npc.body.velocity.y += dy * knock * 0.75;
+
+            const midX = (px + nx) * 0.5;
+            const midY = (py + ny) * 0.5;
+            this.spawnHitSpark(midX, midY);
+            this.spawnRamBurst(midX, midY);
+            this.cameras.main.shake(90, 0.0045 + impact * 0.002);
+
+            if (enemyHits > 0) {
+                const result = npc.takeDamage(enemyHits);
+                this.showToast(bowRam ? 'RAMMING SPEED!' : 'Hull clash!', 1200);
+                if (result === 'disabled') {
+                    this.player.credits += npc.bounty;
+                    this.player.kills += 1;
+                    this.showToast(`${npc.label || npc.type} stove in by the ram!`, 2400);
+                    this.spawnExplosion(npc.getX(), npc.getY());
+                    this.recordBountyKill(npc);
+                    if (!this.defendMode && npc.type === 'fighter') {
+                        this.queueTougherFighter(npc.tier);
+                    }
+                } else if (result === 'critical') {
+                    this.showToast(`${npc.label || 'Enemy'} reeling from the ram!`, 1600);
+                }
+            }
+
+            if (playerDmg > 0) {
+                const dead = this.player.takeDamage(playerDmg);
+                if (dead) this.triggerGameOver();
+            }
+        }
+    }
+
+    spawnRamBurst(x, y) {
+        const ring = this.add.circle(x, y, 10, 0xffe0a0, 0.85).setDepth(125);
+        if (Phaser.BlendModes) ring.setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({
+            targets: ring,
+            scale: 3.2,
+            alpha: 0,
+            duration: 220,
+            onComplete: () => ring.destroy()
+        });
     }
 
     spawnHitSpark(x, y) {
@@ -2621,7 +2739,7 @@ export default class GameScene extends Phaser.Scene {
             mission,
             foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
             `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'A/D turn · W/S thrust · mouse aims · Space/click volley',
+            'A/D turn · W/S thrust · mouse aims · Space fire · bow-ram for melee',
             this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 

@@ -51,33 +51,34 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Sailing hull: slow gather way, long coast
-        this.body.setDrag(6);
-        this.body.setMaxVelocity(185);
+        // Heavy sailing hull: slow gather way, deliberate coast
+        this.body.setDrag(9);
+        this.body.setMaxVelocity(115);
         this.body.setCollideWorldBounds(true);
         this.body.useDamping = false;
 
         this.rotation = 0;
-        // Escape Velocity helm: turn the bow, thrust along it, fire along it
-        this.hullTurnRate = 2.55;
-        this.aimTurnRate = 2.55;
-        this.keyboardTurnRate = 2.55;
+        // Escape Velocity helm — slower turn for tactical positioning
+        this.hullTurnRate = 1.65;
+        this.aimTurnRate = 1.65;
+        this.keyboardTurnRate = 1.65;
 
-        this.thrustLerp = 1.35;
-        this.strafeLerp = 0.4;
+        this.thrustLerp = 1.05;
+        this.strafeLerp = 0.35;
 
-        this.baseMainThrust = 210;
-        this.baseReverseThrust = 120;
-        this.baseLateralThrust = 28;
-        this.baseMaxVelocity = 195;
+        this.baseMainThrust = 125;
+        this.baseReverseThrust = 72;
+        this.baseLateralThrust = 22;
+        this.baseMaxVelocity = 115;
         this.baseMaxShields = 80;
         this.baseMaxHull = 80;
         this.baseShieldRegen = 6;
         this.baseWeaponDamage = 1;
         this.baseCargoCapacity = 20;
 
-        this.boostCooldownMs = 1400;
-        this.boostImpulse = 190;
+        this.boostCooldownMs = 1800;
+        this.boostImpulse = 110;
+        this.ramCooldownUntil = 0;
         this.lastBoostTime = -9999;
         this.boostUntil = 0;
         this._lastDodgeSide = 1;

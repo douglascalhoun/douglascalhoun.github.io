@@ -3,13 +3,14 @@
  * Theme: wooden aether-ships on a sea of stars (EV Nova under the hull).
  */
 export function ensureGameTextures(scene) {
-    if (scene.textures.exists('theme_aether_sail_v2')) return;
+    if (scene.textures.exists('theme_aether_sail_v4')) return;
 
     // Drop prior triangle-era keys if hot-reloading
     [
         'shipPlayer', 'shipFighter', 'shipTrader', 'shipWreck', 'shipRemote',
         'edgeMarker', 'boltLaser', 'boltMissile', 'boltBomb', 'boltBall',
-        'theme_aether_sail'
+        'boltBallGlow', 'boltTrail',
+        'theme_aether_sail', 'theme_aether_sail_v2', 'theme_aether_sail_v3'
     ].forEach((key) => {
         if (scene.textures.exists(key)) scene.textures.remove(key);
     });
@@ -132,19 +133,49 @@ export function ensureGameTextures(scene) {
     g.fillCircle(6, 6, 6);
     g.generateTexture('boltBomb', 12, 12);
 
-    // Iron cannonball
+    // Hot iron cannonball — large, high-contrast on blue water
     g.clear();
-    g.fillStyle(0x2a2a2a, 1);
-    g.fillCircle(6, 6, 6);
-    g.fillStyle(0x888888, 0.45);
-    g.fillCircle(4, 4, 2);
-    g.generateTexture('boltBall', 12, 12);
+    g.fillStyle(0xffbb44, 0.45);
+    g.fillCircle(16, 16, 15.5);
+    g.fillStyle(0x120e0a, 1);
+    g.fillCircle(16, 16, 12);
+    g.fillStyle(0x6a5040, 1);
+    g.fillCircle(16, 16, 10);
+    g.fillStyle(0xffcc55, 1);
+    g.fillCircle(16, 16, 7.5);
+    g.fillStyle(0xfff3c0, 1);
+    g.fillCircle(13.2, 13.2, 3.8);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(12.2, 12.2, 2);
+    g.lineStyle(2, 0xffe088, 0.85);
+    g.strokeCircle(16, 16, 11.2);
+    g.generateTexture('boltBall', 32, 32);
+
+    // Additive glow halo behind the ball
+    g.clear();
+    g.fillStyle(0xffcc66, 0.65);
+    g.fillCircle(20, 20, 19);
+    g.fillStyle(0xff7733, 0.4);
+    g.fillCircle(20, 20, 13);
+    g.fillStyle(0xfff0bb, 0.65);
+    g.fillCircle(20, 20, 7);
+    g.generateTexture('boltBallGlow', 40, 40);
+
+    // Ember trail puff
+    g.clear();
+    g.fillStyle(0xffbb55, 0.95);
+    g.fillCircle(8, 8, 7.5);
+    g.fillStyle(0xfff0cc, 0.85);
+    g.fillCircle(8, 8, 4);
+    g.fillStyle(0xffffff, 0.7);
+    g.fillCircle(8, 8, 1.8);
+    g.generateTexture('boltTrail', 16, 16);
 
     // Theme marker (cache bust)
     g.clear();
     g.fillStyle(0xffffff, 1);
     g.fillRect(0, 0, 2, 2);
-    g.generateTexture('theme_aether_sail_v2', 2, 2);
+    g.generateTexture('theme_aether_sail_v4', 2, 2);
 
     g.destroy();
 }

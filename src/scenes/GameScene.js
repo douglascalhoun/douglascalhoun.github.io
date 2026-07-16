@@ -994,19 +994,16 @@ export default class GameScene extends Phaser.Scene {
         const projectile = new Projectile(this, sx, sy, fireAngle, {
             speed: kit.speed,
             color: kit.color,
-            radius: kit.radius,
+            radius: Math.max(8, kit.radius || 7),
             lifetime: kit.lifetime,
             damage: kit.damage || 1,
             friendly: true,
             blast: kit.blast || 0,
-            kind: kit.kind || 'bomb',
-            seek: Boolean(kit.seek)
+            kind: 'bomb',
+            seek: Boolean(kit.seek),
+            scale: 1.85,
+            trail: true
         });
-        if (this.textures.exists('boltBall')) {
-            projectile.setTexture('boltBall');
-            projectile.setTint(kit.color);
-            projectile.setScale(1.35);
-        }
         this.projectiles.push(projectile);
         this.trimPlayerShots();
 
@@ -1062,7 +1059,10 @@ export default class GameScene extends Phaser.Scene {
                 friendly: false,
                 lifetime: 1200,
                 color: 0x33ddff,
-                radius: 4
+                radius: 7,
+                kind: 'bomb',
+                scale: 1.5,
+                trail: true
             }
         );
         this.remoteProjectiles.push(projectile);
@@ -1103,14 +1103,11 @@ export default class GameScene extends Phaser.Scene {
             friendly: false,
             lifetime: 4200,
             color: npc.color || 0xff6644,
-            radius: 6,
-            kind: 'bomb'
+            radius: 8,
+            kind: 'bomb',
+            scale: 1.7,
+            trail: true
         });
-        if (this.textures.exists('boltBall')) {
-            projectile.setTexture('boltBall');
-            projectile.setTint(npc.color || 0xff6644);
-            projectile.setScale(1.3);
-        }
         this.enemyProjectiles.push(projectile);
     }
 
@@ -1807,8 +1804,9 @@ export default class GameScene extends Phaser.Scene {
     handleCombat() {
         const seekTarget = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter') || null;
 
+        const dt = this.game.loop.delta;
         this.projectiles = this.projectiles.filter((proj) => {
-            if (!proj.update(undefined, undefined, seekTarget)) return false;
+            if (!proj.update(undefined, dt, seekTarget)) return false;
 
             const hitList = [];
             for (const npc of this.npcs) {
@@ -1849,19 +1847,21 @@ export default class GameScene extends Phaser.Scene {
                 applyHit(hitList[0]);
             }
 
-            proj.destroy();
+            if (typeof proj.destroyBolt === 'function') proj.destroyBolt();
+            else proj.destroy();
             return false;
         });
 
         this.enemyProjectiles = this.enemyProjectiles.filter((proj) => {
-            if (!proj.update()) return false;
+            if (!proj.update(undefined, dt)) return false;
             const dist = Phaser.Math.Distance.Between(
                 proj.getX(), proj.getY(),
                 this.player.getX(), this.player.getY()
             );
             if (dist < 26) {
                 const dead = this.player.takeDamage(proj.damage);
-                proj.destroy();
+                if (typeof proj.destroyBolt === 'function') proj.destroyBolt();
+                else proj.destroy();
                 this.cameras.main.shake(70, 0.0035);
                 if (dead) this.triggerGameOver();
                 return false;
@@ -1869,7 +1869,7 @@ export default class GameScene extends Phaser.Scene {
             return true;
         });
 
-        this.remoteProjectiles = this.remoteProjectiles.filter((proj) => proj.update());
+        this.remoteProjectiles = this.remoteProjectiles.filter((proj) => proj.update(undefined, dt));
     }
 
     spawnHitSpark(x, y) {

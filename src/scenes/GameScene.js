@@ -111,11 +111,18 @@ export default class GameScene extends Phaser.Scene {
             this.input.on('pointerup', () => { this._pointerFire = false; });
         }
 
-        // Aim reticle + broadside train fan (world-space)
-        this.reticle = this.add.circle(0, 0, 5, 0xc9a227, 0).setStrokeStyle(2, 0xc9a227, 0.9).setDepth(120);
+        // Aim reticle (trained guns) + ghost cursor + sail cue graphics
+        this.reticle = this.add.circle(0, 0, 6, 0xc9a227, 0).setStrokeStyle(2, 0xc9a227, 0.95).setDepth(120);
+        this.cursorGhost = this.add.circle(0, 0, 4, 0xffffff, 0).setStrokeStyle(1.5, 0xa8c8d8, 0.55).setDepth(119);
         this.reticle.setVisible(!this.touchEnabled);
+        this.cursorGhost.setVisible(!this.touchEnabled);
         this.aimGfx = this.add.graphics().setDepth(88);
         this.batteryAim = null;
+        if (this.player) {
+            this.player.gunAim = this.player.rotation;
+            this.player.desiredGunAim = this.player.rotation;
+            this.player.desiredHelm = this.player.rotation;
+        }
 
         this.scale.on('resize', this.onResize, this);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.shutdown());
@@ -866,46 +873,20 @@ export default class GameScene extends Phaser.Scene {
     }
 
     fireWeapon() {
-        // Auto broadside toward mouse / nearest foe (uses trained battery aim)
         this.fireBroadside('auto');
     }
 
     /**
+     * Free-aim volley along the smoothly trained gun bearing.
      * @param {'port'|'starboard'|'auto'} side
      */
     fireBroadside(side = 'auto') {
         if (this.gameOver || this.isDocked) return;
 
-        const pointer = this.input.activePointer;
-        let worldX = null;
-        let worldY = null;
-        if (pointer && !this.touchEnabled) {
-            const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-            worldX = world.x;
-            worldY = world.y;
-        } else {
-            const foe = this.npcs.find((n) => n.isCombatTarget() && n.type === 'fighter');
-            if (foe) {
-                worldX = foe.getX();
-                worldY = foe.getY();
-            }
-        }
-
+        const fireAngle = this.player.gunAim;
         let resolved = side;
-        let fireAngle;
-
-        if (worldX != null) {
-            const battery = this.player.getBroadsideAim(worldX, worldY);
-            if (side === 'auto') {
-                resolved = battery.side;
-                fireAngle = battery.aimAngle;
-            } else {
-                fireAngle = this.player.clampAimToSide(worldX, worldY, resolved);
-            }
-        } else {
-            if (side === 'auto') resolved = 'starboard';
-            const facing = this.player.getRotation();
-            fireAngle = resolved === 'port' ? facing - Math.PI / 2 : facing + Math.PI / 2;
+        if (side === 'auto') {
+            resolved = this.player.preferSideForGunAim();
         }
 
         if (!this.player.sideReady(resolved)) return;
@@ -917,46 +898,52 @@ export default class GameScene extends Phaser.Scene {
         const muzzle = kit.muzzle || 28;
         const guns = kit.guns || 3;
         const spread = kit.spread || 0.25;
+        const fx = Math.sin(facing);
+        const fy = -Math.cos(facing);
+        const rx = Math.cos(facing);
+        const ry = Math.sin(facing);
+        const aimFx = Math.sin(fireAngle);
+        const aimFy = -Math.cos(fireAngle);
+        const sideSign = resolved === 'port' ? -1 : 1;
 
-        // Stagger guns along the hull; fan the volley around the trained aim
+        // Ripple the battery — guns speak in sequence along the train
+        const rippleMs = 48;
         for (let i = 0; i < guns; i++) {
             const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
             const along = t * 36;
-            const fx = Math.sin(facing);
-            const fy = -Math.cos(facing);
-            const rx = Math.cos(facing);
-            const ry = Math.sin(facing);
-            const sideSign = resolved === 'port' ? -1 : 1;
-            const sx = originX + fx * along + rx * sideSign * muzzle;
-            const sy = originY + fy * along + ry * sideSign * muzzle;
+            // Muzzle sits on the hot side, but can also sit near the bow for chase fire
+            const bowBias = Math.cos(Phaser.Math.Angle.Wrap(fireAngle - facing)); // 1 = forward
+            const sidePush = Phaser.Math.Linear(muzzle * 0.35, muzzle, 1 - Math.max(0, bowBias));
+            const sx = originX + fx * along + rx * sideSign * sidePush + aimFx * 6;
+            const sy = originY + fy * along + ry * sideSign * sidePush + aimFy * 6;
             const shotAngle = fireAngle + t * spread;
 
-            const projectile = new Projectile(this, sx, sy, shotAngle, {
-                speed: kit.speed,
-                color: kit.color,
-                radius: kit.radius,
-                lifetime: kit.lifetime,
-                damage: kit.damage || 1,
-                friendly: true,
-                blast: kit.blast || 0,
-                kind: kit.kind || 'bomb',
+            this.time.delayedCall(i * rippleMs, () => {
+                if (this.gameOver || !this.player) return;
+                const projectile = new Projectile(this, sx, sy, shotAngle, {
+                    speed: kit.speed,
+                    color: kit.color,
+                    radius: kit.radius,
+                    lifetime: kit.lifetime,
+                    damage: kit.damage || 1,
+                    friendly: true,
+                    blast: kit.blast || 0,
+                    kind: kit.kind || 'bomb',
+                });
+                if (this.textures.exists('boltBall')) {
+                    projectile.setTexture('boltBall');
+                    projectile.setTint(kit.color);
+                    projectile.setScale(1.1);
+                }
+                this.projectiles.push(projectile);
             });
-            if (this.textures.exists('boltBall')) {
-                projectile.setTexture('boltBall');
-                projectile.setTint(kit.color);
-                projectile.setScale(1.1);
-            }
-            this.projectiles.push(projectile);
         }
 
         if (kit.chain) {
-            const sideSign = resolved === 'port' ? -1 : 1;
-            const rx = Math.cos(facing);
-            const ry = Math.sin(facing);
             const chain = new Projectile(
                 this,
-                originX + rx * sideSign * muzzle,
-                originY + ry * sideSign * muzzle,
+                originX + aimFx * muzzle,
+                originY + aimFy * muzzle,
                 fireAngle,
                 {
                     speed: kit.chain.speed,
@@ -990,15 +977,14 @@ export default class GameScene extends Phaser.Scene {
     spawnBroadsideFlash(side, angle) {
         const x = this.player.getX();
         const y = this.player.getY();
-        const flash = this.add.circle(x, y, 10, 0xffeebb, 0.9).setDepth(115);
-        const rx = Math.cos(this.player.getRotation()) * (side === 'port' ? -1 : 1);
-        const ry = Math.sin(this.player.getRotation()) * (side === 'port' ? -1 : 1);
-        flash.setPosition(x + rx * 30, y + ry * 30);
+        const ax = Math.sin(angle);
+        const ay = -Math.cos(angle);
+        const flash = this.add.circle(x + ax * 32, y + ay * 32, 12, 0xffeebb, 0.9).setDepth(115);
         this.tweens.add({
             targets: flash,
             alpha: 0,
-            scale: 2.4,
-            duration: 180,
+            scale: 2.6,
+            duration: 200,
             onComplete: () => flash.destroy()
         });
     }
@@ -1065,11 +1051,12 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Mouse / pad trains the hot battery within its arc and presents that side.
+     * Cursor / pad sets free-aim desire; Player eases gunAim + helm toward it.
      */
     getNavalAim(pad = null) {
         if (this.isDocked || this.mapOpen || this.hyperspaceOpen || this.gameOver) {
             if (this.reticle) this.reticle.setVisible(false);
+            if (this.cursorGhost) this.cursorGhost.setVisible(false);
             if (this.aimGfx) this.aimGfx.clear();
             this.batteryAim = null;
             return { hasAim: false, angle: 0 };
@@ -1077,7 +1064,6 @@ export default class GameScene extends Phaser.Scene {
 
         let worldX = null;
         let worldY = null;
-        let fromPad = false;
 
         if (!this.touchEnabled) {
             const pointer = this.input.activePointer;
@@ -1088,12 +1074,10 @@ export default class GameScene extends Phaser.Scene {
             }
         }
 
-        // Right stick / pad aim when no useful mouse point (or on touch)
         if ((worldX == null || this.touchEnabled) && pad && pad.hasAim && this.player) {
-            const reach = 220;
+            const reach = 240;
             worldX = this.player.getX() + Math.sin(pad.aimAngle) * reach;
             worldY = this.player.getY() + -Math.cos(pad.aimAngle) * reach;
-            fromPad = true;
         }
 
         if (worldX == null || !this.player) {
@@ -1101,135 +1085,189 @@ export default class GameScene extends Phaser.Scene {
             return { hasAim: false, angle: 0 };
         }
 
-        const battery = this.player.getBroadsideAim(worldX, worldY);
-        this.batteryAim = battery;
-
-        // Present the hot broadside when abeam; chase with the bow when ahead/aft
-        const sideSign = battery.side === 'starboard' ? 1 : -1;
-        const presentAngle = battery.toCursor - sideSign * (Math.PI / 2);
-        let helmAngle;
-        let turnRateScale;
-        if (battery.inArc) {
-            const t = 0.72;
-            helmAngle = presentAngle + Phaser.Math.Angle.Wrap(battery.toCursor - presentAngle) * (1 - t);
-            turnRateScale = fromPad ? 0.75 : 0.62;
-        } else {
-            helmAngle = battery.toCursor;
-            turnRateScale = 1;
+        const dx = worldX - this.player.getX();
+        const dy = worldY - this.player.getY();
+        if (dx * dx + dy * dy < 12 * 12) {
+            this.drawSailAimCues();
+            return { hasAim: false, angle: 0 };
         }
 
+        const angle = Math.atan2(dx, -dy);
+        this.batteryAim = this.player.getAimState();
+
         if (!this.touchEnabled) {
-            this.drawBroadsideAim(battery);
+            this.drawSailAimCues(worldX, worldY);
         } else if (this.aimGfx) {
             this.aimGfx.clear();
             if (this.reticle) this.reticle.setVisible(false);
-        }
-
-        const dx = worldX - this.player.getX();
-        const dy = worldY - this.player.getY();
-        if (dx * dx + dy * dy < 16 * 16) {
-            return { hasAim: false, angle: 0, battery, turnRateScale: 1 };
+            if (this.cursorGhost) this.cursorGhost.setVisible(false);
         }
 
         return {
             hasAim: true,
-            angle: helmAngle,
-            helmAngle,
-            turnRateScale,
-            battery
+            angle,
+            helmAngle: angle,
+            cursorX: worldX,
+            cursorY: worldY,
+            turnRateScale: 1,
+            battery: this.batteryAim
         };
     }
 
-    /** @deprecated use getNavalAim */
     getMouseAim() {
         return this.getNavalAim(null);
     }
 
-    drawBroadsideAim(battery) {
-        if (!this.aimGfx || !this.player || !battery) return;
+    /**
+     * Visual language:
+     * - teal: actual travel (velocity)
+     * - cream dashed: intended travel under sail
+     * - soft white: bow / keel
+     * - brass fan: trained gun aim + volley spread
+     * - pale ghost: raw cursor desire
+     */
+    drawSailAimCues(cursorX = null, cursorY = null) {
+        if (!this.aimGfx || !this.player) return;
         const g = this.aimGfx;
         g.clear();
 
-        const kit = this.player.getWeapon();
-        const x = this.player.getX();
-        const y = this.player.getY();
-        const facing = this.player.getRotation();
-        const range = Math.min(420, (kit.speed || 145) * ((kit.lifetime || 3400) / 1000) * 0.55);
+        const p = this.player;
+        const kit = p.getWeapon();
+        const x = p.getX();
+        const y = p.getY();
+        const facing = p.getRotation();
+        const gunAim = p.gunAim;
+        const range = Math.min(440, (kit.speed || 145) * ((kit.lifetime || 3400) / 1000) * 0.55);
         const guns = kit.guns || 3;
         const spread = kit.spread || 0.25;
-        const ready = this.player.sideReady(battery.side);
-
+        const side = p.preferSideForGunAim();
+        const ready = p.sideReady(side);
         const dir = (ang) => ({ dx: Math.sin(ang), dy: -Math.cos(ang) });
 
-        // Faint train arcs for both batteries
-        const drawArcFan = (side, alpha, color) => {
-            const sign = side === 'starboard' ? 1 : -1;
-            const a0 = facing + sign * battery.arcMin;
-            const a1 = facing + sign * battery.arcMax;
-            const steps = 14;
-            g.lineStyle(1.5, color, alpha * 0.55);
-            g.beginPath();
-            for (let i = 0; i <= steps; i++) {
-                const t = i / steps;
-                const a = a0 + (a1 - a0) * t;
-                const p = dir(a);
-                const px = x + p.dx * range;
-                const py = y + p.dy * range;
-                if (i === 0) g.moveTo(px, py);
-                else g.lineTo(px, py);
+        // --- Actual travel (velocity wake) ------------------------------------
+        const spd = p.getSpeed();
+        if (spd > 10) {
+            const vAng = p.getVelocityAngle();
+            const v = dir(vAng);
+            const vLen = Phaser.Math.Clamp(40 + spd * 0.9, 50, 160);
+            g.lineStyle(3, 0x5ec8c0, 0.75);
+            g.lineBetween(x, y, x + v.dx * vLen, y + v.dy * vLen);
+            // arrow head
+            const hx = x + v.dx * vLen;
+            const hy = y + v.dy * vLen;
+            const px = -v.dy;
+            const py = v.dx;
+            g.fillStyle(0x5ec8c0, 0.8);
+            g.fillTriangle(
+                hx + v.dx * 10, hy + v.dy * 10,
+                hx - px * 6 - v.dx * 2, hy - py * 6 - v.dy * 2,
+                hx + px * 6 - v.dx * 2, hy + py * 6 - v.dy * 2
+            );
+            // wake ticks behind
+            g.lineStyle(1.5, 0x5ec8c0, 0.35);
+            for (let i = 1; i <= 3; i++) {
+                const bx = x - v.dx * (18 * i);
+                const by = y - v.dy * (18 * i);
+                g.lineBetween(bx - px * 5, by - py * 5, bx + px * 5, by + py * 5);
             }
-            g.strokePath();
-            const p0 = dir(a0);
-            const p1 = dir(a1);
-            g.lineStyle(1, color, alpha * 0.35);
-            g.lineBetween(x + p0.dx * 24, y + p0.dy * 24, x + p0.dx * range, y + p0.dy * range);
-            g.lineBetween(x + p1.dx * 24, y + p1.dy * 24, x + p1.dx * range, y + p1.dy * range);
-        };
+        }
 
-        drawArcFan('port', battery.side === 'port' ? 0.35 : 0.14, 0x88aacc);
-        drawArcFan('starboard', battery.side === 'starboard' ? 0.35 : 0.14, 0x88aacc);
+        // --- Intended travel (sail order) -------------------------------------
+        const iFwd = p.intendForward || 0;
+        const iLat = p.intendLateral || 0;
+        if (Math.abs(iFwd) > 0.05 || Math.abs(iLat) > 0.05) {
+            const bow = dir(facing);
+            const right = { dx: Math.cos(facing), dy: Math.sin(facing) };
+            const ix = bow.dx * iFwd + right.dx * iLat * 0.45;
+            const iy = bow.dy * iFwd + right.dy * iLat * 0.45;
+            const iLen = Math.hypot(ix, iy) || 1;
+            const ndx = ix / iLen;
+            const ndy = iy / iLen;
+            const reach = 70 + Math.abs(iFwd) * 50;
+            g.lineStyle(2, 0xe8dcc0, 0.55);
+            // dashed intended course
+            let drawn = 28;
+            while (drawn < reach) {
+                const seg = Math.min(10, reach - drawn);
+                g.lineBetween(
+                    x + ndx * drawn, y + ndy * drawn,
+                    x + ndx * (drawn + seg), y + ndy * (drawn + seg)
+                );
+                drawn += 16;
+            }
+        }
 
-        // Hot battery: filled spread wedge + per-gun rays
-        const aim = battery.aimAngle;
+        // --- Bow / keel line --------------------------------------------------
+        const bow = dir(facing);
+        g.lineStyle(2, 0xffffff, 0.28);
+        g.lineBetween(x - bow.dx * 22, y - bow.dy * 22, x + bow.dx * 54, y + bow.dy * 54);
+        // tiny bow notch
+        g.fillStyle(0xffffff, 0.35);
+        g.fillCircle(x + bow.dx * 54, y + bow.dy * 54, 2.5);
+
+        // --- Desired helm (where bow is easing toward) ------------------------
+        const helmGap = Math.abs(Phaser.Math.Angle.Wrap(p.desiredHelm - facing));
+        if (helmGap > 0.08) {
+            const h = dir(p.desiredHelm);
+            g.lineStyle(1.5, 0xc9a227, 0.35);
+            g.lineBetween(x + h.dx * 20, y + h.dy * 20, x + h.dx * 70, y + h.dy * 70);
+        }
+
+        // --- Trained gun aim + volley spread ----------------------------------
         const halfFan = spread * 0.5;
-        const wedgeAlpha = battery.inArc ? (ready ? 0.22 : 0.1) : 0.08;
         const rayColor = ready ? 0xc9a227 : 0x886622;
-
-        g.fillStyle(rayColor, wedgeAlpha);
+        g.fillStyle(rayColor, ready ? 0.16 : 0.07);
         g.beginPath();
         g.moveTo(x, y);
-        const wSteps = 10;
-        for (let i = 0; i <= wSteps; i++) {
-            const t = i / wSteps;
-            const a = aim - halfFan + spread * t;
-            const p = dir(a);
-            g.lineTo(x + p.dx * range, y + p.dy * range);
+        for (let i = 0; i <= 12; i++) {
+            const t = i / 12;
+            const a = gunAim - halfFan + spread * t;
+            const d = dir(a);
+            g.lineTo(x + d.dx * range, y + d.dy * range);
         }
         g.closePath();
         g.fillPath();
 
         for (let i = 0; i < guns; i++) {
             const t = guns === 1 ? 0 : (i / (guns - 1)) - 0.5;
-            const a = aim + t * spread;
-            const p = dir(a);
+            const a = gunAim + t * spread;
+            const d = dir(a);
             const isCenter = Math.abs(t) < 0.01;
-            g.lineStyle(isCenter ? 2.5 : 1.25, rayColor, isCenter ? (ready ? 0.95 : 0.45) : (ready ? 0.55 : 0.25));
-            g.lineBetween(x + p.dx * 20, y + p.dy * 20, x + p.dx * range, y + p.dy * range);
+            g.lineStyle(
+                isCenter ? 2.5 : 1.2,
+                rayColor,
+                isCenter ? (ready ? 0.95 : 0.4) : (ready ? 0.5 : 0.22)
+            );
+            g.lineBetween(x + d.dx * 18, y + d.dy * 18, x + d.dx * range, y + d.dy * range);
         }
 
-        const aimDir = dir(aim);
-        const along = Phaser.Math.Clamp(battery.dist || 180, 80, range);
+        const aimDir = dir(gunAim);
+        const along = Phaser.Math.Clamp(p.cursorDist || 180, 90, range);
         const tickX = x + aimDir.dx * along;
         const tickY = y + aimDir.dy * along;
-        g.lineStyle(2, rayColor, ready ? 0.9 : 0.4);
-        g.strokeCircle(tickX, tickY, 10);
-        g.lineBetween(tickX - 8, tickY, tickX + 8, tickY);
-        g.lineBetween(tickX, tickY - 8, tickX, tickY + 8);
+        g.lineStyle(2, rayColor, ready ? 0.95 : 0.4);
+        g.strokeCircle(tickX, tickY, 11);
+        g.lineBetween(tickX - 9, tickY, tickX + 9, tickY);
+        g.lineBetween(tickX, tickY - 9, tickX, tickY + 9);
+
+        // Lead line from ship to trained aim
+        g.lineStyle(1, rayColor, 0.25);
+        g.lineBetween(x + aimDir.dx * 16, y + aimDir.dy * 16, tickX, tickY);
 
         if (this.reticle) {
             this.reticle.setVisible(true);
             this.reticle.setPosition(tickX, tickY);
-            this.reticle.setStrokeStyle(2, ready ? 0xc9a227 : 0x665522, battery.inArc ? 0.95 : 0.45);
+            this.reticle.setStrokeStyle(2, ready ? 0xc9a227 : 0x665522, 0.95);
+        }
+
+        // Ghost cursor = where you're asking the guns to go (they ease toward it)
+        if (cursorX != null && this.cursorGhost) {
+            this.cursorGhost.setVisible(true);
+            this.cursorGhost.setPosition(cursorX, cursorY);
+            g.lineStyle(1, 0xa8c8d8, 0.3);
+            g.lineBetween(tickX, tickY, cursorX, cursorY);
+        } else if (this.cursorGhost) {
+            this.cursorGhost.setVisible(false);
         }
     }
 
@@ -2226,6 +2264,7 @@ export default class GameScene extends Phaser.Scene {
         } else if (this.aimGfx) {
             this.aimGfx.clear();
             if (this.reticle) this.reticle.setVisible(false);
+            if (this.cursorGhost) this.cursorGhost.setVisible(false);
         }
 
         const inDockingRange = this.station.update(this.player.getX(), this.player.getY());
@@ -2326,7 +2365,7 @@ export default class GameScene extends Phaser.Scene {
             mission,
             foe ? `Sail: ${foe.label || 'corsair'} ${foe.hits}/${foe.maxHits} [${foe.mode}]` : (this.defendComplete ? 'Seas clear' : 'Watching the horizon…'),
             `Sheer: ${this.player.canBoost() ? 'READY [Shift]' : 'recharging…'}`,
-            'Mouse trains batteries (45°–135°) · Q/R or click fire · leave well [H]',
+            'Teal=way · cream=sail order · brass=gun train · Q/R or click volley',
             this.isDocked ? 'IN HARBOR [E undock]' : (inDockingRange ? 'Harbor range [E berth]' : (this.isNearHyperspaceEdge() ? 'Beyond the gravity well [H deep lane]' : ''))
         ].filter(Boolean).join('\n');
 

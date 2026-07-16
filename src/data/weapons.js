@@ -1,6 +1,6 @@
 /**
  * Naval battery kits — Age-of-Sail space combat.
- * Skill = positioning for passing volleys, not twitch nose-aim.
+ * Free-aim volleys with ripple fire; skill = lead, inertia, and the pass.
  */
 
 export const WEAPONS = {

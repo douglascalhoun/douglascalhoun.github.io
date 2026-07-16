@@ -46,36 +46,51 @@ export default class Player {
 
         this.body = this.container.body;
         this.body.setCircle(16, -16, -16);
-        // Naval mass: coasts, turns like a hull
-        this.body.setDrag(12);
-        this.body.setMaxVelocity(210);
+        // Heavy sailing hull: slow to gather way, long coast
+        this.body.setDrag(6);
+        this.body.setMaxVelocity(190);
         this.body.setCollideWorldBounds(true);
         this.body.useDamping = false;
 
         this.rotation = 0;
         this.rotationSpeed = 0;
-        this.maxRotationSpeed = 2.4;
-        this.aimTurnRate = 2.8;
-        this.keyboardTurnRate = 2.2;
+        this.maxRotationSpeed = 1.4;
+        this.hullTurnRate = 1.15;      // bow follows helm slowly
+        this.gunTrainRate = 1.85;      // guns ease toward reticle (not twitchy)
+        this.helmTrackRate = 2.4;      // desired helm tracks cursor
+        this.keyboardTurnRate = 1.35;
+        this.aimTurnRate = 1.15;       // kept for older call sites
 
-        this.thrustLerp = 4.5;
-        this.strafeLerp = 5.5;
+        // Low accel = inertia; ships gather way instead of snapping
+        this.thrustLerp = 1.25;
+        this.strafeLerp = 0.7;
+        this.coastDragExtra = 0;       // optional bleed when not under sail
 
-        this.baseMainThrust = 240;
-        this.baseReverseThrust = 160;
-        this.baseLateralThrust = 140;
-        this.baseMaxVelocity = 210;
+        this.baseMainThrust = 195;
+        this.baseReverseThrust = 110;
+        this.baseLateralThrust = 48;
+        this.baseMaxVelocity = 190;
         this.baseMaxShields = 80;
         this.baseMaxHull = 80;
         this.baseShieldRegen = 6;
         this.baseWeaponDamage = 1;
         this.baseCargoCapacity = 20;
 
-        this.boostCooldownMs = 1100;
-        this.boostImpulse = 280;
+        this.boostCooldownMs = 1400;
+        this.boostImpulse = 200;
         this.lastBoostTime = -9999;
         this.boostUntil = 0;
         this._lastDodgeSide = 1;
+
+        // Free-aim battery: independent of hull, smoothed every frame
+        this.gunAim = 0;
+        this.desiredGunAim = 0;
+        this.desiredHelm = 0;
+        this.cursorDist = 180;
+        this.cursorX = x;
+        this.cursorY = y;
+        this.intendForward = 0;
+        this.intendLateral = 0;
 
         this.portReadyAt = 0;
         this.starboardReadyAt = 0;
@@ -182,66 +197,68 @@ export default class Player {
         return dot >= 0 ? 'starboard' : 'port';
     }
 
-    /**
-     * Broadside train arcs (Age-of-Sail / SoT style):
-     * each battery covers beam ±45° (45° off the bow through 135°).
-     * Returns clamped aim angle, hot side, and whether the cursor sits in-arc.
-     */
-    getBroadsideAim(worldX, worldY) {
-        const facing = this.rotation;
-        const dx = worldX - this.getX();
-        const dy = worldY - this.getY();
-        const dist = Math.hypot(dx, dy);
-        const toCursor = dist < 8 ? facing : Math.atan2(dx, -dy);
-        const rel = Phaser.Math.Angle.Wrap(toCursor - facing);
-
-        const ARC_MIN = Math.PI / 4;       // 45° off the bow
-        const ARC_MAX = (3 * Math.PI) / 4; // 135° (45° abaft the beam)
-
-        const side = rel >= 0 ? 'starboard' : 'port';
-        let aimRel;
-        let inArc;
-        if (side === 'starboard') {
-            aimRel = Phaser.Math.Clamp(rel, ARC_MIN, ARC_MAX);
-            inArc = rel >= ARC_MIN && rel <= ARC_MAX;
-        } else {
-            aimRel = Phaser.Math.Clamp(rel, -ARC_MAX, -ARC_MIN);
-            inArc = rel <= -ARC_MIN && rel >= -ARC_MAX;
+    /** Which battery is best aligned with current gun train (for reload bookkeeping). */
+    preferSideForGunAim() {
+        const rel = Phaser.Math.Angle.Wrap(this.gunAim - this.rotation);
+        // Forward / aft volleys still pick a side for the reload clock
+        if (Math.abs(rel) < Math.PI / 6 || Math.abs(rel) > (5 * Math.PI) / 6) {
+            return rel >= 0 ? 'starboard' : 'port';
         }
+        return rel >= 0 ? 'starboard' : 'port';
+    }
 
+    getVelocityAngle() {
+        const vx = this.body.velocity.x;
+        const vy = this.body.velocity.y;
+        if (vx * vx + vy * vy < 12) return this.rotation;
+        return Math.atan2(vx, -vy);
+    }
+
+    getSpeed() {
+        return Math.hypot(this.body.velocity.x, this.body.velocity.y);
+    }
+
+    /**
+     * Free-aim state for HUD / volleys. Guns train to any bearing (including bow).
+     */
+    getAimState() {
+        const rel = Phaser.Math.Angle.Wrap(this.gunAim - this.rotation);
         return {
-            side,
-            aimAngle: facing + aimRel,
-            aimRel,
-            toCursor,
+            side: this.preferSideForGunAim(),
+            aimAngle: this.gunAim,
+            desiredGunAim: this.desiredGunAim,
+            desiredHelm: this.desiredHelm,
+            toCursor: this.desiredGunAim,
             rel,
-            inArc,
-            dist,
-            arcMin: ARC_MIN,
-            arcMax: ARC_MAX
+            inArc: true,
+            dist: this.cursorDist,
+            cursorX: this.cursorX,
+            cursorY: this.cursorY,
+            velocityAngle: this.getVelocityAngle(),
+            speed: this.getSpeed(),
+            intendForward: this.intendForward,
+            intendLateral: this.intendLateral
         };
     }
 
-    /** Clamp a world point onto a forced battery's train arc. */
-    clampAimToSide(worldX, worldY, side) {
-        const facing = this.rotation;
+    /** @deprecated — free aim replaced broadside clamps */
+    getBroadsideAim(worldX, worldY) {
+        this.cursorX = worldX;
+        this.cursorY = worldY;
         const dx = worldX - this.getX();
         const dy = worldY - this.getY();
-        const toCursor = Math.atan2(dx, -dy);
-        const rel = Phaser.Math.Angle.Wrap(toCursor - facing);
-        const ARC_MIN = Math.PI / 4;
-        const ARC_MAX = (3 * Math.PI) / 4;
-        const aimRel = side === 'starboard'
-            ? Phaser.Math.Clamp(Math.abs(rel) < 1e-6 ? Math.PI / 2 : rel, ARC_MIN, ARC_MAX)
-            : Phaser.Math.Clamp(Math.abs(rel) < 1e-6 ? -Math.PI / 2 : rel, -ARC_MAX, -ARC_MIN);
-        // If forcing port but cursor is deep starboard (or vice versa), snap to pure beam
-        if (side === 'starboard' && rel < 0) {
-            return facing + Math.PI / 2;
+        this.cursorDist = Math.hypot(dx, dy);
+        if (this.cursorDist >= 8) {
+            this.desiredGunAim = Math.atan2(dx, -dy);
+            this.desiredHelm = this.desiredGunAim;
         }
-        if (side === 'port' && rel > 0) {
-            return facing - Math.PI / 2;
-        }
-        return facing + aimRel;
+        return this.getAimState();
+    }
+
+    clampAimToSide(_worldX, _worldY, side) {
+        // Free aim: still fire along the trained guns; side only picks the battery
+        void side;
+        return this.gunAim;
     }
 
     grantHarvestReward(reward) {
@@ -309,30 +326,60 @@ export default class Player {
     }
 
     /**
-     * Naval helm: mouse both presents a broadside and trains the guns.
-     * When the cursor is abeam, turn to keep that battery on target;
-     * when it's ahead/aft, turn the bow toward the cursor.
+     * Sailing helm + free-aim battery.
+     * - Cursor sets desired gun bearing & helm; both ease smoothly (no snaps).
+     * - Thrust builds along the bow with heavy inertia / long coast.
      */
     update(delta, leftJoystick, rightJoystick, keys = null, pad = null, aim = null) {
         const dt = Math.min(0.05, delta / 1000);
         const now = this.scene.time.now;
 
-        let desiredAngle = null;
-        let turnScale = 1;
+        // --- Aim / helm desires from cursor or sticks ---------------------------
+        let hasCursor = false;
         if (aim && aim.hasAim) {
-            desiredAngle = aim.helmAngle != null ? aim.helmAngle : aim.angle;
-            turnScale = aim.turnRateScale != null ? aim.turnRateScale : 1;
+            if (aim.cursorX != null) {
+                this.cursorX = aim.cursorX;
+                this.cursorY = aim.cursorY;
+                const dx = this.cursorX - this.getX();
+                const dy = this.cursorY - this.getY();
+                this.cursorDist = Math.hypot(dx, dy);
+                if (this.cursorDist >= 10) {
+                    this.desiredGunAim = Math.atan2(dx, -dy);
+                    this.desiredHelm = this.desiredGunAim;
+                    hasCursor = true;
+                }
+            } else if (aim.angle != null) {
+                this.desiredGunAim = aim.helmAngle != null ? aim.angle : aim.angle;
+                this.desiredHelm = aim.helmAngle != null ? aim.helmAngle : aim.angle;
+                hasCursor = true;
+            }
         } else if (rightJoystick && rightJoystick.isActive() && rightJoystick.getForce() > 0.25) {
-            desiredAngle = rightJoystick.getAngle() + Math.PI / 2;
+            this.desiredGunAim = rightJoystick.getAngle() + Math.PI / 2;
+            this.desiredHelm = this.desiredGunAim;
+            this.cursorDist = 200;
+            hasCursor = true;
         } else if (pad && pad.hasAim) {
-            desiredAngle = pad.aimAngle;
+            this.desiredGunAim = pad.aimAngle;
+            this.desiredHelm = pad.aimAngle;
+            this.cursorDist = 200;
+            this.cursorX = this.getX() + Math.sin(pad.aimAngle) * 200;
+            this.cursorY = this.getY() + -Math.cos(pad.aimAngle) * 200;
+            hasCursor = true;
         }
 
-        if (desiredAngle != null) {
+        // Guns train smoothly toward reticle (any direction, including bow)
+        this.gunAim = Phaser.Math.Angle.RotateTo(
+            this.gunAim,
+            this.desiredGunAim,
+            this.gunTrainRate * dt
+        );
+
+        // Hull turns even slower — sailing inertia in yaw
+        if (hasCursor) {
             this.rotation = Phaser.Math.Angle.RotateTo(
                 this.rotation,
-                desiredAngle,
-                this.aimTurnRate * turnScale * dt
+                this.desiredHelm,
+                this.hullTurnRate * dt
             );
         } else {
             let rotInput = 0;
@@ -340,10 +387,12 @@ export default class Player {
             if (keys?.RIGHT?.isDown) rotInput += 1;
             if (Math.abs(rotInput) > 0.01) {
                 this.rotation += rotInput * this.keyboardTurnRate * dt;
+                this.desiredHelm = this.rotation;
             }
         }
         this.container.setRotation(this.rotation);
 
+        // --- Sail input --------------------------------------------------------
         let forwardInput = 0;
         let lateralInput = 0;
 
@@ -370,16 +419,19 @@ export default class Player {
 
         forwardInput = Phaser.Math.Clamp(forwardInput, -1, 1);
         lateralInput = Phaser.Math.Clamp(lateralInput, -1, 1);
+        this.intendForward = forwardInput;
+        this.intendLateral = lateralInput;
 
         const shipForwardX = Math.sin(this.rotation);
         const shipForwardY = -Math.cos(this.rotation);
         const shipRightX = Math.cos(this.rotation);
         const shipRightY = Math.sin(this.rotation);
 
+        // Target velocity along the keel — ships don't skate sideways
         let forwardSpeed = 0;
-        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.7;
-        else if (forwardInput < 0) forwardSpeed = forwardInput * this.reverseThrust * 0.55;
-        const lateralSpeed = lateralInput * this.lateralThrust * 0.55;
+        if (forwardInput > 0) forwardSpeed = forwardInput * this.mainThrust * 0.62;
+        else if (forwardInput < 0) forwardSpeed = forwardInput * this.reverseThrust * 0.4;
+        const lateralSpeed = lateralInput * this.lateralThrust * 0.35;
 
         const thrusting = Math.abs(forwardInput) > 0.01 || Math.abs(lateralInput) > 0.01;
         const targetVx = shipForwardX * forwardSpeed + shipRightX * lateralSpeed;
@@ -392,6 +444,22 @@ export default class Player {
             const lerpF = 1 - Math.exp(-rate * dt);
             this.body.velocity.x += (targetVx - this.body.velocity.x) * lerpF;
             this.body.velocity.y += (targetVy - this.body.velocity.y) * lerpF;
+        } else {
+            // Bleed a touch of way when sails are idle (still coasts a long time)
+            const bleed = 1 - Math.min(0.35 * dt, 0.08);
+            this.body.velocity.x *= bleed;
+            this.body.velocity.y *= bleed;
+        }
+
+        // Lateral slip decay — velocity wants to align with the keel over time
+        const spdNow = Math.hypot(this.body.velocity.x, this.body.velocity.y);
+        if (spdNow > 8) {
+            const along = this.body.velocity.x * shipForwardX + this.body.velocity.y * shipForwardY;
+            const side = this.body.velocity.x * shipRightX + this.body.velocity.y * shipRightY;
+            const sideDecay = Math.exp(-1.1 * dt);
+            const newSide = side * sideDecay;
+            this.body.velocity.x = shipForwardX * along + shipRightX * newSide;
+            this.body.velocity.y = shipForwardY * along + shipRightY * newSide;
         }
 
         const wantBoost = (keys && keys.SHIFT?.isDown) || (pad && pad.boost);
@@ -401,17 +469,17 @@ export default class Player {
             else this._lastDodgeSide = side;
             this.body.velocity.x += shipRightX * side * this.boostImpulse;
             this.body.velocity.y += shipRightY * side * this.boostImpulse;
-            this.body.velocity.x += shipForwardX * Math.max(0, forwardInput) * 60;
-            this.body.velocity.y += shipForwardY * Math.max(0, forwardInput) * 60;
+            this.body.velocity.x += shipForwardX * Math.max(0, forwardInput) * 40;
+            this.body.velocity.y += shipForwardY * Math.max(0, forwardInput) * 40;
             this.lastBoostTime = now;
-            this.boostUntil = now + 160;
+            this.boostUntil = now + 180;
             if (this.scene.spawnHitSpark) this.scene.spawnHitSpark(this.getX(), this.getY());
         }
 
         if (now < this.boostUntil) this.container.setAlpha(0.75);
         else if (this.container.alpha >= 0.7 && this.container.alpha < 1) this.container.setAlpha(1);
 
-        const maxSpd = now < this.boostUntil ? this.maxSpeed * 1.25 : this.maxSpeed;
+        const maxSpd = now < this.boostUntil ? this.maxSpeed * 1.2 : this.maxSpeed;
         const spd = Math.hypot(this.body.velocity.x, this.body.velocity.y);
         if (spd > maxSpd) {
             const s = maxSpd / spd;

@@ -77,6 +77,50 @@ function EventBlock({ event, index }) {
   );
 }
 
+function formatWhen(value) {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function ReportArchive({ archive, activeId, onOpen, disabled }) {
+  if (!archive?.length) return null;
+  return (
+    <section className="report-archive" aria-label="Past briefings">
+      <div className="panel-label">Past reports</div>
+      <ul className="report-archive-list">
+        {archive.map((item) => {
+          const active = item.id === activeId;
+          return (
+            <li key={item.id}>
+              <button
+                type="button"
+                className={`report-archive-item${active ? ' is-active' : ''}`}
+                disabled={disabled || active}
+                onClick={() => onOpen(item.id)}
+              >
+                <span className="report-archive-when">{formatWhen(item.createdAt)}</span>
+                <span className="report-archive-headline">{item.headline}</span>
+                <span className="report-archive-meta">
+                  {item.eventCount} {item.eventCount === 1 ? 'event' : 'events'}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export default function PresenterPage() {
   const [digestPayload, setDigestPayload] = useState(null);
   const [preferences, setPreferences] = useState(null);
@@ -104,7 +148,9 @@ export default function PresenterPage() {
         setDigestPayload(digest);
         setMessages(chat.messages || []);
       });
-      if (digest.missingKey || digest.fallback) {
+      if (digest.note) {
+        setNote(digest.note);
+      } else if (digest.missingKey || digest.fallback) {
         setNote(
           digest.missingKey
             ? 'AI Gateway is not enabled yet — showing a wire fallback. Enable AI on the Netlify site.'
@@ -137,7 +183,24 @@ export default function PresenterPage() {
       const digest = await fetchDigest({ force: true, markVisit: true });
       setDigestPayload(digest);
       setPreferences(digest.preferences || preferences);
-      setNote(digest.fallback ? 'Fallback briefing (AI unavailable).' : 'Briefing refreshed.');
+      if (digest.note) setNote(digest.note);
+      else if (digest.replay) setNote('Nothing new — replaying your latest past briefing.');
+      else setNote(digest.fallback ? 'Fallback briefing (AI unavailable).' : 'Briefing refreshed.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleOpenPastReport(digestId) {
+    setBusy('briefing');
+    setError(null);
+    try {
+      const digest = await fetchDigest({ digestId, markVisit: false });
+      setDigestPayload(digest);
+      setPreferences(digest.preferences || preferences);
+      setNote(digest.note || `Replaying briefing from ${formatWhen(digest.createdAt)}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -198,6 +261,12 @@ export default function PresenterPage() {
   }
 
   const digest = digestPayload?.digest;
+  const isReplay = Boolean(digestPayload?.replay || digestPayload?.mode === 'archive');
+  const panelLabel = isReplay
+    ? `Past briefing · ${formatWhen(digestPayload?.createdAt)}`
+    : digestPayload?.mode === 'catchup'
+      ? 'Catch-up briefing'
+      : 'Since you were away';
 
   return (
     <div className="app presenter-app">
@@ -213,6 +282,11 @@ export default function PresenterPage() {
             {digest?.lede ||
               'A presenter that remembers what you care about and briefs only what is new since you left.'}
           </p>
+          {isReplay && (
+            <p className="hero-replay-flag">
+              Nothing new right now — replaying a past report. Newer wires land after crawl.
+            </p>
+          )}
           <div className="hero-actions">
             <button
               type="button"
@@ -261,12 +335,13 @@ export default function PresenterPage() {
         </div>
 
         <section className="briefing-panel" aria-live="polite">
-          <div className="panel-label">Since you were away</div>
+          <div className="panel-label">{panelLabel}</div>
           {loading ? (
             <div className="empty">Building your briefing…</div>
           ) : !digest?.events?.length ? (
             <div className="empty">
-              Quiet desk. Crawl sources or widen your interests in chat.
+              Quiet desk — no new stories and no past briefings yet. Crawl sources or widen
+              interests in chat.
             </div>
           ) : (
             <div className="event-list">
@@ -290,6 +365,13 @@ export default function PresenterPage() {
             <p className="ignored-note">{digest.ignoredNote}</p>
           )}
         </section>
+
+        <ReportArchive
+          archive={digestPayload?.archive || []}
+          activeId={digestPayload?.digestId}
+          onOpen={handleOpenPastReport}
+          disabled={!!busy || loading}
+        />
 
         <section className="chat-panel" aria-label="Presenter chat">
           <div className="panel-label">Interrogate the desk</div>

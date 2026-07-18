@@ -875,6 +875,70 @@ h1 {
   font-size: 0.92rem;
 }
 
+.hero-replay-flag {
+  margin-top: 0.7rem;
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--accent) 70%, var(--muted));
+  animation: rise-in 0.7s ease-out 0.2s both;
+}
+
+.report-archive-list {
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.report-archive-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 7.5rem 1fr auto;
+  gap: 0.65rem;
+  align-items: baseline;
+  text-align: left;
+  border: 1px solid var(--btn-border);
+  background: color-mix(in oklab, var(--panel) 78%, transparent);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.report-archive-item:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.report-archive-item.is-active {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+  background: color-mix(in oklab, var(--accent) 10%, var(--panel));
+  cursor: default;
+}
+
+.report-archive-when {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.report-archive-headline {
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.report-archive-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .report-archive-item {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}
+
 .chat-suggestions {
   display: flex;
   flex-wrap: wrap;

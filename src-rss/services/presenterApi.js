@@ -29,14 +29,19 @@ export async function savePreferences(payload) {
   return response.json();
 }
 
-export async function fetchDigest({ force = false, markVisit = true } = {}) {
+export async function fetchDigest({
+  force = false,
+  markVisit = true,
+  digestId = null
+} = {}) {
   const response = await fetch(`${API_BASE}/presenter-digest`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({
       userId: getUserId(),
       force,
-      markVisit
+      markVisit,
+      ...(digestId ? { digestId } : {})
     })
   });
   if (!response.ok) {

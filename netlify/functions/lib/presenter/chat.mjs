@@ -71,15 +71,19 @@ export function heuristicPreferencePatch(message = '') {
   const patch = {};
   const lower = text.toLowerCase();
 
-  const care = text.match(/(?:care about|interested in|focus on|prioritize|into)\s+(.+?)(?:\.|$)/i);
+  const care = text.match(
+    /(?:care about|interested in|focus on|prioritize|into)\s+(.+?)(?=\s+(?:and\s+)?(?:dislike|ignore|mute|skip|bored of)|[.!]|$)/i
+  );
   if (care?.[1]) {
     patch.addInterests = care[1]
       .split(/,| and /i)
       .map((s) => s.trim())
-      .filter((s) => s.length > 1 && s.length < 80);
+      .filter((s) => s.length > 1 && s.length < 80 && !/^(dislike|ignore|mute)\b/i.test(s));
   }
 
-  const dislike = text.match(/(?:dislike|ignore|mute|skip|bored of|less)\s+(.+?)(?:\.|$)/i);
+  const dislike = text.match(
+    /(?:dislike|ignore|mute|skip|bored of|less)\s+(.+?)(?:\.|$)/i
+  );
   if (dislike?.[1]) {
     const bits = dislike[1]
       .split(/,| and /i)

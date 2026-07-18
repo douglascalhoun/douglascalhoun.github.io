@@ -1,6 +1,7 @@
 // Sync editorial feed roster and rescore articles
 import { getDatabase } from './lib/db.mjs';
 import { EDITORIAL_FEEDS, RETIRE_NAME_PATTERNS, scoreArticle } from './lib/editorial.mjs';
+import { PRESENTER_MIGRATION_SQL } from './lib/presenter/migrationSql.mjs';
 
 const MIGRATION_SQL = `
 ALTER TABLE subscriptions
@@ -80,6 +81,8 @@ export default async (req) => {
   try {
     const db = await getDatabase();
     await db.query(MIGRATION_SQL);
+
+    await db.query(PRESENTER_MIGRATION_SQL);
 
     // Deactivate non-news / retired sources
     let retired = 0;

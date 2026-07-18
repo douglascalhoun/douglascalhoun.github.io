@@ -93,6 +93,31 @@ export default async (req) => {
   try {
     const db = await getDatabase();
     const feeds = await getActiveFeeds(db);
+
+    // Include user-requested custom RSS feeds (best-effort; shared crawl pool).
+    try {
+      const custom = await db.query(
+        `SELECT DISTINCT ON (url) id, name, url, 'custom' AS category, NULL AS country, 3 AS priority, true AS active
+         FROM custom_feeds
+         WHERE active = true
+         ORDER BY url, created_at DESC
+         LIMIT 20`
+      );
+      for (const row of custom.rows) {
+        // Ensure a feeds row exists so articles can FK.
+        const upsert = await db.query(
+          `INSERT INTO feeds (name, url, category, language, active, priority)
+           VALUES ($1, $2, 'custom', 'en', true, 3)
+           ON CONFLICT (url) DO UPDATE SET active = true, name = COALESCE(feeds.name, EXCLUDED.name)
+           RETURNING *`,
+          [row.name, row.url]
+        );
+        feeds.push(upsert.rows[0]);
+      }
+    } catch {
+      // custom_feeds table may not exist until presenter migration runs
+    }
+
     results.totalFeeds = feeds.length;
 
     console.log(`Fetching ${feeds.length} active feeds...`);

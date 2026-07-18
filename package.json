@@ -15,8 +15,11 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@neondatabase/serverless": "^1.1.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "linkedom": "^0.18.13",
+    "openai": "^6.48.0",
     "pg": "^8.22.0",
     "phaser": "^3.80.1",
     "react": "^19.2.7",

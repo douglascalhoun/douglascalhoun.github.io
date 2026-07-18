@@ -7,7 +7,11 @@ function SourcesNav({ activeSlug = null, compact = false }) {
     <nav className={`sources-nav${compact ? ' sources-nav-compact' : ''}`} aria-label="News sources">
       <div className="sources-nav-head">
         <button type="button" className="linkish" onClick={() => navigate('/')}>
-          All sources
+          Desk
+        </button>
+        <span className="sources-nav-sep">·</span>
+        <button type="button" className="linkish" onClick={() => navigate('/archive')}>
+          All wires
         </button>
         <span className="sources-nav-sep">·</span>
         <button type="button" className="linkish" onClick={() => navigate('/sources')}>

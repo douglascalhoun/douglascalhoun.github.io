@@ -154,6 +154,9 @@ export function parseAppPath(pathname = window.location.pathname) {
   if (path === '/' || path === '') {
     return { view: 'home' };
   }
+  if (path === '/archive' || path === '/wires') {
+    return { view: 'archive' };
+  }
   if (path === '/sources') {
     return { view: 'sources' };
   }

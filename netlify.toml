@@ -24,4 +24,4 @@
   node_bundler = "esbuild"
 
 [functions."*"]
-  external_node_modules = ["@neondatabase/serverless"]
+  external_node_modules = ["@neondatabase/serverless", "openai", "@mozilla/readability", "linkedom"]

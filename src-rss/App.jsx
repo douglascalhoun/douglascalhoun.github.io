@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ArticleList from './components/ArticleList';
+import PresenterPage from './components/PresenterPage';
 import SourcesNav, { SourcesIndexPage } from './components/SourcesNav';
 import * as api from './services/api';
 import {
@@ -28,7 +29,8 @@ function FeedView({
   feedName = null,
   source = null,
   showSourceNav = true,
-  autoOpenComments = false
+  autoOpenComments = false,
+  showBackToDesk = false
 }) {
   const [stories, setStories] = useState([]);
   const [counts, setCounts] = useState({ total: 0, unread: 0, read: 0 });
@@ -75,7 +77,6 @@ function FeedView({
         feed: feedName || undefined
       });
       mergeStoriesIntoCache(data.articles || []);
-      // Also pull a broader set on source pages so cache stays useful for home
       if (feedName) {
         const all = await api.fetchArticles({ limit: 150, offset: 0 });
         mergeStoriesIntoCache(all.articles || []);
@@ -144,9 +145,13 @@ function FeedView({
       <header className="header">
         <div className="header-inner">
           <div>
-            {feedName && (
-              <button type="button" className="back-link" onClick={() => navigate('/')}>
-                ← All sources
+            {(feedName || showBackToDesk) && (
+              <button
+                type="button"
+                className="back-link"
+                onClick={() => navigate(showBackToDesk && !feedName ? '/' : feedName ? '/archive' : '/')}
+              >
+                {showBackToDesk && !feedName ? '← Presenter desk' : '← All wires'}
               </button>
             )}
             <h1>{title}</h1>
@@ -158,6 +163,9 @@ function FeedView({
             )}
           </div>
           <div className="actions">
+            <button type="button" className="btn" onClick={() => navigate('/')}>
+              Desk
+            </button>
             <button type="button" className="btn" onClick={refreshFromServer} disabled={loading || crawling}>
               Refresh
             </button>
@@ -267,13 +275,31 @@ function App() {
       document.title = source ? `${source.name} · Worldwire` : 'Worldwire';
     } else if (route.view === 'sources') {
       document.title = 'Sources · Worldwire';
+    } else if (route.view === 'archive') {
+      document.title = 'Wires · Worldwire';
     } else {
       document.title = 'Worldwire';
     }
   }, [route]);
 
+  if (route.view === 'home') {
+    return <PresenterPage />;
+  }
+
   if (route.view === 'sources') {
     return <SourcesIndexPage />;
+  }
+
+  if (route.view === 'archive') {
+    return (
+      <FeedView
+        title="Wires"
+        tagline="Raw unread headlines — the old river, still here when you want it"
+        showSourceNav
+        showBackToDesk
+        autoOpenComments={false}
+      />
+    );
   }
 
   if (route.view === 'source') {
@@ -286,6 +312,7 @@ function App() {
         feedName={source.name}
         source={source}
         autoOpenComments={Boolean(source.comments)}
+        showBackToDesk
       />
     );
   }
@@ -294,17 +321,9 @@ function App() {
     return <NotFoundPage />;
   }
 
-  return (
-    <FeedView
-      title="Worldwire"
-      tagline="Unread stories from serious newsrooms"
-      showSourceNav
-      autoOpenComments={false}
-    />
-  );
+  return <PresenterPage />;
 }
 
-// Exported for docs / link lists
 export const SOURCE_LINKS = SOURCES.map((s) => ({
   name: s.name,
   path: `/source/${s.slug}`,

@@ -62,6 +62,50 @@ When preferences should change, append EXACTLY one fenced block:
 Only include keys you are changing. Do not invent URLs.`;
 }
 
+/**
+ * Lightweight offline parser so preference memory still works before AI Gateway is enabled.
+ */
+export function heuristicPreferencePatch(message = '') {
+  const text = String(message || '').trim();
+  if (!text) return null;
+  const patch = {};
+  const lower = text.toLowerCase();
+
+  const care = text.match(/(?:care about|interested in|focus on|prioritize|into)\s+(.+?)(?:\.|$)/i);
+  if (care?.[1]) {
+    patch.addInterests = care[1]
+      .split(/,| and /i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 1 && s.length < 80);
+  }
+
+  const dislike = text.match(/(?:dislike|ignore|mute|skip|bored of|less)\s+(.+?)(?:\.|$)/i);
+  if (dislike?.[1]) {
+    const bits = dislike[1]
+      .split(/,| and /i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 1 && s.length < 80);
+    if (/source|bloomberg|nyt|ft|economist|bbc|wsj|ars/i.test(dislike[1])) {
+      patch.addMutedSources = bits;
+    } else {
+      patch.addDisinterests = bits;
+    }
+  }
+
+  if (/deeper|more depth|deep dive/i.test(lower)) patch.depth = 'deep';
+  if (/brief|shorter|concise/i.test(lower)) patch.depth = 'briefing';
+  if (/calm|skeptical|analytical|blunt/.test(lower)) {
+    const tones = [];
+    if (/calm/.test(lower)) tones.push('calm');
+    if (/skeptical/.test(lower)) tones.push('skeptical');
+    if (/analytical/.test(lower)) tones.push('analytical');
+    if (/blunt/.test(lower)) tones.push('blunt');
+    if (tones.length) patch.tone = tones.join(', ');
+  }
+
+  return Object.keys(patch).length ? patch : null;
+}
+
 export async function runPresenterChat({
   preferences,
   systemPromptExtra,
@@ -93,15 +137,29 @@ export async function runPresenterChat({
   });
 
   if (!result.ok) {
+    const patch = heuristicPreferencePatch(userMessage);
+    const nextPrefs = patch
+      ? mergePreferencePatch(preferences, patch)
+      : normalizePreferences(preferences);
+    const bits = [];
+    if (patch?.addInterests?.length) bits.push(`interests + ${patch.addInterests.join(', ')}`);
+    if (patch?.addDisinterests?.length) bits.push(`disinterests + ${patch.addDisinterests.join(', ')}`);
+    if (patch?.addMutedSources?.length) bits.push(`muted ${patch.addMutedSources.join(', ')}`);
+    if (patch?.tone) bits.push(`tone → ${patch.tone}`);
+    if (patch?.depth) bits.push(`depth → ${patch.depth}`);
+
     return {
       ok: false,
       error: result.error,
       missingKey: result.missingKey,
-      reply:
-        'The presenter model is unavailable right now (AI Gateway key/model). Your preferences were not changed. Try again after AI is enabled on the Netlify site.',
-      patch: null,
-      preferences: normalizePreferences(preferences),
-      model: result.model
+      reply: patch
+        ? `AI Gateway is not enabled yet, so I applied a simple local preference update (${bits.join('; ')}). Enable AI on the Netlify site for full presenter chat and smarter briefings.`
+        : 'The presenter model is unavailable right now (enable Netlify AI Gateway). Say things like “I care about chip export controls” or “dislike celebrity news” and I can still update memory locally.',
+      patch,
+      preferences: nextPrefs,
+      model: result.model,
+      customFeedsToAdd: [],
+      customFeedsToRemove: []
     };
   }
 

@@ -18,11 +18,9 @@ import {
 } from './lib/presenter/archive.mjs';
 import { handleOptions, jsonResponse, readUserId } from './lib/cors.mjs';
 
-async function withArchive(db, userId, payload, excludeId = null) {
-  const archive = await listDigestArchive(db, userId, {
-    limit: 20,
-    excludeId: excludeId || payload.digestId || null
-  });
+async function withArchive(db, userId, payload) {
+  // Include the active report so a single past briefing still appears in the list.
+  const archive = await listDigestArchive(db, userId, { limit: 20 });
   return { ...payload, archive };
 }
 
@@ -55,27 +53,22 @@ export default async (req) => {
         return jsonResponse({ error: 'Digest not found' }, { status: 404 });
       }
       return jsonResponse(
-        await withArchive(
-          db,
+        await withArchive(db, userId, {
           userId,
-          {
-            userId,
-            mode: 'archive',
-            cached: true,
-            replay: true,
-            digestId: past.digestId,
-            sinceAt: past.sinceAt,
-            createdAt: past.createdAt,
-            model: past.model,
-            summaryMarkdown: past.summaryMarkdown,
-            digest: past.digest,
-            articleCount: past.eventCount,
-            preferences: profile.preferences,
-            lastVisitedAt: profile.last_visited_at,
-            note: `Replaying briefing from ${new Date(past.createdAt).toLocaleString()}`
-          },
-          past.digestId
-        )
+          mode: 'archive',
+          cached: true,
+          replay: true,
+          digestId: past.digestId,
+          sinceAt: past.sinceAt,
+          createdAt: past.createdAt,
+          model: past.model,
+          summaryMarkdown: past.summaryMarkdown,
+          digest: past.digest,
+          articleCount: past.eventCount,
+          preferences: profile.preferences,
+          lastVisitedAt: profile.last_visited_at,
+          note: `Replaying briefing from ${new Date(past.createdAt).toLocaleString()}`
+        })
       );
     }
 
@@ -91,24 +84,19 @@ export default async (req) => {
         const parsed = rowToDigest(recent.rows[0]);
         if (isSubstantiveDigest(parsed.digest)) {
           return jsonResponse(
-            await withArchive(
-              db,
+            await withArchive(db, userId, {
               userId,
-              {
-                userId,
-                mode: 'fresh',
-                cached: true,
-                digestId: parsed.digestId,
-                sinceAt: parsed.sinceAt,
-                createdAt: parsed.createdAt,
-                model: parsed.model,
-                summaryMarkdown: parsed.summaryMarkdown,
-                digest: parsed.digest,
-                preferences: profile.preferences,
-                lastVisitedAt: profile.last_visited_at
-              },
-              parsed.digestId
-            )
+              mode: 'fresh',
+              cached: true,
+              digestId: parsed.digestId,
+              sinceAt: parsed.sinceAt,
+              createdAt: parsed.createdAt,
+              model: parsed.model,
+              summaryMarkdown: parsed.summaryMarkdown,
+              digest: parsed.digest,
+              preferences: profile.preferences,
+              lastVisitedAt: profile.last_visited_at
+            })
           );
         }
       }
@@ -137,33 +125,28 @@ export default async (req) => {
 
       if (past) {
         return jsonResponse(
-          await withArchive(
-            db,
+          await withArchive(db, userId, {
             userId,
-            {
-              userId,
-              mode: 'replay',
-              cached: true,
-              replay: true,
-              digestId: past.digestId,
-              sinceAt: past.sinceAt,
-              createdAt: past.createdAt,
-              model: past.model,
-              summaryMarkdown: past.summaryMarkdown,
-              digest: {
-                ...past.digest,
-                lede:
-                  past.digest.lede ||
-                  'No strong new stories since your last visit — replaying your latest briefing.'
-              },
-              articleCount: 0,
-              fallback: false,
-              preferences: profile.preferences,
-              lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
-              note: 'Nothing new since your last visit — showing your latest past briefing.'
+            mode: 'replay',
+            cached: true,
+            replay: true,
+            digestId: past.digestId,
+            sinceAt: past.sinceAt,
+            createdAt: past.createdAt,
+            model: past.model,
+            summaryMarkdown: past.summaryMarkdown,
+            digest: {
+              ...past.digest,
+              lede:
+                past.digest.lede ||
+                'No strong new stories since your last visit — replaying your latest briefing.'
             },
-            past.digestId
-          )
+            articleCount: 0,
+            fallback: false,
+            preferences: profile.preferences,
+            lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
+            note: 'Nothing new since your last visit — showing your latest past briefing.'
+          })
         );
       }
 
@@ -221,27 +204,22 @@ export default async (req) => {
       if (markVisit) await touchLastVisited(db, userId, new Date());
       if (past) {
         return jsonResponse(
-          await withArchive(
-            db,
+          await withArchive(db, userId, {
             userId,
-            {
-              userId,
-              mode: 'replay',
-              cached: true,
-              replay: true,
-              digestId: past.digestId,
-              sinceAt: past.sinceAt,
-              createdAt: past.createdAt,
-              model: past.model,
-              summaryMarkdown: past.summaryMarkdown,
-              digest: past.digest,
-              articleCount: 0,
-              preferences: profile.preferences,
-              lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
-              note: 'Nothing new since your last visit — showing your latest past briefing.'
-            },
-            past.digestId
-          )
+            mode: 'replay',
+            cached: true,
+            replay: true,
+            digestId: past.digestId,
+            sinceAt: past.sinceAt,
+            createdAt: past.createdAt,
+            model: past.model,
+            summaryMarkdown: past.summaryMarkdown,
+            digest: past.digest,
+            articleCount: 0,
+            preferences: profile.preferences,
+            lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
+            note: 'Nothing new since your last visit — showing your latest past briefing.'
+          })
         );
       }
       return jsonResponse(
@@ -310,32 +288,27 @@ export default async (req) => {
     }
 
     return jsonResponse(
-      await withArchive(
-        db,
+      await withArchive(db, userId, {
         userId,
-        {
-          userId,
-          mode,
-          cached: false,
-          replay: false,
-          digestId: inserted.rows[0].id,
-          sinceAt: since,
-          createdAt: inserted.rows[0].created_at,
-          model: generated?.model || null,
-          fallback: Boolean(generated?.fallback),
-          aiError: generated?.error || null,
-          missingKey: Boolean(generated?.missingKey),
-          articleCount: articles.length,
-          summaryMarkdown,
-          digest,
-          preferences: profile.preferences,
-          lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
-          note: widened
-            ? 'Little was new since your last visit — catch-up briefing from the last ~72 hours.'
-            : null
-        },
-        inserted.rows[0].id
-      )
+        mode,
+        cached: false,
+        replay: false,
+        digestId: inserted.rows[0].id,
+        sinceAt: since,
+        createdAt: inserted.rows[0].created_at,
+        model: generated?.model || null,
+        fallback: Boolean(generated?.fallback),
+        aiError: generated?.error || null,
+        missingKey: Boolean(generated?.missingKey),
+        articleCount: articles.length,
+        summaryMarkdown,
+        digest,
+        preferences: profile.preferences,
+        lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
+        note: widened
+          ? 'Little was new since your last visit — catch-up briefing from the last ~72 hours.'
+          : null
+      })
     );
   } catch (error) {
     console.error('presenter-digest error', error);

@@ -125,38 +125,13 @@ export default async (req) => {
       limit: Number(body.limit || 48)
     });
 
-    // If nothing since last visit, widen the window once before falling back to archive.
-    let widened = false;
-    if (!articles.length) {
-      const widenedSince = new Date(Date.now() - 72 * 60 * 60 * 1000);
-      const retry = await loadArticlesSince(db, {
-        sinceAt: widenedSince,
-        preferences: profile.preferences,
-        limit: Number(body.limit || 48)
-      });
-      if (retry.articles.length) {
-        since = retry.since;
-        articles = retry.articles;
-        widened = true;
-      }
-    }
-
     let generated = null;
     let digest = null;
     let mode = 'fresh';
+    let widened = false;
 
-    if (articles.length) {
-      generated = await generateDigest({
-        articles,
-        preferences: profile.preferences,
-        systemPromptExtra: profile.system_prompt_extra || '',
-        since
-      });
-      digest = generated.digest;
-    }
-
-    // Nothing new (or empty quiet desk) → replay latest past report + archive
-    if (!isSubstantiveDigest(digest)) {
+    // Nothing new since last visit → prefer replaying a past report over regenerating.
+    if (!articles.length) {
       const past = await getLatestSubstantiveDigest(db, userId);
       if (markVisit) await touchLastVisited(db, userId, new Date());
 
@@ -177,7 +152,6 @@ export default async (req) => {
               summaryMarkdown: past.summaryMarkdown,
               digest: {
                 ...past.digest,
-                headline: past.digest.headline,
                 lede:
                   past.digest.lede ||
                   'No strong new stories since your last visit — replaying your latest briefing.'
@@ -193,27 +167,95 @@ export default async (req) => {
         );
       }
 
-      // No personal archive yet — still return archive list (empty) and honest quiet state
+      // No archive yet: widen once so first-time visitors still get a desk.
+      const widenedSince = new Date(Date.now() - 72 * 60 * 60 * 1000);
+      const retry = await loadArticlesSince(db, {
+        sinceAt: widenedSince,
+        preferences: profile.preferences,
+        limit: Number(body.limit || 48)
+      });
+      if (retry.articles.length) {
+        since = retry.since;
+        articles = retry.articles;
+        widened = true;
+      } else {
+        return jsonResponse(
+          await withArchive(db, userId, {
+            userId,
+            mode: 'empty',
+            cached: false,
+            digestId: null,
+            sinceAt: since,
+            createdAt: new Date().toISOString(),
+            model: null,
+            summaryMarkdown: '',
+            digest: {
+              headline: 'Quiet desk',
+              lede: 'No new stories matched your filters, and there are no past briefings to replay yet. Crawl sources or widen interests.',
+              events: [],
+              watchlist: ['Crawl + scrape, then refresh briefing.', 'Ask the desk to broaden topics.'],
+              ignoredNote: null
+            },
+            articleCount: 0,
+            preferences: profile.preferences,
+            lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
+            note: 'No new news and no past reports yet.'
+          })
+        );
+      }
+    }
+
+    if (articles.length) {
+      generated = await generateDigest({
+        articles,
+        preferences: profile.preferences,
+        systemPromptExtra: profile.system_prompt_extra || '',
+        since
+      });
+      digest = generated.digest;
+    }
+
+    // Generated quiet/empty → still fall back to archive
+    if (!isSubstantiveDigest(digest)) {
+      const past = await getLatestSubstantiveDigest(db, userId);
+      if (markVisit) await touchLastVisited(db, userId, new Date());
+      if (past) {
+        return jsonResponse(
+          await withArchive(
+            db,
+            userId,
+            {
+              userId,
+              mode: 'replay',
+              cached: true,
+              replay: true,
+              digestId: past.digestId,
+              sinceAt: past.sinceAt,
+              createdAt: past.createdAt,
+              model: past.model,
+              summaryMarkdown: past.summaryMarkdown,
+              digest: past.digest,
+              articleCount: 0,
+              preferences: profile.preferences,
+              lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
+              note: 'Nothing new since your last visit — showing your latest past briefing.'
+            },
+            past.digestId
+          )
+        );
+      }
       return jsonResponse(
         await withArchive(db, userId, {
           userId,
           mode: 'empty',
-          cached: false,
-          digestId: null,
-          sinceAt: since,
-          createdAt: new Date().toISOString(),
-          model: null,
-          summaryMarkdown: '',
-          digest: {
+          digest: digest || {
             headline: 'Quiet desk',
-            lede: 'No new stories matched your filters, and there are no past briefings to replay yet. Crawl sources or widen interests.',
+            lede: 'No new stories matched your filters.',
             events: [],
-            watchlist: ['Crawl + scrape, then refresh briefing.', 'Ask the desk to broaden topics.'],
+            watchlist: [],
             ignoredNote: null
           },
-          articleCount: 0,
           preferences: profile.preferences,
-          lastVisitedAt: markVisit ? new Date().toISOString() : profile.last_visited_at,
           note: 'No new news and no past reports yet.'
         })
       );

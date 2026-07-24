@@ -22,6 +22,4 @@
 
 [functions]
   node_bundler = "esbuild"
-
-[functions."*"]
-  external_node_modules = ["@neondatabase/serverless"]
+  # Bundle neon into functions so runtime doesn't need a separate node_modules copy

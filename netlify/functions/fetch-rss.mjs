@@ -47,13 +47,20 @@ async function fetchFeed(feed) {
 
     const articles = [];
     for (const item of feedData.items || []) {
+      const rawDescription =
+        item.contentSnippet ||
+        item.summary ||
+        item.content ||
+        item.contentEncoded ||
+        '';
+      const pubRaw = item.pubDate || item.isoDate || item.updated || item.published;
       const draft = {
         feedId: feed.id,
         title: cleanText(item.title) || 'Untitled',
-        description: cleanText(item.contentSnippet || item.summary || ''),
-        link: item.link || '',
-        pubDate: item.pubDate ? new Date(item.pubDate) : new Date(),
-        guid: item.guid || item.link || `${feed.id}-${item.title}-${Date.now()}`,
+        description: cleanText(rawDescription).slice(0, 600),
+        link: item.link || item.id || '',
+        pubDate: pubRaw ? new Date(pubRaw) : new Date(),
+        guid: item.guid || item.id || item.link || `${feed.id}-${item.title}-${Date.now()}`,
         author: item.creator || item.author || null,
         categories: normalizeCategories(item.categories),
         imageUrl: extractImage(item),

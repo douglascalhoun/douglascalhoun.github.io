@@ -128,14 +128,57 @@ h1 {
   flex-direction: column;
 }
 
+.wire-brief {
+  margin: 0.35rem 0 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--line);
+  transition: border-color 1.2s linear;
+}
+
+.brief-headline {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ink);
+  transition: color 1.2s linear;
+}
+
+.brief-detail {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  transition: color 1.2s linear;
+}
+
 .story {
   position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.75rem;
-  padding: 1rem 0;
+  padding: 1rem 0.55rem;
+  margin: 0 -0.55rem;
   border-bottom: 1px solid var(--line);
-  transition: border-color 1.2s linear;
+  border-radius: 8px;
+  transition: border-color 1.2s linear, background-color 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
+}
+
+.story.is-focused {
+  background: color-mix(in oklab, var(--panel) 70%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.story.heat-2 .story-title,
+.story.heat-3 .story-title {
+  letter-spacing: -0.015em;
+}
+
+.story-heat {
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  opacity: 0.7;
+  font-size: 0.65rem;
 }
 
 .story-body {
@@ -272,6 +315,86 @@ h1 {
   transition: color 1.2s linear;
 }
 
+.empty-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 650;
+  color: var(--ink);
+  margin-bottom: 0.35rem;
+  transition: color 1.2s linear;
+}
+
+.empty-hint {
+  margin-top: 0.85rem;
+  font-size: 0.85rem;
+}
+
+kbd {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--btn-border);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--panel) 85%, transparent);
+  font: inherit;
+  font-size: 0.8em;
+}
+
+.help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in oklab, var(--ink) 28%, transparent);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  animation: undo-in 0.18s ease-out;
+}
+
+.help-panel {
+  width: min(420px, 100%);
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem 1.15rem;
+  box-shadow: 0 18px 40px color-mix(in oklab, var(--ink) 18%, transparent);
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.help-head h2 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 650;
+}
+
+.help-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.help-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  font-size: 0.92rem;
+}
+
+.help-list kbd {
+  flex-shrink: 0;
+  min-width: 5.5rem;
+  text-align: center;
+}
+
 .undo-bar {
   position: fixed;
   left: 50%;
@@ -355,7 +478,12 @@ h1 {
   .count-pill,
   .progress-bar,
   .empty,
-  .undo-bar {
+  .empty-title,
+  .wire-brief,
+  .brief-headline,
+  .brief-detail,
+  .undo-bar,
+  .help-backdrop {
     transition: none !important;
     animation: none !important;
   }

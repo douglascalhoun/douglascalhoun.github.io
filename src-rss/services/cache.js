@@ -49,6 +49,12 @@ export function markManyUnread(idList) {
   return ids;
 }
 
+function pruneReadIds(storyIds) {
+  const valid = new Set(storyIds);
+  const next = [...getReadIds()].filter((id) => valid.has(id));
+  saveJson(READ_KEY, next);
+}
+
 export function getCachedStories() {
   const cache = loadJson(CACHE_KEY, { stories: [], updatedAt: null });
   const stories = Array.isArray(cache.stories) ? cache.stories : [];
@@ -57,6 +63,22 @@ export function getCachedStories() {
     title: cleanText(story?.title || ''),
     description: cleanText(story?.description || ''),
   }));
+}
+
+export function getCacheUpdatedAt() {
+  const cache = loadJson(CACHE_KEY, { stories: [], updatedAt: null });
+  return cache.updatedAt || null;
+}
+
+function rankScore(story) {
+  const relevance = Number(story.relevance_score) || 0;
+  const ageHours = Math.max(
+    0,
+    (Date.now() - new Date(story.pub_date || 0).getTime()) / 36e5
+  );
+  // Prefer consequential + recent; fade after ~2 days
+  const recency = Math.max(0, 48 - ageHours) * 0.35;
+  return relevance + recency;
 }
 
 export function mergeStoriesIntoCache(incoming) {
@@ -74,7 +96,8 @@ export function mergeStoriesIntoCache(incoming) {
       pub_date: story.pub_date,
       feed_name: story.feed_name,
       feed_category: story.feed_category,
-      relevance_score: story.relevance_score
+      relevance_score: story.relevance_score,
+      topics: Array.isArray(story.topics) ? story.topics : [],
     });
   }
 
@@ -84,15 +107,17 @@ export function mergeStoriesIntoCache(incoming) {
     return tb - ta;
   });
 
-  // Keep cache bounded
   const trimmed = stories.slice(0, 500);
+  pruneReadIds(trimmed.map((s) => s.id));
   saveJson(CACHE_KEY, { stories: trimmed, updatedAt: new Date().toISOString() });
   return trimmed;
 }
 
 export function getUnreadStories() {
   const read = getReadIds();
-  return getCachedStories().filter((s) => !read.has(s.id));
+  return getCachedStories()
+    .filter((s) => !read.has(s.id))
+    .sort((a, b) => rankScore(b) - rankScore(a));
 }
 
 export function getStoryCounts() {
@@ -107,6 +132,6 @@ export function getStoryCounts() {
   return {
     total: cached.length,
     unread,
-    read: readCount
+    read: readCount,
   };
 }

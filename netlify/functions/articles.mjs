@@ -23,7 +23,7 @@ export default async (req) => {
 
   try {
     const url = new URL(req.url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
     const offset = parseInt(url.searchParams.get('offset') || '0');
     const category = url.searchParams.get('category');
     const q = url.searchParams.get('q')?.trim();

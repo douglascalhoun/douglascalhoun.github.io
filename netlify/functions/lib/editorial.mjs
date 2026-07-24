@@ -22,9 +22,15 @@ export const EDITORIAL_FEEDS = [
   { name: 'Washington Post Business', url: 'https://feeds.washingtonpost.com/rss/business', category: 'business', country: 'US', priority: 6 },
   { name: 'BBC World News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', category: 'world', country: 'UK', priority: 7 },
   { name: 'BBC Business', url: 'https://feeds.bbci.co.uk/news/business/rss.xml', category: 'business', country: 'UK', priority: 6 },
+  { name: 'BBC Technology', url: 'https://feeds.bbci.co.uk/news/technology/rss.xml', category: 'tech', country: 'UK', priority: 7 },
+  { name: 'The Economist Science', url: 'https://www.economist.com/science-and-technology/rss.xml', category: 'tech', country: 'UK', priority: 8 },
+  { name: 'FT Technology', url: 'https://www.ft.com/technology?format=rss', category: 'tech', country: 'UK', priority: 8 },
   { name: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/', category: 'tech', country: 'US', priority: 9 },
   { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', category: 'tech', country: 'US', priority: 8 },
-  { name: 'Bloomberg Technology', url: 'https://feeds.bloomberg.com/technology/news.rss', category: 'tech', country: 'US', priority: 7 }
+  { name: 'Bloomberg Technology', url: 'https://feeds.bloomberg.com/technology/news.rss', category: 'tech', country: 'US', priority: 7 },
+  { name: 'Quanta Magazine', url: 'https://api.quantamagazine.org/feed/', category: 'tech', country: 'US', priority: 8 },
+  { name: 'The Register', url: 'https://www.theregister.com/headlines.atom', category: 'tech', country: 'UK', priority: 6 },
+  { name: 'CyberScoop', url: 'https://www.cyberscoop.com/feed/', category: 'tech', country: 'US', priority: 7 }
 ];
 
 export const RETIRE_NAME_PATTERNS = [
